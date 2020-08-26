@@ -6,6 +6,7 @@ is a semi-real-time view-only interface for radiolog data files being written on
 You will need to install pygtail and regex modules:
 pip install pygtail
 pip install regex
+sartopo_python.py is included here temporarily until the offical version is updated to include the delete functionality
 ```
 # To run the viewer, run radiolog_viewer.bat.
 The first time you run radiolog_viewer.bat, the file local/radiolog_viewer.cfg will be created.  You will probably need to edit that file by hand to make sure it is looking at the correct shared file location where radiolog is creating its data.
