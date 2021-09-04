@@ -20,3 +20,6 @@ each row in the table contains	time, team. descriptive information, team status 
 Provides the plans function with an enhanced means for adding markers to sartopo that show the position of a team or person (LE).
 An entry consists of: team (or LE callsign) - multiple LE can be entered as a comma separated list; assignment (if the assignment is IC and type LE, markers are crowded around NCSO), special assignments are: TR – team in transit, RM - remove the team, IC (when type is not LE) keep in the console list, but remove from the sartopo map; type of team (or LE): K9A, K9T, GND, UTV ...; optionally designate Medical personnel on the team. 
 There are various marker types for medical, LE, other?
+
+# sartopo feature editing
+A line or polygon can be added to a map to edit existing features.  The added feature can act to cut, expand or crop the chosen feature.
