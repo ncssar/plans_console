@@ -1,11 +1,11 @@
 # plans_console
-plans_console  python
-is a semi-real-time view-only interface for radiolog data files being written on a shared drive and entry mechanism to add markers to a sartopo map.
+plans_console2  python3.x
+is a semi-real-time view-only interface for radiolog data files being written on a shared drive, entry mechanism to add markers to a sartopo map and provides a means to edit features on a sartopo map.
 
 # installation
-You will need to install pygtail and regex modules:
-pip install pygtail
-pip install regex
+You will need to install pygtail, regex, glob, traceback, jsopn, random, time, io, shutil, os, sys modules:
+pip install <tool>
+  
 sartopo_python.py is included here temporarily until the offical version is updated to include the delete functionality
 ```
 # To run the viewer, run radiolog_viewer.bat.
