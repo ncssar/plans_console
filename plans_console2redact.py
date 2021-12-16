@@ -156,7 +156,7 @@ class MainWindow(QDialog,Ui_MainWindow):
             name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Enter the map URL, precede with # if at sartopo.com\n or $ if local')  ## server assumed to be at '192.168.1.20'                                              
             if "#" in name1:
                 self.url="sartopo.com/m/"+name1[1:]        # remove the #
-            if "$" in name1:
+            elif "$" in name1:
                 self.url="localhost:8080/m/"+name1[1:]     # remove the $
             else:    
                 self.url="192.168.1.20:8080/m/"+name1
