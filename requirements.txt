@@ -1,0 +1,14 @@
+# requirements.txt for plans-console
+#  to install all modules listed here,
+#  just run 'pip install -r requirements.txt'
+#  (can specify version numbers as needed)
+
+pyqt5
+pygtail
+regex
+requests
+
+# shapely is required by sartopo_python; installing it probably requires 
+#  a wheel instead of the .tar.gz attempted by 'pip install shapely'.
+#  See instructions here:
+# https://towardsdatascience.com/install-shapely-on-windows-72b6581bb46c

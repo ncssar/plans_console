@@ -127,3 +127,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# local dir, including plans_console.cfg and other local data as needed
+local/
