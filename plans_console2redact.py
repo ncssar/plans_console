@@ -52,6 +52,7 @@ import traceback
 import json
 import random
 import configparser
+import argparse
 
 from plans_console_ui2 import Ui_MainWindow
 from datetime import datetime
@@ -120,6 +121,14 @@ def sortByTitle(item):
 class MainWindow(QDialog,Ui_MainWindow):
     def __init__(self,parent):
         QDialog.__init__(self)
+
+        parser=argparse.ArgumentParser()
+        parser.add_argument('url',nargs='?',default=None) # optional url (#abcd or $abcd for now)
+        parser.add_argument('-n','--norestore',action='store_true',
+                help='do not try to restore the previous session, and do not ask the user')
+        args=parser.parse_args()
+        print('args:'+str(args))
+
         self.parent=parent
         self.rcFileName="plans_console.rc"
         self.configFileName="./local/plans_console.cfg"
@@ -128,7 +137,7 @@ class MainWindow(QDialog,Ui_MainWindow):
 ## end redact
 ####`        
         self.readConfigFile()
-        if not os.path.isdir(self.watchedDir):
+        if self.watchedDir and not os.path.isdir(self.watchedDir):
             err=QMessageBox(QMessageBox.Critical,"Error","Specified directory to be watched does not exist:\n \n  "+self.watchedDir+"\n \nAborting.",
                             QMessageBox.Close,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
             err.show()
@@ -148,13 +157,16 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.setStyleSheet("background-color:#d6d6d6")
         self.ui.tableWidget.cellClicked.connect(self.tableCellClicked)        
         self.ui.OKbut.clicked.connect(self.assignTab_OK_clicked)
-        self.reloaded = 0
-        name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
-        if "y" in name1.lower():
-            self.load_data()
-            self.reloaded = 1
-        else:    
-            name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Enter the map URL, precede with # if at sartopo.com\n or $ if local')  ## server assumed to be at '192.168.1.20'                                              
+        self.reloaded = False
+        if not args.norestore:
+            name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
+            if "y" in name1.lower():
+                self.load_data()
+                self.reloaded = True
+        if not self.reloaded:
+            name1=args.url
+            if not name1:
+                name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Enter the map URL, precede with # if at sartopo.com\n or $ if local')  ## server assumed to be at '192.168.1.20'
             if "#" in name1:
                 self.url="sartopo.com/m/"+name1[1:]        # remove the #
             elif "$" in name1:
@@ -199,20 +211,21 @@ class MainWindow(QDialog,Ui_MainWindow):
         
         self.updateClock()
 
-        self.ui.notYet=QMessageBox(QMessageBox.Information,"Waiting...","No valid radiolog file was found.\nRe-scanning every few seconds...",
-                    QMessageBox.Abort,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
-        self.ui.notYet.setStyleSheet("background-color: lightgray")
-        self.ui.notYet.setModal(False)
-        self.ui.notYet.show()
-        self.ui.notYet.buttonClicked.connect(self.notYetButtonClicked)
-        self.ui.rescanButton.clicked.connect(self.rescanButtonClicked)
+        if self.watchedDir:
+            self.ui.notYet=QMessageBox(QMessageBox.Information,"Waiting...","No valid radiolog file was found.\nRe-scanning every few seconds...",
+                        QMessageBox.Abort,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
+            self.ui.notYet.setStyleSheet("background-color: lightgray")
+            self.ui.notYet.setModal(False)
+            self.ui.notYet.show()
+            self.ui.notYet.buttonClicked.connect(self.notYetButtonClicked)
+            self.ui.rescanButton.clicked.connect(self.rescanButtonClicked)
 
-        self.rescanTimer=QTimer(self)
-        self.rescanTimer.timeout.connect(self.rescan)
-        if self.reloaded == 0:
-            self.rescanTimer.start(2000)     # do not start rescan timer if this is a reload
-        else:
-            self.ui.notYet.close()           # we have csv file in reload
+            self.rescanTimer=QTimer(self)
+            self.rescanTimer.timeout.connect(self.rescan)
+            if not self.reloaded:
+                self.rescanTimer.start(2000)     # do not start rescan timer if this is a reload
+            else:
+                self.ui.notYet.close()           # we have csv file in reload
                   
         self.refreshTimer=QTimer(self)
         self.refreshTimer.timeout.connect(self.refresh)
@@ -401,16 +414,19 @@ class MainWindow(QDialog,Ui_MainWindow):
         #         self.watchedDir=tokens[1]
         #         print("watchedDir specification "+self.watchedDir+" parsed from config file.")
         # configFile.close()
-
-        # process any ~ characters
-        self.watchedDir=os.path.expanduser(self.watchedDir)
         
         # validation and post-processing of each item
         configErr=""
 
-        if not os.path.isdir(self.watchedDir):
-            configErr+="WARNING: specified watchedDir '"+self.watchedDir+"' does not exist.\n"
-            configErr+="  Radiolog traffic will not be monitored.\n\n"
+        # validate watchedDir
+        if self.watchedDir=='None':
+            self.watchedDir=None
+        else:
+            # process any ~ characters
+            self.watchedDir=os.path.expanduser(self.watchedDir)
+            if not os.path.isdir(self.watchedDir):
+                configErr+="WARNING: specified watchedDir '"+self.watchedDir+"' does not exist.\n"
+                configErr+="  Radiolog traffic will not be monitored.\n\n"
 
         if configErr:
             self.configErrMsgBox=QMessageBox(QMessageBox.Warning,"Non-fatal Configuration Error(s)","Error(s) encountered in config file "+self.configFileName+":\n\n"+configErr,
@@ -448,7 +464,7 @@ class MainWindow(QDialog,Ui_MainWindow):
     #  - process each new line
     #    - add a row to the appropriate panel's table    
     def refresh(self):
-        if self.csvFiles!=[]:
+        if self.watchedDir and self.csvFiles!=[]:
             newEntries=self.readWatchedFile()
             if newEntries:
                 ix = 0
