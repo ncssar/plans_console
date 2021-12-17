@@ -51,6 +51,7 @@ import io
 import traceback
 import json
 import random
+import configparser
 
 from plans_console_ui2 import Ui_MainWindow
 from datetime import datetime
@@ -354,57 +355,71 @@ class MainWindow(QDialog,Ui_MainWindow):
                     print("Creating config dir "+dir)
                     os.makedirs(dir)
                 except:
-                    print("ERROR creating directory "+dir+" for config file.  Better luck next time.")
+                    print("ERROR creating directory "+dir+" for config file.")
             try:
                 defaultConfigFileName=os.path.join(os.path.dirname(os.path.realpath(__file__)),"default.cfg")
                 print("Copying default config file "+defaultConfigFileName+" to "+self.configFileName)
                 shutil.copyfile(defaultConfigFileName,self.configFileName)
             except:
-                print("ERROR copying the config file.  Better luck next time.")
+                print("ERROR copying the default config file to the local config path.")
                 
         # specify defaults here
-        self.watchedDir="Z:\\"
+        # self.watchedDir="Z:\\"
         
-        configFile=QFile(self.configFileName)
-        if not configFile.open(QFile.ReadOnly|QFile.Text):
-            warn=QMessageBox(QMessageBox.Warning,"Error","Cannot read configuration file " + self.configFileName + "; using default settings. "+configFile.errorString(),
-                            QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
-            warn.show()
-            warn.raise_()
-            warn.exec_()
-            return
-        inStr=QTextStream(configFile)
-        line=inStr.readLine()
-        if line!="[Plans_console]":
+        # configFile=QFile(self.configFileName)
+        config=configparser.ConfigParser()
+        config.read(self.configFileName)
+        if 'Plans_console' not in config.sections():
+
+        # if not configFile.open(QFile.ReadOnly|QFile.Text):
+        #     warn=QMessageBox(QMessageBox.Warning,"Error","Cannot read configuration file " + self.configFileName + "; using default settings. "+configFile.errorString(),
+        #                     QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
+        #     warn.show()
+        #     warn.raise_()
+        #     warn.exec_()
+        #     return
+        # inStr=QTextStream(configFile)
+        # line=inStr.readLine()
+        # if line!="[Plans_console]":
             warn=QMessageBox(QMessageBox.Warning,"Error","Specified configuration file " + self.configFileName + " is not a valid configuration file; using default settings.",
                             QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
             warn.show()
             warn.raise_()
             warn.exec_()
-            configFile.close()
+        #     configFile.close()
             return
-        
-        while not inStr.atEnd():
-            line=inStr.readLine()
-            tokens=line.split("=")
-            if tokens[0]=="watchedDir":
-                self.watchedDir=tokens[1]
-                print("watchedDir specification "+self.watchedDir+" parsed from config file.")
-        configFile.close()
+
+        # read individual settings, with defaults
+        cpc=config['Plans_console']
+        self.watchedDir=cpc.get('watchedDir','"Z:\\"')
+        self.accountName=cpc.get('accountName',None)
+
+        # while not inStr.atEnd():
+        #     line=inStr.readLine()
+        #     tokens=line.split("=")
+        #     if tokens[0]=="watchedDir":
+        #         self.watchedDir=tokens[1]
+        #         print("watchedDir specification "+self.watchedDir+" parsed from config file.")
+        # configFile.close()
+
+        # process any ~ characters
+        self.watchedDir=os.path.expanduser(self.watchedDir)
         
         # validation and post-processing of each item
         configErr=""
 
-        # process any ~ characters
-        self.watchedDir=os.path.expanduser(self.watchedDir)             
-            
+        if not os.path.isdir(self.watchedDir):
+            configErr+="WARNING: specified watchedDir '"+self.watchedDir+"' does not exist.\n"
+            configErr+="  Radiolog traffic will not be monitored.\n\n"
+
         if configErr:
             self.configErrMsgBox=QMessageBox(QMessageBox.Warning,"Non-fatal Configuration Error(s)","Error(s) encountered in config file "+self.configFileName+":\n\n"+configErr,
                              QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
             self.configErrMsgBox.exec_()
 
-    def notYetButtonClicked(btn):
-        exit()
+    def notYetButtonClicked(self):
+        # exit()
+        self.rescanTimer.stop()
 
     def rescanButtonClicked(self):
         self.forceRescan = 1
