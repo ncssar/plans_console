@@ -53,12 +53,10 @@ import json
 import random
 import configparser
 import argparse
-
-from plans_console_ui2 import Ui_MainWindow
+import logging
 from datetime import datetime
 
 sartopo_python_min_version="1.1.2"
-
 #import pkg_resources
 #sartopo_python_installed_version=pkg_resources.get_distribution("sartopo-python").version
 #print("sartopo_python version:"+str(sartopo_python_installed_version))
@@ -68,6 +66,39 @@ sartopo_python_min_version="1.1.2"
 #    exit()
     
 from sartopo_python import SartopoSession
+
+# print by default; let the caller change this if needed
+# (note, caller would need to clear all handlers first,
+#   per stackoverflow.com/questions/12158048)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s 2] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+# rebuild all _ui.py files from .ui files in the same directory as this script as needed
+#   NOTE - this will overwrite any edits in _ui.py files
+for ui in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*.ui')):
+    uipy=ui.replace('.ui','_ui.py')
+    if not (os.path.isfile(uipy) and os.path.getmtime(uipy) > os.path.getmtime(ui)):
+        cmd='pyuic5 -o '+uipy+' '+ui
+        logging.info('Building GUI file from  '+os.path.basename(ui)+':')
+        logging.info('  '+cmd)
+        os.system(cmd)
+
+# rebuild all _rc.py files from .qrc files in the same directory as this script as needed
+#   NOTE - this will overwrite any edits in _rc.py files
+for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*.qrc')):
+    rcpy=qrc.replace('.qrc','_rc.py')
+    if not (os.path.isfile(rcpy) and os.path.getmtime(rcpy) > os.path.getmtime(qrc)):
+        cmd='pyrcc5 -o '+rcpy+' '+qrc
+        logging.info('Building Qt Resource file from  '+os.path.basename(qrc)+':')
+        logging.info('  '+cmd)
+        os.system(cmd)
+
+from plans_console_ui2 import Ui_MainWindow
 
 statusColorDict={}
 statusColorDict["At IC"]=["22ff22","000000"]
@@ -110,14 +141,14 @@ def excepthook(excType, excValue, tracebackobj):
         f.close()
     except IOError:
         pass
-    print("\nMessage: %s" % str(notice)+str(msg)+str(versionInfo))
+    logging.info("\nMessage: %s" % str(notice)+str(msg)+str(versionInfo))
 
 ### replacement of system exception handler
 sys.excepthook = excepthook
 
 def sortByTitle(item):
-    return item["properties"]["title"]        
-   
+    return item["properties"]["title"]
+
 class MainWindow(QDialog,Ui_MainWindow):
     def __init__(self,parent):
         QDialog.__init__(self)
@@ -127,15 +158,11 @@ class MainWindow(QDialog,Ui_MainWindow):
         parser.add_argument('-n','--norestore',action='store_true',
                 help='do not try to restore the previous session, and do not ask the user')
         args=parser.parse_args()
-        print('args:'+str(args))
+        logging.info('args:'+str(args))
 
         self.parent=parent
         self.rcFileName="plans_console.rc"
         self.configFileName="./local/plans_console.cfg"
-####
-##  redact
-## end redact
-####`        
         self.readConfigFile()
         if self.watchedDir and not os.path.isdir(self.watchedDir):
             err=QMessageBox(QMessageBox.Critical,"Error","Specified directory to be watched does not exist:\n \n  "+self.watchedDir+"\n \nAborting.",
@@ -145,7 +172,7 @@ class MainWindow(QDialog,Ui_MainWindow):
             err.exec_()
             exit(-1)
               
-        self.ui=Ui_MainWindow()   
+        self.ui=Ui_MainWindow()
         self.ui.setupUi(self)
         self.setAttribute(Qt.WA_DeleteOnClose) 
         self.medval = ""
@@ -206,9 +233,8 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.setGeometry(int(self.x),int(self.y),int(self.w),int(self.h))
         self.scl = min(self.w/self.wd, self.h/self.hd)
         self.fontSize = int(self.fontSize*self.scl)
-        print("Scale:"+str(self.scl))
-        
-        
+        logging.info("Scale:"+str(self.scl))
+
         self.updateClock()
 
         if self.watchedDir:
@@ -243,26 +269,27 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.createSTS()
         
     def createSTS(self):
-
-            parse=self.url.replace("http://","").replace("https://","").split("/")
-            domainAndPort=parse[0]
-            mapID=parse[-1]
-            print("calling SartopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
-            if 'sartopo.com' in domainAndPort.lower():
-                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,
-                                        configpath="../sts.ini",
-                                        account=self.accountName)
-            else:
-                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID)
-            self.link=self.sts.apiVersion
-            if self.link == -1:
-               self.urlErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Invalid URL",
-                             QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
-               self.urlErrMsgBox.exec_()
-               exit(-1)
-            print("link status:"+str(self.link))
-            self.ui.sts = self.sts  # pass sts to ui
-            self.sts.stop()   # added for new version of sartopo_python to stop syncing
+        parse=self.url.replace("http://","").replace("https://","").split("/")
+        domainAndPort=parse[0]
+        mapID=parse[-1]
+        self.sts=None
+        logging.info("calling SartopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
+        if 'sartopo.com' in domainAndPort.lower():
+            self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,
+                                    configpath="../sts.ini",
+                                    account=self.accountName,
+                                    sync=False)
+        else:
+            self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False)
+        self.link=self.sts.apiVersion
+        if self.link == -1:
+            self.urlErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Invalid URL",
+                            QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
+            self.urlErrMsgBox.exec_()
+            exit(-1)
+        logging.info("link status:"+str(self.link))
+        self.ui.sts = self.sts  # pass sts to ui
+        # self.sts.stop()   # added for new version of sartopo_python to stop syncing
     
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
@@ -283,12 +310,12 @@ class MainWindow(QDialog,Ui_MainWindow):
         else:
             markr = "hiking"       # default 
             clr = "FFFF00"
-        print("In addMarker:"+self.curTeam)    
+        logging.info("In addMarker:"+self.curTeam)    
         rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
                                 self.curAssign,clr,markr,None,self.folderId)
         ## also add team number to assignment
         rval2=self.sts.editObject(className='Assignment',letter=self.curAssign,properties={'number':self.curTeam})
-        print("RVAL rtn:",rval,rval2)
+        logging.info("RVAL rtn:",rval,rval2)
     
     def delMarker(self):
         rval = self.sts.getFeatures("Folder")     # get Folders
@@ -298,17 +325,17 @@ class MainWindow(QDialog,Ui_MainWindow):
             if self.feature2['properties'].get("title") == 'aTEAMS':   # find aTeams Match                
                 fid=self.feature2.get("id")
                 rval2 = self.sts.getFeatures("Marker")
-                print("title:"+str(fid))
+                logging.info("title:"+str(fid))
                 ##print("Marker:"+json.dumps(rval2))                  
                 # get Markers
                 for self.feature2 in rval2:
                     if self.feature2['properties'].get('folderId') == fid and \
                         self.feature2['properties'].get('title') == self.curTeam: # both folder and Team match
-                            print("Marker ID:"+self.feature2['id']+" of team: "+self.curTeam)
+                            logging.info("Marker ID:"+self.feature2['id']+" of team: "+self.curTeam)
                             rval3 = self.sts.delMarker(self.feature2['id'])
                             rval2=self.sts.editObject(className='Assignment',letter=self.curAssign, \
                                                 properties={'number':" "})
-                            print("RTN of Delete:"+str(rval3),rval2)
+                            logging.info("RTN of Delete:"+str(rval3),rval2)
                             break
         ##print("RestDel:"+json.dumps(rval3,indent=2))
               
@@ -316,13 +343,13 @@ class MainWindow(QDialog,Ui_MainWindow):
     def updateFeatureList(self,featureClass,filterFolderId=None):
         # unfiltered feature list should be kept as an object;
         #  filtered feature list (i.e. combobox items) should be recalculated here on each call 
-        print("updateFeatureList called: "+featureClass+"  filterFolderId="+str(filterFolderId))
+        logging.info("updateFeatureList called: "+featureClass+"  filterFolderId="+str(filterFolderId))
         if self.sts and self.link>0:
             rval=self.sts.getFeatures(featureClass,self.since[featureClass])
             self.since[featureClass]=int(time.time()*1000) # sartopo wants integer milliseconds
-            print("At sts check")
+            logging.info("At sts check")
             if rval:
-                print("rval:"+str(rval))
+                logging.info("rval:"+str(rval))
                 for feature in rval:
                     for oldFeature in self.featureListDict[featureClass]:
                         if feature["id"]==oldFeature["id"]:
@@ -341,40 +368,40 @@ class MainWindow(QDialog,Ui_MainWindow):
                     fid=prop.get("folderId",0)
                     if fid!=filterFolderId:
                         add=False
-                        print("      filtering out feature:"+str(id))
+                        logging.info("      filtering out feature:"+str(id))
                 if add:
-                    print("    adding feature:"+str(id))
+                    logging.info("    adding feature:"+str(id))
                     if featureClass=="Folder":
                         items.append([name,id])
                     else:
                         items.append([name,[id,prop]])
             else:
-                print("no return data, i.e. no new features of this class since the last check")
+                logging.info("no return data, i.e. no new features of this class since the last check")
         else:
-            print("No map link has been established yet.  Could not get Folder objects.")
+            logging.info("No map link has been established yet.  Could not get Folder objects.")
             self.featureListDict[featureClass]=[]
             self.since[featureClass]=0
             items=[]
-        print("  unfiltered list:"+str(self.featureListDict[featureClass]))
-        print("  filtered list:"+str(items))
+        logging.info("  unfiltered list:"+str(self.featureListDict[featureClass]))
+        logging.info("  filtered list:"+str(items))
         
     def readConfigFile(self):
         # create the file (and its directory) if it doesn't already exist
         dir=os.path.dirname(self.configFileName)
         if not os.path.exists(self.configFileName):
-            print("Config file "+self.configFileName+" not found.")
+            logging.info("Config file "+self.configFileName+" not found.")
             if not os.path.isdir(dir):
                 try:
-                    print("Creating config dir "+dir)
+                    logging.info("Creating config dir "+dir)
                     os.makedirs(dir)
                 except:
-                    print("ERROR creating directory "+dir+" for config file.")
+                    logging.error("ERROR creating directory "+dir+" for config file.")
             try:
                 defaultConfigFileName=os.path.join(os.path.dirname(os.path.realpath(__file__)),"default.cfg")
-                print("Copying default config file "+defaultConfigFileName+" to "+self.configFileName)
+                logging.info("Copying default config file "+defaultConfigFileName+" to "+self.configFileName)
                 shutil.copyfile(defaultConfigFileName,self.configFileName)
             except:
-                print("ERROR copying the default config file to the local config path.")
+                logging.error("ERROR copying the default config file to the local config path.")
                 
         # specify defaults here
         # self.watchedDir="Z:\\"
@@ -442,7 +469,7 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.rescan()    #force a rescan/refresh
             
     def rescan(self):
-        print("scanning "+self.watchedDir+" for latest valid csv file...")
+        logging.info("scanning "+self.watchedDir+" for latest valid csv file...")
         self.csvFiles=[]
         self.readDir()
         if self.csvFiles!=[]:
@@ -456,7 +483,7 @@ class MainWindow(QDialog,Ui_MainWindow):
             self.offsetFileName=self.watchedFile+".offset"+str(os.getpid())
             if os.path.isfile(self.offsetFileName):
                 os.remove(self.offsetFileName)
-            print("  found "+self.watchedFile)
+            logging.info("  found "+self.watchedFile)
             self.refresh()
 
     # refresh - this is the main radiolog viewing loop
@@ -469,10 +496,10 @@ class MainWindow(QDialog,Ui_MainWindow):
             if newEntries:
                 ix = 0
                 for entry in newEntries:
-                    print("In loop: %s"% entry)                   
+                    logging.info("In loop: %s"% entry)                   
                     if len(entry)==10:
                         if self.forceRescan == 1:
-                            print("AT force rescan")
+                            logging.info("AT force rescan")
                             if ix < self.totalRows:
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
@@ -486,12 +513,12 @@ class MainWindow(QDialog,Ui_MainWindow):
                         newColor=stateColorDict.get(prevColor,self.color[0])
                         self.setRowColor(self.ui.tableWidget,0,newColor)
                         self.totalRows = self.ui.tableWidget.rowCount()
-                        print("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
+                        logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
 ## save data
                 self.save_data()                
 
     def save_data(self):
-        print("In savedata")
+        logging.info("In savedata")
         data1 = {}
         rowx = {}
         rowy = {}
@@ -515,11 +542,11 @@ class MainWindow(QDialog,Ui_MainWindow):
         fid.close()
 
     def load_data(self):
-        print("In load data")
+        logging.info("In load data")
         fid = open("save_plans_console.txt",'r')
         alld = fid.read()
         l = json.loads(alld)
-        print("Get:"+str(l))
+        logging.info("Get:"+str(l))
         self.url = l[0]['url']
         self.watchedFile,self.offsetFileName, self.csvFiles = l[1]['csv'].split('%')
         irow = 0
@@ -580,7 +607,7 @@ class MainWindow(QDialog,Ui_MainWindow):
                 break
         if self.ui.Team.text() == "" or ifnd == 0:  # error - checking select below when entry does not exist
             pass  # beepX1
-            print("Issue with Assign inputs",self.ui.Team.text(),str(ifnd))
+            logging.error("Issue with Assign inputs",self.ui.Team.text(),str(ifnd))
             return
         ifnd = 0                      # flag for found of existing Team assignment
         irow = 0
@@ -601,11 +628,11 @@ class MainWindow(QDialog,Ui_MainWindow):
         if self.ui.comboBox.currentText() == "Select": 
             if ifnd == 0:                 # does not exist in table
                 pass  # beepX1
-                print("Issue with Assign inputs2")
+                logging.info("Issue with Assign inputs2")
                 return
             else:
                 indx = self.ui.comboBox.findText(self.ui.tableWidget_TmAs.item(ix,2).text())
-                print("INDEX is:"+str(indx))
+                logging.info("INDEX is:"+str(indx))
                 self.ui.comboBox.setCurrentIndex(indx)
                 if self.ui.tableWidget_TmAs.item(ix,3).text() == ' X':  # also check Med setting
                     self.ui.Med.setChecked(True)
@@ -670,7 +697,7 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.save_data()
         
     def calcLatLon_center(self):
-        print("iN LATLOG")
+        logging.info("iN LATLOG")
         loc = self.feature['geometry'].get("coordinates")   # of an assignment
         loc_lat = 0
         loc_long = 0
@@ -692,7 +719,7 @@ class MainWindow(QDialog,Ui_MainWindow):
             loca = loc[int(lenloc/2)]   # use its mid point
             avg_lat = loca[1]
             avg_lon = loca[0]
-        print("Loc-lat:"+str(avg_lat)+" loc-long:"+str(avg_lon))
+        logging.info("Loc-lat:"+str(avg_lat)+" loc-long:"+str(avg_lon))
         self.latField = avg_lat
         self.lonField = avg_lon
         
@@ -700,9 +727,9 @@ class MainWindow(QDialog,Ui_MainWindow):
     #  in the watchedDir, sorted by modification time (so that the most recent
     #  file is the first item in the list)
     def readDir(self):
-        print("in readDir")
+        logging.info("in readDir")
         f=glob.glob(self.watchedDir+"\\*.csv")
-        print("Files: %s"%f)
+        logging.info("Files: %s"%f)
         f=[x for x in f if not regex.match('.*_clueLog.csv$',x)]
         f=[x for x in f if not regex.match('.*_fleetsync.csv$',x)]
         f=[x for x in f if not regex.match('.*_bak[123456789].csv$',x)]
@@ -721,7 +748,7 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.ui.clock.display(time.strftime("%H:%M"))
         
     def saveRcFile(self):
-        print("saving...")
+        logging.info("saving...")
         (self.x,self.y,self.w,self.h)=self.geometry().getRect()
         rcFile=QFile(self.rcFileName)
         if not rcFile.open(QFile.WriteOnly|QFile.Text):
@@ -741,7 +768,7 @@ class MainWindow(QDialog,Ui_MainWindow):
         rcFile.close()
         
     def loadRcFile(self):
-        print("loading...")
+        logging.info("loading...")
         rcFile=QFile(self.rcFileName)
         if not rcFile.open(QFile.ReadOnly|QFile.Text):
             warn=QMessageBox(QMessageBox.Warning,"Error","Cannot read resource file " + self.rcFileName + "; using default settings. "+rcFile.errorString(),
