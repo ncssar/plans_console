@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="plans_console">
+    <file>reload-icon.png</file>
+  </qresource>
+</RCC>

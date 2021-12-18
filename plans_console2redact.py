@@ -98,7 +98,7 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
         logging.info('  '+cmd)
         os.system(cmd)
 
-from plans_console_ui2 import Ui_MainWindow
+from plans_console2_ui import Ui_MainWindow
 
 statusColorDict={}
 statusColorDict["At IC"]=["22ff22","000000"]
@@ -147,7 +147,7 @@ def excepthook(excType, excValue, tracebackobj):
 sys.excepthook = excepthook
 
 def sortByTitle(item):
-    return item["properties"]["title"]
+    return item["properties"]["title"]        
 
 class MainWindow(QDialog,Ui_MainWindow):
     def __init__(self,parent):
@@ -274,22 +274,25 @@ class MainWindow(QDialog,Ui_MainWindow):
         mapID=parse[-1]
         self.sts=None
         logging.info("calling SartopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
-        if 'sartopo.com' in domainAndPort.lower():
-            self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,
-                                    configpath="../sts.ini",
-                                    account=self.accountName,
-                                    sync=False)
-        else:
-            self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False)
-        self.link=self.sts.apiVersion
-        if self.link == -1:
-            self.urlErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Invalid URL",
-                            QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
-            self.urlErrMsgBox.exec_()
-            exit(-1)
-        logging.info("link status:"+str(self.link))
-        self.ui.sts = self.sts  # pass sts to ui
-        # self.sts.stop()   # added for new version of sartopo_python to stop syncing
+        try:
+            if 'sartopo.com' in domainAndPort.lower():
+                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,
+                                        configpath="../sts.ini",
+                                        account=self.accountName,
+                                        sync=False)
+            else:
+                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False)
+            self.link=self.sts.apiVersion
+            if self.link == -1:
+                self.urlErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Invalid URL",
+                                QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
+                self.urlErrMsgBox.exec_()
+                exit(-1)
+            logging.info("link status:"+str(self.link))
+            self.ui.sts = self.sts  # pass sts to ui
+            # self.sts.stop()   # added for new version of sartopo_python to stop syncing
+        except Exception as e:
+            logging.warning('Exception during createSTS:\n'+str(e))
     
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
