@@ -55,6 +55,7 @@ import configparser
 import argparse
 import logging
 from datetime import datetime
+import winsound
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -155,8 +156,10 @@ class MainWindow(QDialog,Ui_MainWindow):
 
         parser=argparse.ArgumentParser()
         parser.add_argument('url',nargs='?',default=None) # optional url (#abcd or $abcd for now)
-        parser.add_argument('-n','--norestore',action='store_true',
+        parser.add_argument('-nr','--norestore',action='store_true',
                 help='do not try to restore the previous session, and do not ask the user')
+        parser.add_argument('-nu','--nourl',action='store_true',
+                help='disable all interactions with SARTopo/Caltopo')
         args=parser.parse_args()
         logging.info('args:'+str(args))
 
@@ -174,6 +177,16 @@ class MainWindow(QDialog,Ui_MainWindow):
               
         self.ui=Ui_MainWindow()
         self.ui.setupUi(self)
+        self.ui.tableWidget.setColumnWidth(0, 100)
+        self.ui.tableWidget.setColumnWidth(1, 100)
+        self.ui.tableWidget.setColumnWidth(3, 150)
+        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(2,1)
+
+        self.ui.tableWidget_TmAs.setColumnWidth(0, 50)
+        self.ui.tableWidget_TmAs.setColumnWidth(1, 100)
+        self.ui.tableWidget_TmAs.setColumnWidth(2, 75)
+        self.ui.tableWidget_TmAs.setColumnWidth(3, 60)
+
         self.setAttribute(Qt.WA_DeleteOnClose) 
         self.medval = ""
         self.save_mod_date = 0
@@ -184,13 +197,15 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.setStyleSheet("background-color:#d6d6d6")
         self.ui.tableWidget.cellClicked.connect(self.tableCellClicked)        
         self.ui.OKbut.clicked.connect(self.assignTab_OK_clicked)
+        self.ui.doOper.clicked.connect(self.tmAsOkButtonClicked)
         self.reloaded = False
+        self.url=None
         if not args.norestore:
             name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
             if "y" in name1.lower():
                 self.load_data()
                 self.reloaded = True
-        if not self.reloaded:
+        if not args.nourl and not self.reloaded:
             name1=args.url
             if not name1:
                 name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Enter the map URL, precede with # if at sartopo.com\n or $ if local')  ## server assumed to be at '192.168.1.20'
@@ -266,7 +281,8 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.featureListDict["Folder"]=[]
         self.featureListDict["Marker"]=[]
 
-        self.createSTS()
+        if self.url:
+            self.createSTS()
         
     def createSTS(self):
         parse=self.url.replace("http://","").replace("https://","").split("/")
@@ -466,6 +482,32 @@ class MainWindow(QDialog,Ui_MainWindow):
     def notYetButtonClicked(self):
         # exit()
         self.rescanTimer.stop()
+
+    def tmAsOkButtonClicked(self):
+        op=self.ui.geomOpButtonGroup.checkedButton().text()
+        selObj=self.ui.selObj.text()
+        editObj=self.ui.editor.text()
+        logging.info("%s shape %s with object %s"%(op,selObj,editObj))
+        ## check that the shapes exist; otherwise BEEP
+        if op=='Cut':
+            if not self.sts.cut(selObj,editObj):
+               self.BEEP()
+               return
+        elif op=='Expand':
+            if not self.sts.expand(selObj,editObj):
+               self.BEEP()
+               return
+        elif op=='Crop':    
+            if not self.sts.crop(selObj,editObj):
+               self.BEEP()
+               return
+        else:
+            logging.error('Unknown geometry operation "'+str(op)+'" specified.  No geometry operation performed.')
+
+    def BEEP(self):
+        for n in range(3):
+            winsound.Beep(2500, 100)  ## BEEP, 2500Hz for 1 second
+            time.sleep(0.25)
 
     def rescanButtonClicked(self):
         self.forceRescan = 1

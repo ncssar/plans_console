@@ -6,275 +6,386 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1044</width>
-    <height>643</height>
+    <width>1000</width>
+    <height>681</height>
    </rect>
   </property>
-  <property name="windowTitle">
-   <string>Dialog</string>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+    <horstretch>1</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
   </property>
-  <widget class="QWidget" name="horizontalLayoutWidget_3">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>10</y>
-     <width>1021</width>
-     <height>621</height>
-    </rect>
-   </property>
-   <layout class="QHBoxLayout" name="mainHorizLayout" stretch="4,1">
-    <property name="rightMargin">
-     <number>0</number>
-    </property>
-    <item>
-     <widget class="QTableWidget" name="tableWidget">
-      <attribute name="verticalHeaderVisible">
-       <bool>false</bool>
-      </attribute>
-      <column>
-       <property name="text">
-        <string>Time</string>
+  <property name="minimumSize">
+   <size>
+    <width>1000</width>
+    <height>0</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>Plans Console</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QGroupBox{
+	border:1px solid darkgray;
+	border-radius:5px;
+	margin-top:10px;
+}
+QGroupBox::title{
+	padding-top:-18px;
+	left:10px;
+}
+QComboBox:{
+	padding-top:5px;
+}</string>
+  </property>
+  <property name="sizeGripEnabled">
+   <bool>true</bool>
+  </property>
+  <layout class="QHBoxLayout" name="horizontalLayout">
+   <item>
+    <layout class="QHBoxLayout" name="mainHorizLayout" stretch="3,1">
+     <property name="sizeConstraint">
+      <enum>QLayout::SetNoConstraint</enum>
+     </property>
+     <property name="rightMargin">
+      <number>0</number>
+     </property>
+     <item>
+      <widget class="QTableWidget" name="tableWidget">
+       <attribute name="verticalHeaderVisible">
+        <bool>false</bool>
+       </attribute>
+       <column>
+        <property name="text">
+         <string>Time</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Team</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Description</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Status</string>
+        </property>
+       </column>
+      </widget>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="rightVertLayout" stretch="10,1,1,1,4">
+       <property name="rightMargin">
+        <number>0</number>
        </property>
-      </column>
-      <column>
-       <property name="text">
-        <string>Team</string>
-       </property>
-      </column>
-      <column>
-       <property name="text">
-        <string>Description</string>
-       </property>
-      </column>
-      <column>
-       <property name="text">
-        <string>Status</string>
-       </property>
-      </column>
-     </widget>
-    </item>
-    <item>
-     <layout class="QVBoxLayout" name="rightVertLayout" stretch="10,1,1,1,4">
-      <property name="rightMargin">
-       <number>0</number>
-      </property>
-      <item>
-       <widget class="QTableWidget" name="tableWidget_TmAs">
-        <column>
-         <property name="text">
-          <string>Team</string>
+       <item>
+        <widget class="QTableWidget" name="tableWidget_TmAs">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
          </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Assign</string>
+         <property name="minimumSize">
+          <size>
+           <width>290</width>
+           <height>0</height>
+          </size>
          </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Type</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>Med</string>
-         </property>
-        </column>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="TmAsAddHorizLayout" stretch="2,2,4,1,1">
-        <item>
-         <layout class="QVBoxLayout" name="teamVertLayout">
-          <item>
-           <widget class="QLabel" name="label_2">
-            <property name="text">
-             <string>Team#</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLineEdit" name="Team"/>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <layout class="QVBoxLayout" name="asgmtVertLayout">
-          <item>
-           <widget class="QLabel" name="label">
-            <property name="text">
-             <string>Asgmt</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLineEdit" name="Assign"/>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <layout class="QVBoxLayout" name="typeVertLayout">
-          <item>
-           <widget class="QLabel" name="label_3">
-            <property name="text">
-             <string>Type</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="comboBox"/>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <layout class="QVBoxLayout" name="medicalVertLayout">
-          <item>
-           <widget class="QLabel" name="label_4">
-            <property name="text">
-             <string>Med</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QCheckBox" name="Med">
-            <property name="text">
-             <string/>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <widget class="QPushButton" name="OKbut">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
+         <column>
           <property name="text">
-           <string>Ok</string>
+           <string>Team</string>
           </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <spacer name="verticalSpacer">
-        <property name="orientation">
-         <enum>Qt::Vertical</enum>
-        </property>
-        <property name="sizeType">
-         <enum>QSizePolicy::Fixed</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>10</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="clockResetHorizLayout">
-        <item>
-         <widget class="QLCDNumber" name="clock"/>
-        </item>
-        <item>
-         <widget class="QPushButton" name="rescanButton">
+         </column>
+         <column>
           <property name="text">
-           <string/>
+           <string>Assign</string>
           </property>
-          <property name="icon">
-           <iconset resource="plans_console2.qrc">
-            <normaloff>:/plans_console/reload-icon.png</normaloff>:/plans_console/reload-icon.png</iconset>
+         </column>
+         <column>
+          <property name="text">
+           <string>Type</string>
           </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="QGroupBox" name="geomGroup">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="title">
-         <string>Geometry Operations</string>
-        </property>
-        <widget class="QWidget" name="verticalLayoutWidget">
-         <property name="geometry">
-          <rect>
-           <x>12</x>
-           <y>9</y>
-           <width>311</width>
-           <height>101</height>
-          </rect>
+         </column>
+         <column>
+          <property name="text">
+           <string>Med</string>
+          </property>
+         </column>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="TmAsAddHorizLayout" stretch="2,2,4,1,1">
+         <item>
+          <layout class="QVBoxLayout" name="teamVertLayout">
+           <item>
+            <widget class="QLabel" name="label_2">
+             <property name="text">
+              <string>Team#</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="Team"/>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QVBoxLayout" name="asgmtVertLayout">
+           <item>
+            <widget class="QLabel" name="label">
+             <property name="text">
+              <string>Asgmt</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="Assign"/>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QVBoxLayout" name="typeVertLayout">
+           <property name="spacing">
+            <number>6</number>
+           </property>
+           <property name="bottomMargin">
+            <number>1</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="label_3">
+             <property name="text">
+              <string>Type</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QComboBox" name="comboBox">
+             <property name="styleSheet">
+              <string notr="true"/>
+             </property>
+             <property name="editable">
+              <bool>false</bool>
+             </property>
+             <property name="currentText">
+              <string>Select</string>
+             </property>
+             <item>
+              <property name="text">
+               <string>Select</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>K9A</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>Gnd</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>UTV</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>K9T</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>LE</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QVBoxLayout" name="medicalVertLayout">
+           <property name="bottomMargin">
+            <number>4</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="label_4">
+             <property name="text">
+              <string>Med</string>
+             </property>
+            </widget>
+           </item>
+           <item alignment="Qt::AlignHCenter">
+            <widget class="QCheckBox" name="Med">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QPushButton" name="OKbut">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>30</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Ok</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <spacer name="verticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
          </property>
-         <layout class="QVBoxLayout" name="geomVertLayout">
+         <property name="sizeType">
+          <enum>QSizePolicy::Fixed</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>10</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="clockResetHorizLayout">
+         <item>
+          <widget class="QLCDNumber" name="clock"/>
+         </item>
+         <item>
+          <widget class="QPushButton" name="rescanButton">
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="plans_console2.qrc">
+             <normaloff>:/plans_console/reload-icon.png</normaloff>:/plans_console/reload-icon.png</iconset>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="geomGroup">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
+          <string>Geometry Operations</string>
+         </property>
+         <property name="flat">
+          <bool>false</bool>
+         </property>
+         <property name="checkable">
+          <bool>false</bool>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout">
           <item>
-           <layout class="QHBoxLayout" name="geomFunctionHorizLayout">
+           <layout class="QVBoxLayout" name="geomVertLayout">
             <item>
-             <widget class="QRadioButton" name="cut">
-              <property name="text">
-               <string>Cut</string>
-              </property>
-             </widget>
+             <layout class="QHBoxLayout" name="geomFunctionHorizLayout">
+              <item>
+               <widget class="QRadioButton" name="cutRadioButton">
+                <property name="text">
+                 <string>Cut</string>
+                </property>
+                <attribute name="buttonGroup">
+                 <string notr="true">geomOpButtonGroup</string>
+                </attribute>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="expandRadioButton">
+                <property name="text">
+                 <string>Expand</string>
+                </property>
+                <attribute name="buttonGroup">
+                 <string notr="true">geomOpButtonGroup</string>
+                </attribute>
+               </widget>
+              </item>
+              <item>
+               <widget class="QRadioButton" name="cropRadioButton">
+                <property name="text">
+                 <string>Crop</string>
+                </property>
+                <attribute name="buttonGroup">
+                 <string notr="true">geomOpButtonGroup</string>
+                </attribute>
+               </widget>
+              </item>
+             </layout>
             </item>
             <item>
-             <widget class="QRadioButton" name="radioButton_2">
-              <property name="text">
-               <string>Expand</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QRadioButton" name="radioButton">
-              <property name="text">
-               <string>Crop</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </item>
-          <item>
-           <layout class="QHBoxLayout" name="geomFeatureHorizLayout">
-            <item>
-             <widget class="QLineEdit" name="selObj">
-              <property name="text">
-               <string>selObj</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QLineEdit" name="editor">
-              <property name="text">
-               <string>editor</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="doOper">
-              <property name="text">
-               <string>Go</string>
-              </property>
-             </widget>
+             <layout class="QHBoxLayout" name="geomFeatureHorizLayout">
+              <item>
+               <widget class="QLineEdit" name="selObj">
+                <property name="text">
+                 <string>selObj</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="editor">
+                <property name="text">
+                 <string>editor</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="doOper">
+                <property name="text">
+                 <string>Go</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
             </item>
            </layout>
           </item>
          </layout>
         </widget>
-       </widget>
-      </item>
-     </layout>
-    </item>
-   </layout>
-  </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+  </layout>
  </widget>
  <resources>
   <include location="plans_console2.qrc"/>
  </resources>
  <connections/>
+ <buttongroups>
+  <buttongroup name="geomOpButtonGroup"/>
+ </buttongroups>
 </ui>
