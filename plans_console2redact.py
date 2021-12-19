@@ -56,6 +56,7 @@ import argparse
 import logging
 from datetime import datetime
 import winsound
+from debrief import debriefDialog
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -67,6 +68,10 @@ sartopo_python_min_version="1.1.2"
 #    exit()
     
 from sartopo_python import SartopoSession
+
+BG_GREEN = "background-color:#00bb00"
+BG_RED = "background-color:#bb0000"
+BG_GRAY = "background-color:#aaaaaa"
 
 # print by default; let the caller change this if needed
 # (note, caller would need to clear all handlers first,
@@ -177,15 +182,21 @@ class MainWindow(QDialog,Ui_MainWindow):
               
         self.ui=Ui_MainWindow()
         self.ui.setupUi(self)
+
         self.ui.tableWidget.setColumnWidth(0, 100)
         self.ui.tableWidget.setColumnWidth(1, 100)
-        self.ui.tableWidget.setColumnWidth(3, 150)
         self.ui.tableWidget.horizontalHeader().setSectionResizeMode(2,1)
+        self.ui.tableWidget.setColumnWidth(3, 150)
 
         self.ui.tableWidget_TmAs.setColumnWidth(0, 50)
         self.ui.tableWidget_TmAs.setColumnWidth(1, 100)
         self.ui.tableWidget_TmAs.setColumnWidth(2, 75)
         self.ui.tableWidget_TmAs.setColumnWidth(3, 60)
+
+        self.ui.incidentMapLight.setStyleSheet(BG_GRAY)
+        self.ui.debriefMapLight.setStyleSheet(BG_GRAY)
+
+        self.debriefDialog=debriefDialog(self)
 
         self.setAttribute(Qt.WA_DeleteOnClose) 
         self.medval = ""
@@ -198,6 +209,7 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.ui.tableWidget.cellClicked.connect(self.tableCellClicked)        
         self.ui.OKbut.clicked.connect(self.assignTab_OK_clicked)
         self.ui.doOper.clicked.connect(self.tmAsOkButtonClicked)
+        self.ui.debriefButton.clicked.connect(self.debriefButtonClicked)
         self.reloaded = False
         self.url=None
         if not args.norestore:
@@ -281,8 +293,12 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.featureListDict["Folder"]=[]
         self.featureListDict["Marker"]=[]
 
+        self.ui.debriefMapField.setText('<None>')
         if self.url:
+            self.ui.incidentMapField.setText(self.url)
             self.createSTS()
+        else:
+            self.ui.incidentMapField.setText('<None>')
         
     def createSTS(self):
         parse=self.url.replace("http://","").replace("https://","").split("/")
@@ -300,15 +316,17 @@ class MainWindow(QDialog,Ui_MainWindow):
                 self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False)
             self.link=self.sts.apiVersion
             if self.link == -1:
+                self.ui.incidentMapLight.setStyleSheet(BG_RED)
                 self.urlErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Invalid URL",
                                 QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
                 self.urlErrMsgBox.exec_()
                 exit(-1)
             logging.info("link status:"+str(self.link))
-            self.ui.sts = self.sts  # pass sts to ui
+            self.ui.incidentMapLight.setStyleSheet(BG_GREEN)
             # self.sts.stop()   # added for new version of sartopo_python to stop syncing
         except Exception as e:
             logging.warning('Exception during createSTS:\n'+str(e))
+            self.ui.incidentMapLight.setStyleSheet(BG_RED)
     
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
@@ -508,6 +526,10 @@ class MainWindow(QDialog,Ui_MainWindow):
         for n in range(3):
             winsound.Beep(2500, 100)  ## BEEP, 2500Hz for 1 second
             time.sleep(0.25)
+
+    def debriefButtonClicked(self):
+        self.debriefDialog.show()
+        self.debriefDialog.raise_()
 
     def rescanButtonClicked(self):
         self.forceRescan = 1
