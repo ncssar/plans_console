@@ -104,7 +104,7 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
         logging.info('  '+cmd)
         os.system(cmd)
 
-from plans_console2_ui import Ui_MainDialog
+from plans_console2_ui import Ui_PlansConsole
 
 statusColorDict={}
 statusColorDict["At IC"]=["22ff22","000000"]
@@ -155,7 +155,7 @@ sys.excepthook = excepthook
 def sortByTitle(item):
     return item["properties"]["title"]        
 
-class MainDialog(QDialog,Ui_MainDialog):
+class PlansConsole(QDialog,Ui_PlansConsole):
     def __init__(self,parent):
         QDialog.__init__(self)
 
@@ -180,7 +180,7 @@ class MainDialog(QDialog,Ui_MainDialog):
             err.exec_()
             exit(-1)
               
-        self.ui=Ui_MainDialog()
+        self.ui=Ui_PlansConsole()
         self.ui.setupUi(self)
 
         self.ui.tableWidget.setColumnWidth(0, 100)
@@ -193,8 +193,8 @@ class MainDialog(QDialog,Ui_MainDialog):
         self.ui.tableWidget_TmAs.setColumnWidth(2, 75)
         self.ui.tableWidget_TmAs.setColumnWidth(3, 60)
 
-        self.ui.incidentMapLight.setStyleSheet(BG_GRAY)
-        self.ui.debriefMapLight.setStyleSheet(BG_GRAY)
+        self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
+        self.ui.debriefLinkLight.setStyleSheet(BG_GRAY)
 
         self.debriefDialog=debriefDialog(self)
 
@@ -211,7 +211,7 @@ class MainDialog(QDialog,Ui_MainDialog):
         self.ui.doOper.clicked.connect(self.tmAsOkButtonClicked)
         self.ui.debriefButton.clicked.connect(self.debriefButtonClicked)
         self.reloaded = False
-        self.url=None
+        self.incidentURL=None
         if not args.norestore:
             name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
             if "y" in name1.lower():
@@ -222,11 +222,11 @@ class MainDialog(QDialog,Ui_MainDialog):
             if not name1:
                 name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Enter the map URL, precede with # if at sartopo.com\n or $ if local')  ## server assumed to be at '192.168.1.20'
             if "#" in name1:
-                self.url="sartopo.com/m/"+name1[1:]        # remove the #
+                self.incidentURL="sartopo.com/m/"+name1[1:]        # remove the #
             elif "$" in name1:
-                self.url="localhost:8080/m/"+name1[1:]     # remove the $
+                self.incidentURL="localhost:8080/m/"+name1[1:]     # remove the $
             else:    
-                self.url="192.168.1.20:8080/m/"+name1
+                self.incidentURL="192.168.1.20:8080/m/"+name1
         self.folderId=None
         self.sts=None
         self.link=-1
@@ -293,14 +293,14 @@ class MainDialog(QDialog,Ui_MainDialog):
         self.featureListDict["Marker"]=[]
 
         self.ui.debriefMapField.setText('<None>')
-        if self.url:
-            self.ui.incidentMapField.setText(self.url)
+        if self.incidentURL:
+            self.ui.incidentMapField.setText(self.incidentURL)
             self.createSTS()
         else:
             self.ui.incidentMapField.setText('<None>')
         
     def createSTS(self):
-        parse=self.url.replace("http://","").replace("https://","").split("/")
+        parse=self.incidentURL.replace("http://","").replace("https://","").split("/")
         domainAndPort=parse[0]
         mapID=parse[-1]
         self.sts=None
@@ -315,19 +315,19 @@ class MainDialog(QDialog,Ui_MainDialog):
                 self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False)
             self.link=self.sts.apiVersion
             if self.link == -1:
-                self.ui.incidentMapLight.setStyleSheet(BG_RED)
-                self.urlErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Link could not be established with "+self.url,
+                self.ui.incidentLinkLight.setStyleSheet(BG_RED)
+                self.incidentURLErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Link could not be established with "+self.incidentURL,
                                 QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
-                self.urlErrMsgBox.exec_()
-                self.ui.incidentMapLight.setStyleSheet(BG_RED)
+                self.incidentURLErrMsgBox.exec_()
+                self.ui.incidentLinkLight.setStyleSheet(BG_RED)
                 # exit(-1)
             elif self.link>=0:
-                self.ui.incidentMapLight.setStyleSheet(BG_GREEN)
+                self.ui.incidentLinkLight.setStyleSheet(BG_GREEN)
             logging.info("link status:"+str(self.link))
             # self.sts.stop()   # added for new version of sartopo_python to stop syncing
         except Exception as e:
             logging.warning('Exception during createSTS:\n'+str(e))
-            self.ui.incidentMapLight.setStyleSheet(BG_RED)
+            self.ui.incidentLinkLight.setStyleSheet(BG_RED)
     
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
@@ -603,7 +603,7 @@ class MainDialog(QDialog,Ui_MainDialog):
             data1.update({'type': self.ui.tableWidget_TmAs.item(itm2, 2).text()})
             data1.update({'med': self.ui.tableWidget_TmAs.item(itm2, 3).text()})
             rowy['rowB'+str(itm2)] = data1.copy()
-        alld = json.dumps([{'url':self.url},{'csv':self.watchedFile+'%'+self.offsetFileName+ \
+        alld = json.dumps([{'incidentURL':self.incidentURL},{'csv':self.watchedFile+'%'+self.offsetFileName+ \
                                              '%'+str(self.csvFiles)}, rowx, rowy])
         fid = open("save_plans_console.txt",'w')
         fid.write(alld)
@@ -615,7 +615,7 @@ class MainDialog(QDialog,Ui_MainDialog):
         alld = fid.read()
         l = json.loads(alld)
         logging.info("Get:"+str(l))
-        self.url = l[0]['url']
+        self.incidentURL = l[0]['incidentURL']
         self.watchedFile,self.offsetFileName, self.csvFiles = l[1]['csv'].split('%')
         irow = 0
         for key in l[2]:
@@ -877,7 +877,7 @@ class MainDialog(QDialog,Ui_MainDialog):
         
 def main():
     app = QApplication(sys.argv)
-    w = MainDialog(app)
+    w = PlansConsole(app)
     w.show()
     sys.exit(app.exec_())
 

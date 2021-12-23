@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>MainDialog</class>
- <widget class="QDialog" name="MainDialog">
+ <class>PlansConsole</class>
+ <widget class="QDialog" name="PlansConsole">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -329,7 +329,7 @@ QComboBox:{
              </widget>
             </item>
             <item row="1" column="2">
-             <widget class="QLineEdit" name="debriefMapLight">
+             <widget class="QLineEdit" name="debriefLinkLight">
               <property name="enabled">
                <bool>false</bool>
               </property>
@@ -354,7 +354,7 @@ QComboBox:{
              </widget>
             </item>
             <item row="0" column="2">
-             <widget class="QLineEdit" name="incidentMapLight">
+             <widget class="QLineEdit" name="incidentLinkLight">
               <property name="enabled">
                <bool>false</bool>
               </property>
