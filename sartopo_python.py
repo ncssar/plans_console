@@ -441,6 +441,7 @@ class SartopoSession():
         else:
             logging.error('Sync returned invalid or no response; sync aborted:'+str(rj))
             self.sync=False
+            self.apiVersion=-1 # downstream tools may use apiVersion as indicator of link status
         self.syncing=False
 
     # refresh - update the cache (self.mapData) by calling doSync once;

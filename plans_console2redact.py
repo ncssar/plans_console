@@ -104,7 +104,7 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
         logging.info('  '+cmd)
         os.system(cmd)
 
-from plans_console2_ui import Ui_MainWindow
+from plans_console2_ui import Ui_MainDialog
 
 statusColorDict={}
 statusColorDict["At IC"]=["22ff22","000000"]
@@ -155,7 +155,7 @@ sys.excepthook = excepthook
 def sortByTitle(item):
     return item["properties"]["title"]        
 
-class MainWindow(QDialog,Ui_MainWindow):
+class MainDialog(QDialog,Ui_MainDialog):
     def __init__(self,parent):
         QDialog.__init__(self)
 
@@ -180,7 +180,7 @@ class MainWindow(QDialog,Ui_MainWindow):
             err.exec_()
             exit(-1)
               
-        self.ui=Ui_MainWindow()
+        self.ui=Ui_MainDialog()
         self.ui.setupUi(self)
 
         self.ui.tableWidget.setColumnWidth(0, 100)
@@ -245,7 +245,6 @@ class MainWindow(QDialog,Ui_MainWindow):
         self.hd=1000
         self.fontSize=12
         self.grid=[[0]]
-        self.setMinimumSize(200,200)
         self.curTeam = ""
         self.curAssign = ""
         self.curType = ""
@@ -317,12 +316,14 @@ class MainWindow(QDialog,Ui_MainWindow):
             self.link=self.sts.apiVersion
             if self.link == -1:
                 self.ui.incidentMapLight.setStyleSheet(BG_RED)
-                self.urlErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Invalid URL",
+                self.urlErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Link could not be established with "+self.url,
                                 QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
                 self.urlErrMsgBox.exec_()
-                exit(-1)
+                self.ui.incidentMapLight.setStyleSheet(BG_RED)
+                # exit(-1)
+            elif self.link>=0:
+                self.ui.incidentMapLight.setStyleSheet(BG_GREEN)
             logging.info("link status:"+str(self.link))
-            self.ui.incidentMapLight.setStyleSheet(BG_GREEN)
             # self.sts.stop()   # added for new version of sartopo_python to stop syncing
         except Exception as e:
             logging.warning('Exception during createSTS:\n'+str(e))
@@ -876,7 +877,7 @@ class MainWindow(QDialog,Ui_MainWindow):
         
 def main():
     app = QApplication(sys.argv)
-    w = MainWindow(app)
+    w = MainDialog(app)
     w.show()
     sys.exit(app.exec_())
 
