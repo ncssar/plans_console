@@ -6,8 +6,71 @@ import sys
 import json
 from os import path
 
-class sartopo_bg():
-    def __init__(self,sourceMapID,targetMapID):
+from PyQt5.QtWidgets import *
+from debrief_ui import Ui_DebriefDialog
+from debriefMapDialog_ui import Ui_DebriefMapDialog
+
+LINK_LIGHT_STYLES={
+    -1:"background-color:#bb0000", # red - no link / link error
+    0:"background-color:#aaaaaa", # gray - no link attempted
+    1:"background-color:#009900", # medium green - good link
+    10:"background-color:#00ff00", # light green - good link, sync in progress
+    100:"background-color:#00ffff" # cyan - data change in progress
+}
+
+# This class defines the dialog structure.
+# How should the content be updated?  Options:
+# - pushed from code that imports and instantiates this dialog:
+#        this code does not need any smarts to populate the dialog fields
+#     this makes sense if the DMG is running on the same computer,
+#     but what if it's running on a different computer?
+# - pulled from an associated debrief map generator object:
+#        this code needs the smarts to populate the dialog fields
+# - pulled from the debrief map, when the DMG process is not running locally:
+#        this code needs the smarts to parse the debrief map AND
+#        the smarts to populate the dialog fields
+
+#  Maybe this code should be the parent of the DMG object, i.e. the DMG
+#   object / process should be spawned from a button on this dialog.
+
+# log uncaught exceptions - https://stackoverflow.com/a/16993115/3577105
+# don't try to print from inside this function, since stdout is in binary mode
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logging.critical('Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback))
+sys.excepthook = handle_exception
+
+# sourceMap and targetMap arguments can be one of:
+#  SartopoSession instance
+#  map ID (end of URL)
+#  complete URL
+
+# in the last two cases, a new instance of SartopoSession will be created
+
+
+# To redefine basicConfig, per stackoverflow.com/questions/12158048
+# Remove all handlers associated with the root logger object.
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler('dmg.log','w'),
+        # logging.FileHandler(self.fileNameBase+'_bg.log','w'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+
+class DebriefMapGenerator():
+    def __init__(self,parent,sourceMap,targetMap):
+        self.parent=parent
+        # is this being spawned from Plans Console?
+        self.pc=self.parent.__class__.__name__=='PlansConsole'
+
         # do not register the callbacks until after the initial processing; that way we
         #  can be sure to process existing assignments first
 
@@ -30,24 +93,76 @@ class sartopo_bg():
 
         # sourceMapID='V80'
         # targetMapID='0SD' # must already be a saved map
-        self.sourceMapID=sourceMapID
-        self.targetMapID=targetMapID # must already be a saved map
+
+        self.dd=DebriefDialog()
+
+        # determine / create SartopoSession objects
+        #  process the target session first, since nocb definition checks for it
+
+        # determine / create sts2 (target map SartopoSession instance)
+        self.sts2=None
+        tcn=targetMap.__class__.__name__           
+        if tcn=='SartopoSession':
+            logging.info('Target map argument = SartopoSession instance')
+            self.sts2=targetMap
+            self.targetDomainAndPort=self.sts2.domainAndPort
+            self.targetMapID=self.sts2.mapID
+        elif tcn=='str':
+            logging.info('Target map argument = string')
+            self.targetDomainAndPort='localhost:8080'
+            targetParse=targetMap.split('/')
+            self.targetMapID=targetParse[-1]
+            if targetMap.lower().startswith('http'):
+                self.targetDomainAndPort=targetParse[2]
+        else:
+            logging.info('No debrief map; raising DebriefMapDialog')
+            self.debriefMapDialog=DebriefMapDialog(self)
+            self.debriefMapDialog.exec() # force modal
+            # logging.info('No target map; using default')
+            # self.targetDomainAndPort='localhost:8080'
+            # self.targetMapID='81M'
+        
+        if not self.sts2:
+            self.sts2=SartopoSession(self.targetDomainAndPort,self.targetMapID,
+                sync=False,
+                syncTimeout=10,
+                syncDumpFile='../../'+self.targetMapID+'.txt')
+
+        # determine / create sts1 (source map SartopoSession instance)
+        self.sts1=None
+        scn=sourceMap.__class__.__name__
+        if scn=='SartopoSession':
+            logging.info('Source map argument = SartopoSession instance: '+sourceMap.domainAndPort+'/m/'+sourceMap.mapID)
+            self.sts1=sourceMap
+            self.sourceMapID=self.sts1.mapID
+            self.sourceDomainAndPort=self.sts1.domainAndPort
+        elif scn=='str':
+            logging.info('Source map argument = string')
+            self.sourceDomainAndPort='localhost:8080'        
+            sourceParse=sourceMap.split('/')
+            self.sourceMapID=sourceParse[-1]
+            if sourceMap.lower().startswith('http'):
+                self.sourceDomainAndPort=sourceParse[2]
+            try:
+                self.sts1=SartopoSession(self.sourceDomainAndPort,self.sourceMapID,
+                    syncDumpFile='../../'+self.sourceMapID+'.txt',
+                    # newFeatureCallback=self.initialNewFeatureCallback,
+                    # propertyUpdateCallback=self.propertyUpdateCallback,
+                    # geometryUpdateCallback=self.geometryUpdateCallback,
+                    # deletedFeatureCallback=self.deletedFeatureCallback,
+                    syncTimeout=10)
+            except:
+                logging.critical('Error during source map session creation; aborting.')
+                sys.exit()
+        else:
+            logging.critical('No source map.')
+            return
+
+        # self.sourceMapID=sourceMapID
+        # self.targetMapID=targetMapID # must already be a saved map
         self.fileNameBase=self.sourceMapID+'_'+self.targetMapID
         self.dmdFileName=self.fileNameBase+'.json'
         # assignmentsFileName=fileNameBase+'_assignments.json'
-
-        # To redefine basicConfig, per stackoverflow.com/questions/12158048
-        # Remove all handlers associated with the root logger object.
-        for handler in logging.root.handlers[:]:
-            logging.root.removeHandler(handler)
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s [%(levelname)s] %(message)s',
-            handlers=[
-                logging.FileHandler(self.fileNameBase+'_bg.log','w'),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
 
         # different logging level for different modules:
         # https://stackoverflow.com/a/7243225/3577105
@@ -78,54 +193,86 @@ class sartopo_bg():
         #     with open(assignmentsFileName,'w') as assignmentsFile:
         #         assignmentsFile.write(json.dumps(assignments,indent=3))
 
-        # open a session on the target map first, since nocb definition checks for it
-        try:
-            self.sts2=SartopoSession('localhost:8080',self.targetMapID,
-                sync=False,
-                syncTimeout=10,
-                syncDumpFile='../../'+self.targetMapID+'.txt')
-        except:
-            sys.exit()
+        # # open a session on the target map first, since nocb definition checks for it
+        # if not self.sts2:
+        #     try:
+        #         self.sts2=SartopoSession(self.targetDomainAndPort,self.targetMapID,
+        #             sync=False,
+        #             syncTimeout=10,
+        #             syncDumpFile='../../'+self.targetMapID+'.txt')
+        #     except:
+        #         sys.exit()
 
-            
-        try:
-            self.sts1=SartopoSession('localhost:8080',self.sourceMapID,
-                syncDumpFile='../../'+self.sourceMapID+'.txt',
-                # newFeatureCallback=self.initialNewFeatureCallback,
-                # propertyUpdateCallback=self.propertyUpdateCallback,
-                # geometryUpdateCallback=self.geometryUpdateCallback,
-                # deletedFeatureCallback=self.deletedFeatureCallback,
-                syncTimeout=10)
-        except:
-            sys.exit()
+        # if not self.sts1:  
+        #     try:
+        #         self.sts1=SartopoSession(self.sourceDomainAndPort,self.sourceMapID,
+        #             syncDumpFile='../../'+self.sourceMapID+'.txt',
+        #             # newFeatureCallback=self.initialNewFeatureCallback,
+        #             # propertyUpdateCallback=self.propertyUpdateCallback,
+        #             # geometryUpdateCallback=self.geometryUpdateCallback,
+        #             # deletedFeatureCallback=self.deletedFeatureCallback,
+        #             syncTimeout=10)
+        #     except:
+        #         sys.exit()
 
         # wait for the source map sync to complete before trying to read an existing dmd file,
         #  otherwise all correspondences will be invalid because the sid's are not yet in
         #  the source cache
-        self.sts1.refresh() # this should do a blocking refresh
-        self.initDmd()
+        logging.info('sts1.apiVersion:'+str(self.sts1.apiVersion))
+        logging.info('sts2.apiVersion:'+str(self.sts2.apiVersion))
+        if self.sts1.apiVersion>=0 and self.sts2.apiVersion>=0:
+            self.sts1.refresh() # this should do a blocking refresh
+            self.initDmd()
 
-        # now that dmd is generated, all source map features should be passed to newFeatureCallback,
-        #  which is what would happen if the callback were registered when sts1 was created - but
-        #  that would be too early, since the feature creation functions rely on dmd
-        for f in self.sts1.mapData['state']['features']:
-            self.newFeatureCallback(f)
+            # now that dmd is generated, all source map features should be passed to newFeatureCallback,
+            #  which is what would happen if the callback were registered when sts1 was created - but
+            #  that would be too early, since the feature creation functions rely on dmd
+            for f in self.sts1.mapData['state']['features']:
+                self.newFeatureCallback(f)
 
-        # don't register the callbacks until after the initial refresh dmd file processing,
-        #  to prevent duplicate feature creation in the target map on restart
-        self.sts1.newFeatureCallback=self.newFeatureCallback
-        self.sts1.propertyUpdateCallback=self.propertyUpdateCallback
-        self.sts1.geometryUpdateCallback=self.geometryUpdateCallback
-        self.sts1.deletedFeatureCallback=self.deletedFeatureCallback
-    
+            # don't register the callbacks until after the initial refresh dmd file processing,
+            #  to prevent duplicate feature creation in the target map on restart
+            self.sts1.newFeatureCallback=self.newFeatureCallback
+            self.sts1.propertyUpdateCallback=self.propertyUpdateCallback
+            self.sts1.geometryUpdateCallback=self.geometryUpdateCallback
+            self.sts1.deletedFeatureCallback=self.deletedFeatureCallback
+        
+            if not self.sts1.sync:
+                self.sts1.start()
+
+        self.updateLinkLights()
+
         # need to run this program in a loop - it's not a background/daemon process
-        while True:
-            time.sleep(5)
-            logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
+        # while True:
+        #     time.sleep(5)
+        #     logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
+        # return # why would it need to run in a loop?  Maybe that was tru before it was QtIzed
+
+    def updateLinkLights(self):
+        incidentLink=self.sts1.apiVersion
+        self.dd.ui.incidentLinkLight.setStyleSheet(LINK_LIGHT_STYLES[incidentLink])
+        if self.pc:
+            self.parent.ui.incidentLinkLight.setStyleSheet(LINK_LIGHT_STYLES[incidentLink])
+        if self.sts2:
+            debriefLink=self.sts2.apiVersion
+            self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[debriefLink])
+            if self.pc:
+                self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[debriefLink])
 
     def writeDmdFile(self):
         with open(self.dmdFileName,'w') as dmdFile:
             dmdFile.write(json.dumps(self.dmd,indent=3))
+        # populate the table
+        row=0
+        self.dd.ui.tableWidget.setSortingEnabled(False)
+        outings=self.dmd.get('outings',None)
+        self.dd.ui.tableWidget.setRowCount(len(outings))
+        for outingName in outings:
+            self.dd.ui.tableWidget.setItem(row,0,QTableWidgetItem(outingName))
+            self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['tids']))))
+            self.dd.ui.tableWidget.setItem(row,2,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['cids']))))
+            row+=1
+        self.dd.ui.tableWidget.viewport().update()
 
     # assignments={} # assignments dictionary
     # assignments_init={} # pre-filtered assignments dictionary (read from file on startup)
@@ -481,6 +628,9 @@ class sartopo_bg():
         gc=g['coordinates']
         logging.info('creating clue \''+t+'\' in default folder')
         clueID=self.sts2.addMarker(gc[1],gc[0],title=t,symbol='clue',description=p['description'])
+        aid=p['assignmentId']
+        outingName=[name for name in self.dmd['outings'] if self.dmd['outings'][name]['sid']==aid][0]
+        self.dmd['outings'][outingName]['cids'].append(clueID)
         self.addCorrespondence(f['id'],clueID)
 
     def cropUncroppedTracks(self):
@@ -910,5 +1060,62 @@ class sartopo_bg():
     # initial processing complete; now register the callback
     # sts1.newFeatureCallback=newFeatureCallback
 
+
+
+class DebriefMapDialog(QDialog,Ui_DebriefMapDialog):
+    def __init__(self,parent):
+        QDialog.__init__(self)
+        self.parent=parent
+        self.ui=Ui_DebriefMapDialog()
+        self.ui.setupUi(self)
+        self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
+        self.urlChanged()
+
+    def domainAndPortClicked(self,*args,**kwargs):
+        val=self.ui.domainAndPortButtonGroup.checkedButton().text()
+        self.ui.domainAndPortOtherField.setEnabled(val=='Other')
+        self.urlChanged()
+
+    def urlChanged(self):
+        dap=self.ui.domainAndPortButtonGroup.checkedButton().text()
+        if dap=='Other':
+            dap=self.ui.domainAndPortOtherField.text()
+        prefix='http://'
+        if '.com' in dap:
+            prefix='https://'
+        mapID=self.ui.mapIDField.text()
+        url=prefix+dap+'/m/'+mapID
+        self.ui.urlField.setText(url)
+    
+    def accept(self):
+        self.parent.targetDomainAndPort=self.ui.domainAndPortButtonGroup.checkedButton().text()
+        self.parent.targetMapID=self.ui.mapIDField.text()
+        self.parent.dd.ui.debriefMapField.setText(self.ui.urlField.text())
+        if self.parent.pc:
+            self.parent.parent.ui.debriefMapField.setText(self.ui.urlField.text())
+        super(DebriefMapDialog,self).accept()
+
+
+class DebriefDialog(QDialog,Ui_DebriefDialog):
+    def __init__(self):
+        QDialog.__init__(self)
+        self.ui=Ui_DebriefDialog()
+        self.ui.setupUi(self)
+
+    # def showEvent(self,*args,**kwargs):
+    #     if self.pc:
+    #         self.ui.incidentMapField.setText(self.parent.incidentURL)
+    #         self.ui.incidentLinkLight.setStyleSheet(self.parent.ui.incidentLinkLight.styleSheet())
+
+    # refresh the display
+    # provide for two modes of operation:
+    # 1. this computer is running the debrief map generator
+    #   the debrief map data file is available, so all data can be shown in the dialog
+    # 2. a different computer is running the debrief map generator
+    #   the debrief map data file is not available, so not all data can be shown
+
+    # def refresh(self):
+
+
 if __name__ == '__main__':
-	bg = sartopo_bg('9B1','UG1')
+	dmg=DebriefMapGenerator(None,'9B1','UG1')

@@ -94,6 +94,15 @@
      </item>
      <item>
       <widget class="QTableWidget" name="tableWidget">
+       <property name="selectionMode">
+        <enum>QAbstractItemView::NoSelection</enum>
+       </property>
+       <attribute name="verticalHeaderVisible">
+        <bool>false</bool>
+       </attribute>
+       <attribute name="verticalHeaderHighlightSections">
+        <bool>false</bool>
+       </attribute>
        <column>
         <property name="text">
          <string>Outing</string>
@@ -102,6 +111,11 @@
        <column>
         <property name="text">
          <string>Tracks</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Clues</string>
         </property>
        </column>
        <column>

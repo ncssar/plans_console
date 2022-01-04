@@ -1079,7 +1079,7 @@ class SartopoSession():
                 logging.error('ClassName was not specified.')
                 return False
             if letter is not None:
-                if className is not 'Assignment':
+                if className != 'Assignment':
                     logging.warning('Letter was specified, but className was specified as other than Assignment.  ClassName Assignment will be used.')
                 className='Assignment'
             if title is None and letter is None:
@@ -1737,7 +1737,7 @@ class SartopoSession():
 #   per stackoverflow.com/questions/12158048)
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s 2] %(message)s',
+    format='%(asctime)s [%(module)s:%(lineno)d:%(levelname)s] %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout)
     ]

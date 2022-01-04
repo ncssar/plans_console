@@ -56,7 +56,7 @@ import argparse
 import logging
 from datetime import datetime
 import winsound
-from debrief import debriefDialog
+# from debrief import DebriefDialog
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -76,10 +76,15 @@ BG_GRAY = "background-color:#aaaaaa"
 # print by default; let the caller change this if needed
 # (note, caller would need to clear all handlers first,
 #   per stackoverflow.com/questions/12158048)
+# To redefine basicConfig, per stackoverflow.com/questions/12158048
+# Remove all handlers associated with the root logger object.
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s [%(levelname)s 2] %(message)s',
+    format='%(asctime)s [%(module)s:%(lineno)d:%(levelname)s] %(message)s',
     handlers=[
+        logging.FileHandler('plans_console.log','w'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -105,6 +110,21 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
         os.system(cmd)
 
 from plans_console2_ui import Ui_PlansConsole
+from incidentMapDialog_ui import Ui_IncidentMapDialog
+from sartopo_bg import *
+
+def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
+	opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
+	if title == "":
+		title = "Warning" if (icon == QMessageBox.Warning) else "Error"
+	buttons = QMessageBox.StandardButton(QMessageBox.Ok)
+	box = QMessageBox(icon, title, message, buttons, parent, opts)
+	box.show()
+	QCoreApplication.processEvents()
+	box.raise_()
+	if timeout:
+		QTimer.singleShot(timeout,box.close)
+	box.exec_()
 
 statusColorDict={}
 statusColorDict["At IC"]=["22ff22","000000"]
@@ -118,42 +138,83 @@ stateColorDict["#eeeeee"]="#ff4444"
 sys.tracebacklimit = 1000
 
 
-### handler for intercepting exceptions
-def excepthook(excType, excValue, tracebackobj):
-    """
-    Global function to catch unhandled exceptions.
+# ### handler for intercepting exceptions
+# def excepthook(excType, excValue, tracebackobj):
+#     """
+#     Global function to catch unhandled exceptions.
     
-    @param excType exception type
-    @param excValue exception value
-    @param tracebackobj traceback object
-    """
-    separator = '-' * 8
-    logFile = "simple.log"
-    notice = "\n"
-    breakz = "\n"
-    versionInfo="    0.0.1\n"
-    timeString = time.strftime("%Y-%m-%d, %H:%M:%S")
-    tbinfofile = io.StringIO()
-    traceback.print_tb(tracebackobj, None, tbinfofile)
-    tbinfofile.seek(0)
-    tbinfo = tbinfofile.read()
-    errmsg = '%s: %s' % (str(excType), str(excValue))
-    sections = [separator, timeString, breakz, separator, errmsg, breakz, separator, tbinfo]
-    msg = ''.join(sections)
-    try:
-        f = open(logFile, "w")
-        f.write(msg)
-        f.write(versionInfo)
-        f.close()
-    except IOError:
-        pass
-    logging.info("\nMessage: %s" % str(notice)+str(msg)+str(versionInfo))
+#     @param excType exception type
+#     @param excValue exception value
+#     @param tracebackobj traceback object
+#     """
+#     separator = '-' * 8
+#     logFile = "simple.log"
+#     notice = "\n"
+#     breakz = "\n"
+#     versionInfo="    0.0.1\n"
+#     timeString = time.strftime("%Y-%m-%d, %H:%M:%S")
+#     tbinfofile = io.StringIO()
+#     traceback.print_tb(tracebackobj, None, tbinfofile)
+#     tbinfofile.seek(0)
+#     tbinfo = tbinfofile.read()
+#     errmsg = '%s: %s' % (str(excType), str(excValue))
+#     sections = [separator, timeString, breakz, separator, errmsg, breakz, separator, tbinfo]
+#     msg = ''.join(sections)
+#     try:
+#         f = open(logFile, "w")
+#         f.write(msg)
+#         f.write(versionInfo)
+#         f.close()
+#     except IOError:
+#         pass
+#     logging.info("\nMessage: %s" % str(notice)+str(msg)+str(versionInfo))
 
 ### replacement of system exception handler
-sys.excepthook = excepthook
+# sys.excepthook = excepthook
+
+# log uncaught exceptions - https://stackoverflow.com/a/16993115/3577105
+# don't try to print from inside this function, since stdout is in binary mode
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logging.critical('Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback))
+sys.excepthook = handle_exception
 
 def sortByTitle(item):
     return item["properties"]["title"]        
+
+
+class IncidentMapDialog(QDialog,Ui_IncidentMapDialog):
+    def __init__(self,parent):
+        QDialog.__init__(self)
+        self.parent=parent
+        self.ui=Ui_IncidentMapDialog()
+        self.ui.setupUi(self)
+        self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
+        self.urlChanged()
+
+    def domainAndPortClicked(self,*args,**kwargs):
+        val=self.ui.domainAndPortButtonGroup.checkedButton().text()
+        self.ui.domainAndPortOtherField.setEnabled(val=='Other')
+        self.parent.sourceDomainAndPort=val
+        self.urlChanged()
+
+    def urlChanged(self):
+        dap=self.ui.domainAndPortButtonGroup.checkedButton().text()
+        if dap=='Other':
+            dap=self.ui.domainAndPortOtherField.text()
+        prefix='http://'
+        if '.com' in dap:
+            prefix='https://'
+        mapID=self.ui.mapIDField.text()
+        url=prefix+dap+'/m/'+mapID
+        self.ui.urlField.setText(url)
+
+    def accept(self):
+        self.parent.incidentURL=self.ui.urlField.text()
+        super(IncidentMapDialog,self).accept()
+
 
 class PlansConsole(QDialog,Ui_PlansConsole):
     def __init__(self,parent):
@@ -196,7 +257,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
         self.ui.debriefLinkLight.setStyleSheet(BG_GRAY)
 
-        self.debriefDialog=debriefDialog(self)
+        # self.DebriefDialog=DebriefDialog(self)
 
         self.setAttribute(Qt.WA_DeleteOnClose) 
         self.medval = ""
@@ -212,6 +273,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.ui.debriefButton.clicked.connect(self.debriefButtonClicked)
         self.reloaded = False
         self.incidentURL=None
+        self.debriefURL=None
         if not args.norestore:
             name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
             if "y" in name1.lower():
@@ -219,16 +281,19 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.reloaded = True
         if not args.nourl and not self.reloaded:
             name1=args.url
-            if not name1:
-                name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Enter the map URL, precede with # if at sartopo.com\n or $ if local')  ## server assumed to be at '192.168.1.20'
-            if "#" in name1:
-                self.incidentURL="sartopo.com/m/"+name1[1:]        # remove the #
-            elif "$" in name1:
-                self.incidentURL="localhost:8080/m/"+name1[1:]     # remove the $
-            else:    
-                self.incidentURL="192.168.1.20:8080/m/"+name1
+            if name1:
+                if "#" in name1:
+                    self.incidentURL="https://sartopo.com/m/"+name1[1:]        # remove the #
+                elif "$" in name1:
+                    self.incidentURL="http://localhost:8080/m/"+name1[1:]     # remove the $
+                else:    
+                    self.incidentURL="http://192.168.1.20:8080/m/"+name1
+            else:
+                self.incidentMapDialog=IncidentMapDialog(self)
+                self.incidentMapDialog.exec() # force modal
         self.folderId=None
         self.sts=None
+        self.dmg=None # DebriefMapGenerator instance
         self.link=-1
         self.latField = "0.0"
         self.lonField = "0.0"
@@ -292,12 +357,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.featureListDict["Folder"]=[]
         self.featureListDict["Marker"]=[]
 
+        self.ui.incidentMapField.setText('<None>')
         self.ui.debriefMapField.setText('<None>')
+
         if self.incidentURL:
             self.ui.incidentMapField.setText(self.incidentURL)
             self.createSTS()
-        else:
-            self.ui.incidentMapField.setText('<None>')
         
     def createSTS(self):
         parse=self.incidentURL.replace("http://","").replace("https://","").split("/")
@@ -319,7 +384,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.incidentURLErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Link could not be established with "+self.incidentURL,
                                 QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
                 self.incidentURLErrMsgBox.exec_()
-                self.ui.incidentLinkLight.setStyleSheet(BG_RED)
                 # exit(-1)
             elif self.link>=0:
                 self.ui.incidentLinkLight.setStyleSheet(BG_GREEN)
@@ -529,8 +593,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             time.sleep(0.25)
 
     def debriefButtonClicked(self):
-        self.debriefDialog.show()
-        self.debriefDialog.raise_()
+        if self.sts.apiVersion<0:
+            inform_user_about_issue('You must establish a link with the Incident Map first.')
+        else:
+            if not self.dmg:
+                self.dmg=DebriefMapGenerator(self,self.sts,self.debriefURL)
+            self.dmg.dd.show()
+            self.dmg.dd.raise_()
 
     def rescanButtonClicked(self):
         self.forceRescan = 1
