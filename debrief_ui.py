@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_DebriefDialog(object):
     def setupUi(self, DebriefDialog):
         DebriefDialog.setObjectName("DebriefDialog")
-        DebriefDialog.resize(653, 297)
+        DebriefDialog.resize(662, 289)
         self.horizontalLayout = QtWidgets.QHBoxLayout(DebriefDialog)
         self.horizontalLayout.setObjectName("horizontalLayout")
         self.verticalLayout = QtWidgets.QVBoxLayout()
@@ -57,6 +57,9 @@ class Ui_DebriefDialog(object):
         self.gridLayout.addWidget(self.debriefLinkLight, 1, 2, 1, 1)
         self.verticalLayout.addLayout(self.gridLayout)
         self.tableWidget = QtWidgets.QTableWidget(DebriefDialog)
+        font = QtGui.QFont()
+        font.setPointSize(12)
+        self.tableWidget.setFont(font)
         self.tableWidget.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.tableWidget.setObjectName("tableWidget")
         self.tableWidget.setColumnCount(6)
@@ -83,7 +86,7 @@ class Ui_DebriefDialog(object):
 
     def retranslateUi(self, DebriefDialog):
         _translate = QtCore.QCoreApplication.translate
-        DebriefDialog.setWindowTitle(_translate("DebriefDialog", "Dialog"))
+        DebriefDialog.setWindowTitle(_translate("DebriefDialog", "Debrief Map Generator"))
         self.incidentMapLabel.setText(_translate("DebriefDialog", "Incident Map"))
         self.incidentMapField.setPlaceholderText(_translate("DebriefDialog", "http(s)://incidentMapURL"))
         self.debriefMapLabel.setText(_translate("DebriefDialog", "Debrief Map"))

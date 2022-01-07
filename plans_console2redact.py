@@ -193,6 +193,7 @@ class IncidentMapDialog(QDialog,Ui_IncidentMapDialog):
         self.ui.setupUi(self)
         self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
         self.urlChanged()
+        self.ui.mapIDField.setFocus()
 
     def domainAndPortClicked(self,*args,**kwargs):
         val=self.ui.domainAndPortButtonGroup.checkedButton().text()
@@ -244,6 +245,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.ui=Ui_PlansConsole()
         self.ui.setupUi(self)
 
+        # set fixed width for first, second, fourth columns;
+        #  set the third column to expand as the layout is resized
         self.ui.tableWidget.setColumnWidth(0, 100)
         self.ui.tableWidget.setColumnWidth(1, 100)
         self.ui.tableWidget.horizontalHeader().setSectionResizeMode(2,1)
@@ -369,6 +372,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         domainAndPort=parse[0]
         mapID=parse[-1]
         self.sts=None
+        box=QMessageBox(
+            QMessageBox.NoIcon, # other vaues cause the chime sound to play
+            'Connecting...',
+            'Incident Map:\n\nConnecting to '+self.incidentURL+'\n\nPlease wait...')
+        box.setStandardButtons(QMessageBox.NoButton)
+        box.show()
+        QCoreApplication.processEvents()
+        box.raise_()
         logging.info("calling SartopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
         try:
             if 'sartopo.com' in domainAndPort.lower():
@@ -392,7 +403,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         except Exception as e:
             logging.warning('Exception during createSTS:\n'+str(e))
             self.ui.incidentLinkLight.setStyleSheet(BG_RED)
-    
+        box.close()
+
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
         fid=False
@@ -598,8 +610,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         else:
             if not self.dmg:
                 self.dmg=DebriefMapGenerator(self,self.sts,self.debriefURL)
-            self.dmg.dd.show()
-            self.dmg.dd.raise_()
+            if self.dmg.sts2.apiVersion>=0:
+                self.dmg.dd.show()
+                self.dmg.dd.raise_()
+            else:
+                self.ui.debriefMapField.setText('<None>')
+                del self.dmg
+                self.dmg=None # so that the next debrief button click will try again
 
     def rescanButtonClicked(self):
         self.forceRescan = 1

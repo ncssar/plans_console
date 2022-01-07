@@ -2,11 +2,16 @@ from sartopo_python import SartopoSession
 import logging
 import re
 import time
+import os
 import sys
 import json
 from os import path
 
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
+
 from debrief_ui import Ui_DebriefDialog
 from debriefMapDialog_ui import Ui_DebriefMapDialog
 
@@ -40,6 +45,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logging.critical('Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback))
+    QMessageBox(QMessageBox.Critical,'Ungaught exception.\n\nSee transcript or log file.')
 sys.excepthook = handle_exception
 
 # sourceMap and targetMap arguments can be one of:
@@ -54,15 +60,34 @@ sys.excepthook = handle_exception
 # Remove all handlers associated with the root logger object.
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
+if os.path.isfile('dmg.log'):
+    os.remove('dmg.log')
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler('dmg.log','w'),
+        # setting the filehandeler to write mode here causes the file
+        #  to get deleted and overwritten when the threads end; so
+        #  instead set it to append here, and take care of deleting it
+        #  or rotating it at the top level
+        logging.FileHandler('dmg.log','a'),
         # logging.FileHandler(self.fileNameBase+'_bg.log','w'),
         logging.StreamHandler(sys.stdout)
     ]
 )
+
+def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
+	opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
+	if title == "":
+		title = "Warning" if (icon == QMessageBox.Warning) else "Error"
+	buttons = QMessageBox.StandardButton(QMessageBox.Ok)
+	box = QMessageBox(icon, title, message, buttons, parent, opts)
+	box.show()
+	QCoreApplication.processEvents()
+	box.raise_()
+	if timeout:
+		QTimer.singleShot(timeout,box.close)
+	box.exec_()
 
 
 class DebriefMapGenerator():
@@ -70,7 +95,7 @@ class DebriefMapGenerator():
         self.parent=parent
         # is this being spawned from Plans Console?
         self.pc=self.parent.__class__.__name__=='PlansConsole'
-
+        self.debriefURL=''
         # do not register the callbacks until after the initial processing; that way we
         #  can be sure to process existing assignments first
 
@@ -112,7 +137,9 @@ class DebriefMapGenerator():
             self.targetDomainAndPort='localhost:8080'
             targetParse=targetMap.split('/')
             self.targetMapID=targetParse[-1]
+            self.debriefURL=self.targetDomainAndPort+'/m/'+self.targetMapID
             if targetMap.lower().startswith('http'):
+                self.debriefURL=targetMap
                 self.targetDomainAndPort=targetParse[2]
         else:
             logging.info('No debrief map; raising DebriefMapDialog')
@@ -123,10 +150,23 @@ class DebriefMapGenerator():
             # self.targetMapID='81M'
         
         if not self.sts2:
+            box=QMessageBox(
+                QMessageBox.NoIcon, # other vaues cause the chime sound to play
+                'Connecting...',
+                'Debrief Map:\n\nConnecting to '+self.debriefURL+'\n\nPlease wait...')
+            box.setStandardButtons(QMessageBox.NoButton)
+            box.show()
+            QCoreApplication.processEvents()
+            box.raise_()
             self.sts2=SartopoSession(self.targetDomainAndPort,self.targetMapID,
                 sync=False,
                 syncTimeout=10,
                 syncDumpFile='../../'+self.targetMapID+'.txt')
+            box.close()
+
+        if self.sts2 and self.sts2.apiVersion<0:
+            inform_user_about_issue('Link to specified debrief map '+self.debriefURL+' could not be established.  Please try again.')
+            return
 
         # determine / create sts1 (source map SartopoSession instance)
         self.sts1=None
@@ -157,6 +197,9 @@ class DebriefMapGenerator():
         else:
             logging.critical('No source map.')
             return
+
+        if self.pc:
+            self.dd.ui.incidentMapField.setText(self.parent.incidentURL)
 
         # self.sourceMapID=sourceMapID
         # self.targetMapID=targetMapID # must already be a saved map
@@ -248,13 +291,13 @@ class DebriefMapGenerator():
         #     logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
         # return # why would it need to run in a loop?  Maybe that was tru before it was QtIzed
 
-    def updateLinkLights(self):
-        incidentLink=self.sts1.apiVersion
+    def updateLinkLights(self,incidentLink=None,debriefLink=None):
+        incidentLink=incidentLink or self.sts1.apiVersion
         self.dd.ui.incidentLinkLight.setStyleSheet(LINK_LIGHT_STYLES[incidentLink])
         if self.pc:
             self.parent.ui.incidentLinkLight.setStyleSheet(LINK_LIGHT_STYLES[incidentLink])
         if self.sts2:
-            debriefLink=self.sts2.apiVersion
+            debriefLink=debriefLink or self.sts2.apiVersion
             self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[debriefLink])
             if self.pc:
                 self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[debriefLink])
@@ -558,8 +601,8 @@ class DebriefMapGenerator():
                 self.addCorrespondence(sid,lineID)
             else: # it's a track; crop it now if needed, since newFeatureCallback is called once per feature, not once per sync interval
                 at=tparse[0]+' '+tparse[1] # 'AA 101' - should match a folder name
-                logging.info('entire assignments dict:')
-                logging.info(json.dumps(self.dmd['outings'],indent=3))
+                # logging.info('entire assignments dict:')
+                # logging.info(json.dumps(self.dmd['outings'],indent=3))
                 a=self.dmd['outings'].get(at,None)
                 if a==None: # assignment entry hasn't been created yet
                     logging.info('processing line \''+t+'\' which appears to belong to assignment \''+at+'\' which has not been processed yet.  Creating the assignment dictionary and adding this track to the uncropped tracks list.')
@@ -596,7 +639,7 @@ class DebriefMapGenerator():
                 fillOpacity=p['fill-opacity'],
                 description=p['description'])
             self.addCorrespondence(sid,polygonID)
-        logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
+        # logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
 
     def addMarker(self,f):
         p=f['properties']
@@ -614,7 +657,7 @@ class DebriefMapGenerator():
                         size=p.get('marker-size',1),
                         description=p['description'],
                         symbol=p['marker-symbol'])
-        logging.info('sts2.mapData after addMarker:'+json.dumps(self.sts2.mapData,indent=3))
+        # logging.info('sts2.mapData after addMarker:'+json.dumps(self.sts2.mapData,indent=3))
         self.addCorrespondence(f['id'],markerID)
 
     def addClue(self,f):
@@ -682,6 +725,7 @@ class DebriefMapGenerator():
     #  folder: target title is identical to source title
     #  marker: 
     def newFeatureCallback(self,f):
+        self.updateLinkLights(debriefLink=10)
         p=f['properties']
         c=p['class']
         t=p.get('title','')
@@ -691,14 +735,15 @@ class DebriefMapGenerator():
 
         # source id might have a corresponding target id; if all corresponding target ids still exist, skip    
         tids=sum(self.sts2.mapData['ids'].values(),[])    
-        if sid in self.dmd.keys():
+        if sid in self.dmd['corr'].keys():
             logging.info(' source feature exists in correspondence dictionary')
-            if all(i in tids for i in self.dmd[sid]):
+            if all(i in tids for i in self.dmd['corr'][sid]):
                 logging.info('  all corresponding features exist in the target map; skipping')
                 # crop uncropped tracks even if the assignment already exists in the target;
                 #  this will crop any tracks that were imported anew on restart
                 if c=='Assignment':
                     self.cropUncroppedTracks()
+                self.updateLinkLights()
                 return
             else:
                 logging.info('  but target map does not contain all of the specified features; adding the feature to the target map')
@@ -728,7 +773,7 @@ class DebriefMapGenerator():
         #     if gt=='Polygon':
         #         existingAssignment=sts2.getFeatures(featureClass=c,title=t)[0]
         #         if existingAssignment:
-        #             sts2.editObject(id=existingAssignment['id'],geometry=g)
+        #             sts2.editFeature(id=existingAssignment['id'],geometry=g)
         #         else:
         #             sts2.addPolygon(gc[0],title=t,folderId=fid)
         #     elif gt=='LineString':
@@ -800,7 +845,8 @@ class DebriefMapGenerator():
             # for folder in sts2.getFeatures('Folder',timeout=10):
             #     if folder['properties']['title']==t:
             #         sts2.addLine(f['geometry']['coordinates'],title=t,folderId=folder['id'],timeout=10)
-            #         # sts2.editObject(id=id,properties={'folderId':folder['id']})
+            #         # sts2.editFeature(id=id,properties={'folderId':folder['id']})
+        self.updateLinkLights() # set back to previous colors
 
     # handle these cases:
     #  1 - name change from a non-track to a track ('CURRRENT TRACK' --> 'AA101a')
@@ -820,6 +866,7 @@ class DebriefMapGenerator():
     #        make no change on the target map.  If the number changes to another number on the source
     #        map, re-import and create a new pairing (folder and boundary) on the target map. 
     def propertyUpdateCallback(self,f):
+        self.updateLinkLights(debriefLink=10)
         sid=f['id']
         sp=f['properties']
         sg=f['geometry']
@@ -863,13 +910,14 @@ class DebriefMapGenerator():
                     tp['title']=sp['title']
                 else:
                     tp=sp # for other feature types, copy all properties from source
-                self.sts2.editObject(id=corrList[0],properties=tp)
+                self.sts2.editFeature(id=corrList[0],properties=tp)
             else:
                 logging.error('  property change: more than one target map feature correspond to the source map feature, which is not a line; no changes made to target map')
         elif sp['class']=='Assignment': # assignment with folder and boundary already created
             olist=[o for o in self.dmd['outings'] if self.dmd['outings'][o]['sid']==sid]
             if len(olist)==0:
                 logging.error('  source map assignment feature edited, but it has no corresponding target map feature')
+                self.updateLinkLights() # set back to previous colors
                 return
             elif len(olist)==1:
                 # handle these title change cases:
@@ -906,7 +954,7 @@ class DebriefMapGenerator():
                         tf=self.sts2.getFeature(id=tid)
                         tp=tf['properties']
                         tp['title']=sp['title'].upper()
-                        self.sts2.editObject(id=tid,properties=tp)
+                        self.sts2.editFeature(id=tid,properties=tp)
                     self.dmd['outings'][tp['title']]=self.dmd['outings'][oldTitle]
                     # fids[tp['title']]=fids[oldTitle]
                     del self.dmd['outings'][oldTitle]
@@ -928,6 +976,7 @@ class DebriefMapGenerator():
                 logging.info('  more than one existing target map outing corresponds to the source map assignment; nothing edited due to ambuguity')
         else:
             logging.info('  source map feature does not have any corresponding feature in target map; nothing edited')
+        self.updateLinkLights() # set back to previous colors
 
     # parseTrackName: return False if not a track, or [assignment,team,suffix] if a track
     def parseTrackName(self,t):
@@ -938,6 +987,7 @@ class DebriefMapGenerator():
             return False
 
     def geometryUpdateCallback(self,f):
+        self.updateLinkLights(debriefLink=10)
         sid=f['id']
         sp=f['properties']
         st=sp['title']
@@ -976,7 +1026,7 @@ class DebriefMapGenerator():
                 for tid in self.dmd[sid]:
                     if 'geometry' in self.sts2.getFeature(id=tid).keys():
                         logging.info('  corresponding target map feature '+tid+' has geometry; setting it equal to the edited source feature geometry')
-                        self.sts2.editObject(id=tid,geometry=sg)
+                        self.sts2.editFeature(id=tid,geometry=sg)
                     else:
                         logging.info('  corresponding target map feature '+tid+' has no geometry; no edit performed')
         elif sid in osids:
@@ -984,14 +1034,14 @@ class DebriefMapGenerator():
                 o=self.dmd['outings'][ot]
                 if o['sid']==sid and ot==st: # the title is current
                     logging.info('  assignment geometry was edited: applying the same edit to corresponding target map boundary that has the same title "'+st+'" as the edited feature (to preserve previous outing boundaries)')
-                    self.sts2.editObject(id=o['bid'],geometry=sg)
+                    self.sts2.editFeature(id=o['bid'],geometry=sg)
         # # 1. determine which target-map feature, if any, corresponds to the edited source-map feature
         # if sid in corr.keys():
         #     cval=corr[sid]
         #     logging.info('cval:'+str(cval))
         #     if len(cval)==1: # exactly one corresponding feature exists
         #         logging.info('exactly one target map feature corresponds to the source map feature; updating the target map feature geometry')
-        #         sts2.editObject(id=cval[0],geometry=sg)
+        #         sts2.editFeature(id=cval[0],geometry=sg)
         #         # if it was a track, delete all corresponding target map features, then re-import (which will re-crop it)
         #         if sg['type']=='LineString':
         #             for a in assignments:
@@ -1003,8 +1053,10 @@ class DebriefMapGenerator():
         #         logging.info('more than one existing target map feature corresponds to the source map feature; nothing edited due to ambuguity')
         else:
             logging.info('source map feature does not have any corresponding feature in target map; nothing edited')
+        self.updateLinkLights() # set back to previous colors
 
     def deletedFeatureCallback(self,f):
+        self.updateLinkLights(debriefLink=10)
         sid=f['id']
         logging.info('deletedFeatureCallback called for feature '+str(sid)+' :')
         logging.info(json.dumps(f,indent=3))
@@ -1021,6 +1073,7 @@ class DebriefMapGenerator():
             self.writeDmdFile()
         else:
             logging.info('source map feature does not have any corresponding feature in target map; nothing deleted')
+        self.updateLinkLights() # set back to previous colors
 
 
 
@@ -1070,6 +1123,7 @@ class DebriefMapDialog(QDialog,Ui_DebriefMapDialog):
         self.ui.setupUi(self)
         self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
         self.urlChanged()
+        self.ui.mapIDField.setFocus()
 
     def domainAndPortClicked(self,*args,**kwargs):
         val=self.ui.domainAndPortButtonGroup.checkedButton().text()
@@ -1090,6 +1144,7 @@ class DebriefMapDialog(QDialog,Ui_DebriefMapDialog):
     def accept(self):
         self.parent.targetDomainAndPort=self.ui.domainAndPortButtonGroup.checkedButton().text()
         self.parent.targetMapID=self.ui.mapIDField.text()
+        self.parent.debriefURL=self.ui.urlField.text()
         self.parent.dd.ui.debriefMapField.setText(self.ui.urlField.text())
         if self.parent.pc:
             self.parent.parent.ui.debriefMapField.setText(self.ui.urlField.text())
@@ -1101,6 +1156,13 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
         QDialog.__init__(self)
         self.ui=Ui_DebriefDialog()
         self.ui.setupUi(self)
+        
+        self.ui.tableWidget.setColumnWidth(0,125)
+        self.ui.tableWidget.setColumnWidth(1,75)
+        self.ui.tableWidget.setColumnWidth(2,75)
+        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(3,1)
+        self.ui.tableWidget.setColumnWidth(4,50)
+        self.ui.tableWidget.setColumnWidth(5,50)
 
     # def showEvent(self,*args,**kwargs):
     #     if self.pc:

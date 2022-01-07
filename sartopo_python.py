@@ -392,7 +392,7 @@ class SartopoSession():
                         self.mapData['state']['features'].append(f)
                         if f['id'] not in self.mapData['ids'][prop['class']]:
                             self.mapData['ids'][prop['class']].append(f['id'])
-                        logging.info('mapData immediate:\n'+json.dumps(self.mapData,indent=3))
+                        # logging.info('mapData immediate:\n'+json.dumps(self.mapData,indent=3))
                         if self.newFeatureCallback:
                             self.newFeatureCallback(f)
 
@@ -400,9 +400,9 @@ class SartopoSession():
             self.mapIDs=sum(self.mapData['ids'].values(),[])
             mapSFIDs=[f['id'] for f in self.mapData['state']['features']]
 
-            logging.info('mapData:\n'+json.dumps(self.mapData,indent=3))
-            logging.info('\nself.mapIDs:'+str(self.mapIDs))
-            logging.info('\n   mapSFIDs:'+str(mapSFIDs))
+            # logging.info('mapData:\n'+json.dumps(self.mapData,indent=3))
+            # logging.info('\nself.mapIDs:'+str(self.mapIDs))
+            # logging.info('\n   mapSFIDs:'+str(mapSFIDs))
             for i in range(len(mapSFIDs)):
                 if mapSFIDs[i] not in self.mapIDs:
                     prop=self.mapData['state']['features'][i]['properties']
