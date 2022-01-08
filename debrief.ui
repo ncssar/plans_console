@@ -20,7 +20,7 @@
       <widget class="QLabel" name="debriefDialogLabel">
        <property name="font">
         <font>
-         <pointsize>12</pointsize>
+         <pointsize>11</pointsize>
         </font>
        </property>
        <property name="text">

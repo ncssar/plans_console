@@ -5,7 +5,7 @@ import time
 import os
 import sys
 import json
-from os import path
+import shutil
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import *
@@ -60,10 +60,12 @@ sys.excepthook = handle_exception
 
 # To redefine basicConfig, per stackoverflow.com/questions/12158048
 # Remove all handlers associated with the root logger object.
+logfile='dmg.log'
+errlogdepth=5
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
-if os.path.isfile('dmg.log'):
-    os.remove('dmg.log')
+if os.path.isfile(logfile):
+    os.remove(logfile)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(module)s:%(lineno)d:%(levelname)s] %(message)s',
@@ -72,11 +74,40 @@ logging.basicConfig(
         #  to get deleted and overwritten when the threads end; so
         #  instead set it to append here, and take care of deleting it
         #  or rotating it at the top level
-        logging.FileHandler('dmg.log','a'),
+        logging.FileHandler(logfile,'a'),
         # logging.FileHandler(self.fileNameBase+'_bg.log','w'),
         logging.StreamHandler(sys.stdout)
     ]
 )
+
+# add a custom handler that doesn't print anything, but instead copies the file
+#  to a backup if level is ERROR or CRITICAL.  It's important to make sure this
+#  happens >after< the first default handler that actually does the printing.
+# Only keep [logdepth] error log files (default 5).
+errlog=False
+class CustomHandler(logging.StreamHandler):
+    def emit(self,record):
+        if record.levelname in ['ERROR','CRITICAL']:
+            global errlog
+            # if this is the first error/critical record for this session,
+            #  rotate the error log files in preparation for copying of the current log
+            if not errlog:                    
+                for n in range(errlogdepth-1,0,-1):
+                    src=logfile+'.err.'+str(n)
+                    dst=logfile+'.err.'+str(n+1)
+                    if os.path.isfile(src):
+                        os.replace(src,dst)
+                src=logfile+'.err'
+                dst=logfile+'.err.1'
+                if os.path.isfile(src):
+                    os.replace(src,dst)
+                errlog=True
+            # if this session has had any error/critical records, copy to error log file
+            #  (regardless of the current record's level)
+            if errlog:
+                shutil.copyfile(logfile,logfile+'.err')
+
+logging.root.addHandler(CustomHandler())
 
 def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
@@ -128,6 +159,7 @@ class DebriefMapGenerator():
 
         # determine / create sts2 (target map SartopoSession instance)
         self.sts2=None
+        self.targetDomainAndPort=None
         tcn=targetMap.__class__.__name__
         if tcn=='SartopoSession':
             logging.info('Target map argument = SartopoSession instance')
@@ -145,12 +177,18 @@ class DebriefMapGenerator():
                 self.targetDomainAndPort=targetParse[2]
         else:
             logging.info('No debrief map; raising DebriefMapDialog')
+            if hasattr(self.parent,'defaultDomainAndPort'):
+                self.defaultDomainAndPort=self.parent.defaultDomainAndPort
             self.debriefMapDialog=DebriefMapDialog(self)
             self.debriefMapDialog.exec() # force modal
             # logging.info('No target map; using default')
             # self.targetDomainAndPort='localhost:8080'
             # self.targetMapID='81M'
         
+        if not self.targetDomainAndPort:
+            # debrief map dialog was canceled
+            return
+
         if not self.sts2:
             box=QMessageBox(
                 QMessageBox.NoIcon, # other vaues cause the chime sound to play
@@ -349,8 +387,9 @@ class DebriefMapGenerator():
     # corr_init={} # pre-fitlered correspondence dictionary (read from file on startup)
 
     def initDmd(self):
+        blah
         logging.info('initDmd called')
-        if path.exists(self.dmdFileName):
+        if os.path.exists(self.dmdFileName):
             with open(self.dmdFileName,'r') as dmdFile:
                 logging.info('reading correlation file')
                 dmd_init=json.load(dmdFile)
@@ -1129,6 +1168,18 @@ class DebriefMapDialog(QDialog,Ui_DebriefMapDialog):
         self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
         self.urlChanged()
         self.ui.mapIDField.setFocus()
+        ddap=None
+        if hasattr(self.parent,'defaultDomainAndPort'):
+            ddap=self.parent.defaultDomainAndPort
+        if ddap:
+            found=False
+            for button in self.ui.domainAndPortButtonGroup.buttons():
+                if ddap==button.text():
+                    found=True
+                    button.click()
+            if not found:
+                self.ui.otherButton.click()
+                self.ui.domainAndPortOtherField.setText(ddap)
 
     def domainAndPortClicked(self,*args,**kwargs):
         val=self.ui.domainAndPortButtonGroup.checkedButton().text()

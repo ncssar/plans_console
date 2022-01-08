@@ -217,7 +217,7 @@
      <string notr="true">domainAndPortButtonGroup</string>
     </attribute>
    </widget>
-   <widget class="QRadioButton" name="radioButton_3">
+   <widget class="QRadioButton" name="otherButton">
     <property name="geometry">
      <rect>
       <x>20</x>

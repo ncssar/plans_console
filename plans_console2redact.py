@@ -195,6 +195,18 @@ class IncidentMapDialog(QDialog,Ui_IncidentMapDialog):
         self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
         self.urlChanged()
         self.ui.mapIDField.setFocus()
+        ddap=None
+        if hasattr(self.parent,'defaultDomainAndPort'):
+            ddap=self.parent.defaultDomainAndPort
+        if ddap:
+            found=False
+            for button in self.ui.domainAndPortButtonGroup.buttons():
+                if ddap==button.text():
+                    found=True
+                    button.click()
+            if not found:
+                self.ui.otherButton.click()
+                self.ui.domainAndPortOtherField.setText(ddap)
 
     def domainAndPortClicked(self,*args,**kwargs):
         val=self.ui.domainAndPortButtonGroup.checkedButton().text()
@@ -548,6 +560,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         cpc=config['Plans_console']
         self.watchedDir=cpc.get('watchedDir','"Z:\\"')
         self.accountName=cpc.get('accountName',None)
+        self.defaultDomainAndPort=cpc.get('defaultDomainAndPort',None)
 
         # while not inStr.atEnd():
         #     line=inStr.readLine()
@@ -611,7 +624,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         else:
             if not self.dmg:
                 self.dmg=DebriefMapGenerator(self,self.sts,self.debriefURL)
-            if self.dmg.sts2.apiVersion>=0:
+            if self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
                 self.dmg.dd.show()
                 self.dmg.dd.raise_()
             else:

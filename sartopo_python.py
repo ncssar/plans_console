@@ -328,7 +328,7 @@ class SartopoSession():
         #     item in state->features, just replace the entire existing cached feature of
         #     the same id
 
-        logging.info('Sending sartopo "since" request...')
+        # logging.info('Sending sartopo "since" request...')
         rj=self.sendRequest('get','since/'+str(max(0,self.lastSuccessfulSyncTimestamp-500)),None,returnJson='ALL',timeout=self.syncTimeout)
         if rj and rj['status']=='ok':
             if self.syncDumpFile:
@@ -337,7 +337,7 @@ class SartopoSession():
             # response timestamp is an integer number of milliseconds; equivalent to
             # int(time.time()*1000))
             self.lastSuccessfulSyncTimestamp=rj['result']['timestamp']
-            logging.info('Successful sartopo sync: timestamp='+str(self.lastSuccessfulSyncTimestamp))
+            # logging.info('Successful sartopo sync: timestamp='+str(self.lastSuccessfulSyncTimestamp))
             rjr=rj['result']
             rjrsf=rjr['state']['features']
             
@@ -348,7 +348,7 @@ class SartopoSession():
             
             # 2 - update existing features as needed
             if len(rjrsf)>0:
-                logging.info(json.dumps(rj,indent=3))
+                # logging.info(json.dumps(rj,indent=3))
                 for f in rjrsf:
                     rjrfid=f['id']
                     prop=f['properties']
@@ -512,7 +512,8 @@ class SartopoSession():
         mid=mid.replace("[MAPID]",self.mapID)
         apiUrlEnd=apiUrlEnd.replace("[MAPID]",self.mapID)
         url="http://"+self.domainAndPort+mid+apiUrlEnd
-        logging.info("sending "+str(type)+" to "+url)
+        if '/since/' not in url:
+            logging.info("sending "+str(type)+" to "+url)
         self.syncPause=True
         if type=="post":
             params={}
@@ -527,7 +528,7 @@ class SartopoSession():
                 params["id"]=self.id
                 params["expires"]=expires
                 params["signature"]=token
-            logging.info("SENDING POST to '"+url+"':")
+            # logging.info("SENDING POST to '"+url+"':")
             logging.info(json.dumps(params,indent=3))
             r=self.s.post(url,data=params,timeout=timeout)
         elif type=="get": # no need for json in GET; sending null JSON causes downstream error
@@ -546,7 +547,7 @@ class SartopoSession():
                 params["id"]=self.id
                 params["expires"]=expires
                 params["signature"]=token
-            logging.info("SENDING DELETE to '"+url+"':")
+            # logging.info("SENDING DELETE to '"+url+"':")
             logging.info(json.dumps(params,indent=3))
             # logging.info("Key:"+str(self.key))
             r=self.s.delete(url,params=params,timeout=timeout)   ## use params for query vs data for body data
@@ -563,7 +564,7 @@ class SartopoSession():
 #         except:
 #             logging.info(r.text)
         if returnJson:
-            logging.info('response:'+str(r))
+            # logging.info('response:'+str(r))
             try:
                 rj=r.json()
             except:
@@ -571,7 +572,7 @@ class SartopoSession():
                 self.syncPause=False
                 return False
             else:
-                logging.info('rj:'+str(rj))
+                # logging.info('rj:'+str(rj))
                 if returnJson=="ID":
                     id=None
                     if 'result' in rj and 'id' in rj['result']:

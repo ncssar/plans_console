@@ -21,7 +21,7 @@ class Ui_DebriefDialog(object):
         self.verticalLayout.setObjectName("verticalLayout")
         self.debriefDialogLabel = QtWidgets.QLabel(DebriefDialog)
         font = QtGui.QFont()
-        font.setPointSize(12)
+        font.setPointSize(11)
         self.debriefDialogLabel.setFont(font)
         self.debriefDialogLabel.setWordWrap(True)
         self.debriefDialogLabel.setObjectName("debriefDialogLabel")
