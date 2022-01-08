@@ -179,6 +179,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logging.critical('Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback))
+    inform_user_about_issue('Uncaught excpetion:\n\n'+str(exc_type.__name__)+': '+str(exc_value)+'\n\nCheck log file for details including traceback.  The program will continue if possible when you close this message box.')
 sys.excepthook = handle_exception
 
 def sortByTitle(item):

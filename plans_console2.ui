@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>965</width>
-    <height>529</height>
+    <height>625</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -86,7 +86,7 @@ QComboBox:{
        <item>
         <widget class="QTableWidget" name="tableWidget_TmAs">
          <property name="sizePolicy">
-          <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
@@ -125,6 +125,11 @@ QComboBox:{
           <layout class="QVBoxLayout" name="teamVertLayout">
            <item>
             <widget class="QLabel" name="label_2">
+             <property name="font">
+              <font>
+               <pointsize>12</pointsize>
+              </font>
+             </property>
              <property name="text">
               <string>Team#</string>
              </property>
@@ -139,6 +144,11 @@ QComboBox:{
           <layout class="QVBoxLayout" name="asgmtVertLayout">
            <item>
             <widget class="QLabel" name="label">
+             <property name="font">
+              <font>
+               <pointsize>12</pointsize>
+              </font>
+             </property>
              <property name="text">
               <string>Asgmt</string>
              </property>
@@ -159,6 +169,11 @@ QComboBox:{
            </property>
            <item>
             <widget class="QLabel" name="label_3">
+             <property name="font">
+              <font>
+               <pointsize>12</pointsize>
+              </font>
+             </property>
              <property name="text">
               <string>Type</string>
              </property>
@@ -166,6 +181,11 @@ QComboBox:{
            </item>
            <item>
             <widget class="QComboBox" name="comboBox">
+             <property name="font">
+              <font>
+               <pointsize>11</pointsize>
+              </font>
+             </property>
              <property name="styleSheet">
               <string notr="true"/>
              </property>
@@ -216,6 +236,11 @@ QComboBox:{
            </property>
            <item>
             <widget class="QLabel" name="label_4">
+             <property name="font">
+              <font>
+               <pointsize>12</pointsize>
+              </font>
+             </property>
              <property name="text">
               <string>Med</string>
              </property>
@@ -249,6 +274,11 @@ QComboBox:{
              <width>30</width>
              <height>0</height>
             </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>12</pointsize>
+            </font>
            </property>
            <property name="text">
             <string>Ok</string>
@@ -293,6 +323,11 @@ QComboBox:{
        </item>
        <item>
         <widget class="QGroupBox" name="mapsGroup">
+         <property name="font">
+          <font>
+           <pointsize>9</pointsize>
+          </font>
+         </property>
          <property name="title">
           <string>Maps</string>
          </property>
@@ -313,6 +348,11 @@ QComboBox:{
            <layout class="QGridLayout" name="mapsGrid" columnstretch="2,10,1">
             <item row="0" column="0">
              <widget class="QLabel" name="label_6">
+              <property name="font">
+               <font>
+                <pointsize>12</pointsize>
+               </font>
+              </property>
               <property name="text">
                <string>Incident</string>
               </property>
@@ -325,6 +365,11 @@ QComboBox:{
              <widget class="QLineEdit" name="incidentMapField">
               <property name="enabled">
                <bool>false</bool>
+              </property>
+              <property name="font">
+               <font>
+                <pointsize>10</pointsize>
+               </font>
               </property>
              </widget>
             </item>
@@ -383,6 +428,11 @@ QComboBox:{
               <property name="enabled">
                <bool>false</bool>
               </property>
+              <property name="font">
+               <font>
+                <pointsize>10</pointsize>
+               </font>
+              </property>
              </widget>
             </item>
             <item row="1" column="0">
@@ -398,6 +448,11 @@ QComboBox:{
                 <width>60</width>
                 <height>0</height>
                </size>
+              </property>
+              <property name="font">
+               <font>
+                <pointsize>12</pointsize>
+               </font>
               </property>
               <property name="text">
                <string>Debrief</string>
@@ -417,6 +472,11 @@ QComboBox:{
            <verstretch>0</verstretch>
           </sizepolicy>
          </property>
+         <property name="font">
+          <font>
+           <pointsize>9</pointsize>
+          </font>
+         </property>
          <property name="title">
           <string>Geometry Operations</string>
          </property>
@@ -433,6 +493,11 @@ QComboBox:{
              <layout class="QHBoxLayout" name="geomFunctionHorizLayout">
               <item>
                <widget class="QRadioButton" name="cutRadioButton">
+                <property name="font">
+                 <font>
+                  <pointsize>12</pointsize>
+                 </font>
+                </property>
                 <property name="text">
                  <string>Cut</string>
                 </property>
@@ -446,6 +511,11 @@ QComboBox:{
               </item>
               <item>
                <widget class="QRadioButton" name="expandRadioButton">
+                <property name="font">
+                 <font>
+                  <pointsize>12</pointsize>
+                 </font>
+                </property>
                 <property name="text">
                  <string>Expand</string>
                 </property>
@@ -456,6 +526,11 @@ QComboBox:{
               </item>
               <item>
                <widget class="QRadioButton" name="cropRadioButton">
+                <property name="font">
+                 <font>
+                  <pointsize>12</pointsize>
+                 </font>
+                </property>
                 <property name="text">
                  <string>Crop</string>
                 </property>
@@ -470,6 +545,11 @@ QComboBox:{
              <layout class="QHBoxLayout" name="geomFeatureHorizLayout">
               <item>
                <widget class="QLineEdit" name="selObj">
+                <property name="font">
+                 <font>
+                  <pointsize>12</pointsize>
+                 </font>
+                </property>
                 <property name="text">
                  <string>selObj</string>
                 </property>
@@ -477,6 +557,11 @@ QComboBox:{
               </item>
               <item>
                <widget class="QLineEdit" name="editor">
+                <property name="font">
+                 <font>
+                  <pointsize>12</pointsize>
+                 </font>
+                </property>
                 <property name="text">
                  <string>editor</string>
                 </property>

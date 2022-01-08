@@ -40,12 +40,14 @@ LINK_LIGHT_STYLES={
 
 # log uncaught exceptions - https://stackoverflow.com/a/16993115/3577105
 # don't try to print from inside this function, since stdout is in binary mode
+# note - this function will be overwritten by the same function in plans console
+#  (if called from plans console)
 def handle_exception(exc_type, exc_value, exc_traceback):
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logging.critical('Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback))
-    QMessageBox(QMessageBox.Critical,'Ungaught exception.\n\nSee transcript or log file.')
+    inform_user_about_issue('Uncaught Exception:')
 sys.excepthook = handle_exception
 
 # sourceMap and targetMap arguments can be one of:
@@ -64,7 +66,7 @@ if os.path.isfile('dmg.log'):
     os.remove('dmg.log')
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
+    format='%(asctime)s [%(module)s:%(lineno)d:%(levelname)s] %(message)s',
     handlers=[
         # setting the filehandeler to write mode here causes the file
         #  to get deleted and overwritten when the threads end; so
@@ -77,17 +79,17 @@ logging.basicConfig(
 )
 
 def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
-	opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
-	if title == "":
-		title = "Warning" if (icon == QMessageBox.Warning) else "Error"
-	buttons = QMessageBox.StandardButton(QMessageBox.Ok)
-	box = QMessageBox(icon, title, message, buttons, parent, opts)
-	box.show()
-	QCoreApplication.processEvents()
-	box.raise_()
-	if timeout:
-		QTimer.singleShot(timeout,box.close)
-	box.exec_()
+    opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
+    if title == "":
+        title = "Warning" if (icon == QMessageBox.Warning) else "Error"
+    buttons = QMessageBox.StandardButton(QMessageBox.Ok)
+    box = QMessageBox(icon, title, message, buttons, parent, opts)
+    box.show()
+    QCoreApplication.processEvents()
+    box.raise_()
+    if timeout:
+        QTimer.singleShot(timeout,box.close)
+    box.exec_()
 
 
 class DebriefMapGenerator():
@@ -126,7 +128,7 @@ class DebriefMapGenerator():
 
         # determine / create sts2 (target map SartopoSession instance)
         self.sts2=None
-        tcn=targetMap.__class__.__name__           
+        tcn=targetMap.__class__.__name__
         if tcn=='SartopoSession':
             logging.info('Target map argument = SartopoSession instance')
             self.sts2=targetMap
@@ -167,6 +169,9 @@ class DebriefMapGenerator():
         if self.sts2 and self.sts2.apiVersion<0:
             inform_user_about_issue('Link to specified debrief map '+self.debriefURL+' could not be established.  Please try again.')
             return
+
+        if self.pc:
+            self.dd.ui.debriefDialogLabel.setText('Debrief Map Generator is running in the background.  You can safely close and reopen this dialog as needed.\n\nDebrief data (tracks from returning searchers) should be imported to the INCIDENT map.  The DEBRIEF map is automatically updated and should not need to be directly edited.')
 
         # determine / create sts1 (source map SartopoSession instance)
         self.sts1=None

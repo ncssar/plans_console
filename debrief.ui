@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>662</width>
-    <height>289</height>
+    <width>675</width>
+    <height>339</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,11 +17,45 @@
    <item>
     <layout class="QVBoxLayout" name="verticalLayout">
      <item>
+      <widget class="QLabel" name="debriefDialogLabel">
+       <property name="font">
+        <font>
+         <pointsize>12</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>Please specify a debrief map URL to start the Debrief Map Generator.</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
       <layout class="QGridLayout" name="gridLayout">
-       <item row="0" column="0">
-        <widget class="QLabel" name="incidentMapLabel">
+       <item row="1" column="0">
+        <widget class="QLabel" name="debriefMapLabel">
          <property name="text">
-          <string>Incident Map</string>
+          <string>Debrief Map</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="2">
+        <widget class="QLineEdit" name="debriefLinkLight">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>20</width>
+           <height>16777215</height>
+          </size>
          </property>
         </widget>
        </item>
@@ -32,6 +66,16 @@
          </property>
          <property name="placeholderText">
           <string>http(s)://incidentMapURL</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QLineEdit" name="debriefMapField">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+         <property name="placeholderText">
+          <string>http(s)://debriefMapURL</string>
          </property>
         </widget>
        </item>
@@ -54,39 +98,10 @@
          </property>
         </widget>
        </item>
-       <item row="1" column="0">
-        <widget class="QLabel" name="debriefMapLabel">
+       <item row="0" column="0">
+        <widget class="QLabel" name="incidentMapLabel">
          <property name="text">
-          <string>Debrief Map</string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="1">
-        <widget class="QLineEdit" name="debriefMapField">
-         <property name="enabled">
-          <bool>false</bool>
-         </property>
-         <property name="placeholderText">
-          <string>http(s)://debriefMapURL</string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="2">
-        <widget class="QLineEdit" name="debriefLinkLight">
-         <property name="enabled">
-          <bool>false</bool>
-         </property>
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <property name="maximumSize">
-          <size>
-           <width>20</width>
-           <height>16777215</height>
-          </size>
+          <string>Incident Map</string>
          </property>
         </widget>
        </item>
