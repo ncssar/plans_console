@@ -148,7 +148,7 @@ from shapely.ops import split
 
 # silent exception class to be raised during __init__ and handlded by the caller,
 #  since __init__ should always return None: https://stackoverflow.com/questions/20059766
-class STSException:
+class STSException(BaseException):
     pass
 
 class SartopoSession():
@@ -1531,6 +1531,49 @@ class SartopoSession():
             rval=MultiLineString(outLines)
         else:
             rval=LineString(outLines[0])
+        return rval
+
+
+    # getBounds - return the bounding box (minx,miny,maxx,maxy), oversized by 'pad',
+    #               that bounds the listed objects
+
+    def getBounds(self,objectList,pad=0.0001):
+        rval=[9e12,9e12,-9e12,-9e12]
+        for obj in objectList:
+            if isinstance(obj,str): # if string, find feature by name; if id, find feature by id
+                objStr=obj
+                if len(obj)==36: # id
+                    objShape=self.getFeature(id=obj)
+                else:
+                    objShape=self.getFeature(title=obj,featureClassExcludeList=['Folder','OperationalPeriod'])
+            else:
+                objShape=obj
+                objStr='NO TITLE'
+                if isinstance(objShape,dict):
+                    objStr=objShape.get('title','NO TITLE')
+            if not objShape:
+                logging.error('Object shape '+objStr+' not found; operation aborted.')
+                return False
+            og=objShape['geometry']
+            objType=og['type']
+            # logging.info('geometry:'+json.dumps(og,indent=3))
+            if objType=='Polygon':
+                ogc=og['coordinates'][0]
+                ogc=self.removeSpurs(ogc)
+                objGeom=Polygon(ogc) # Shapely object
+            elif objType=='LineString':
+                ogc=og['coordinates']
+                ogc=self.removeSpurs(ogc)
+                objGeom=LineString(ogc) # Shapely object
+            elif objType=='Point':
+                ogc=og['coordinates'][0:2]
+                objGeom=Point(ogc) # Shapely object
+            else:
+                logging.error('crop: feature '+objStr+' is not a polygon or line or point: '+objType)
+                return False
+            bbox=objGeom.bounds
+            rval=[min(bbox[0],rval[0]),min(bbox[1],rval[1]),max(bbox[2],rval[2]),max(bbox[3],rval[3])]
+        rval=[rval[0]-pad,rval[1]-pad,rval[2]+pad,rval[3]+pad]
         return rval
 
 

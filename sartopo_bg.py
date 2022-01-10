@@ -6,6 +6,9 @@ import os
 import sys
 import json
 import shutil
+from datetime import datetime
+import webbrowser
+import math
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import *
@@ -129,6 +132,13 @@ class DebriefMapGenerator():
         # is this being spawned from Plans Console?
         self.pc=self.parent.__class__.__name__=='PlansConsole'
         self.debriefURL=''
+
+
+
+        self.accountID='3MA660'
+
+
+
         # do not register the callbacks until after the initial processing; that way we
         #  can be sure to process existing assignments first
 
@@ -196,10 +206,17 @@ class DebriefMapGenerator():
                 'Debrief Map:\n\nConnecting to '+self.debriefURL+'\n\nPlease wait...')
             box.setStandardButtons(QMessageBox.NoButton)
             box.show()
+            configpath='../sts.ini'
+            account=None
+            if self.pc:
+                configpath=self.parent.stsconfigpath
+                account=self.parent.accountName
             QCoreApplication.processEvents()
             box.raise_()
             self.sts2=SartopoSession(self.targetDomainAndPort,self.targetMapID,
                 sync=False,
+                account=account,
+                configpath=configpath,
                 syncTimeout=10,
                 syncDumpFile='../../'+self.targetMapID+'.txt')
             box.close()
@@ -357,8 +374,105 @@ class DebriefMapGenerator():
             self.dd.ui.tableWidget.setItem(row,0,QTableWidgetItem(outingName))
             self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['tids']))))
             self.dd.ui.tableWidget.setItem(row,2,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['cids']))))
+            genPDFButton=QPushButton('Gen.\nPDF')
+            genPDFButton.clicked.connect(self.genPDFClicked)
+            self.dd.ui.tableWidget.setCellWidget(row,4,genPDFButton)
             row+=1
         self.dd.ui.tableWidget.viewport().update()
+
+    def genPDFClicked(self,*args,**kwargs):
+        row=self.dd.ui.tableWidget.currentRow()
+        outingName=self.dd.ui.tableWidget.item(row,0).text()
+        logging.info('Generate PDF button clicked for outing '+outingName)
+        outing=self.dmd['outings'][outingName]
+        ids=[outing['bid']]
+        ids.extend(outing['cids'])
+        for tidList in outing['tids']:
+            ids.extend(tidList)
+        logging.info('ids:'+str(ids))
+        bounds=self.sts2.getBounds(ids)
+
+        lonMult=math.cos(math.radians((bounds[3]+bounds[1])/2.0))
+        logging.info('longitude multiplier = '+str(lonMult))
+
+        # determine orientation from initial aspect ratio, then snap the bounds to
+        #  letter-size aspect ratio (map tiles will only be rendered for this area)
+
+        # calculate width, height, and aspect ratio in rectangular units, as they
+        #   would appear on paper or on screen.  1' x 1' rectange will appear
+        #   taller than it is wide, so w should be <1:
+        w=(bounds[2]-bounds[0])*lonMult
+        h=bounds[3]-bounds[1]
+        ar=w/h
+        logging.info('bounds before adjust (ar='+str(round(ar,4))+') : '+str(bounds))
+
+        if ar>1: # landscape
+            size=[11,8.5]
+            tar=1.4955 # target aspect ratio
+        else: # portrait
+            size=[8.5,11]
+            tar=0.8027 # target aspect ratio
+
+        # bounds adjustmets:
+        # 1) initially, bounds are lat/lon extents; the aspect ratio on paper needs
+        #     to account for the length of a unit of longitude at the given latitude
+        # 2) after the bounds are unitized / rectangular units, extend on opposite
+        #     sides/ends to fill the printable map area, to ensure the map layer
+        #     is rendered for that entire area; if initial a.r. (w/h) is too low, pad
+        #     left and right; if initial a.r. is too high, pad top and bottom            
+        if ar<tar: # too narrow: pad left and right
+            targetW=h*tar
+            dw=targetW-w
+            dlon=dw/lonMult
+            logging.info('landscape: need to grow longitude by '+str(dlon))
+            bounds[0]=bounds[0]-(dlon/2)
+            bounds[2]=bounds[2]+(dlon/2)
+        elif ar>tar: # too wide: pad top and bottom
+            targetH=w/tar
+            dh=targetH-h
+            logging.info('landscape: need to grow h by '+str(dh))
+            bounds[1]=bounds[1]-(dh/2)
+            bounds[3]=bounds[3]+(dh/2)
+
+        w=(bounds[2]-bounds[0])*lonMult
+        h=bounds[3]-bounds[1]
+        ar=w/h
+        logging.info('bounds after adjust (ar='+str(round(ar,4))+') : '+str(bounds))
+
+        features=[f for f in self.sts2.mapData['state']['features'] if f['id'] in ids]
+
+        # 'expires' should be 7 days from now; if it does expire
+        #   before the search is done, that's not really a problem
+        #   since the incident map remains
+        tsNow=int(datetime.now().timestamp()*1000)
+        expires=tsNow+(7*24*60*60*1000)
+        payload={
+            'properties':{
+                'mapState':{
+                    'type':'FeatureCollection',
+                    'features':features
+                },
+                'layer':'t',
+                'grids':['utm'],
+                'showOverview':False,
+                'markupSize':1,
+                'datum':'WGS84',
+                'dpi':200,
+                'title':outingName,
+                'qrcode':None,
+                'expires':expires,
+                'pages':[{
+                    'bbox':bounds,
+                    'size':size
+                }],
+                'corners':{}
+            }
+        }
+
+        # url='https://sartopo.com/api/v1/acct/'+self.accountID+'/PDFLink'
+        id=self.sts2.sendRequest('post','api/v1/acct/'+self.accountID+'/PDFLink',payload,returnJson='ID')
+        if id:
+            webbrowser.open_new_tab('https://sartopo.com/p/'+id)
 
     # assignments={} # assignments dictionary
     # assignments_init={} # pre-filtered assignments dictionary (read from file on startup)
@@ -387,7 +501,6 @@ class DebriefMapGenerator():
     # corr_init={} # pre-fitlered correspondence dictionary (read from file on startup)
 
     def initDmd(self):
-        blah
         logging.info('initDmd called')
         if os.path.exists(self.dmdFileName):
             with open(self.dmdFileName,'r') as dmdFile:
@@ -564,7 +677,7 @@ class DebriefMapGenerator():
         alreadyExists=False
         for ot in self.dmd['outings'].keys():
             o=self.dmd['outings'][ot]
-            logging.info('  checking: outing title = '+ot+', sid='+o['sid']+', id='+id)
+            logging.info('  checking: outing title = '+str(ot)+', sid='+str(o.get('sid',None))+', id='+str(id))
             if o['sid']==id:
                 logging.info('  an outing with the same sid was found...')
                 if t==ot or 'NOTITLE' in ot:

@@ -235,7 +235,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         QDialog.__init__(self)
 
         parser=argparse.ArgumentParser()
-        parser.add_argument('url',nargs='?',default=None) # optional url (#abcd or $abcd for now)
+        parser.add_argument('mapID',nargs='?',default=None) # optional incident map ID (#abcd or $abcd for now)
+        parser.add_argument('debriefMapID',nargs='?',default=None) # optional debrief map ID (#abcd or $abcd for now)
         parser.add_argument('-nr','--norestore',action='store_true',
                 help='do not try to restore the previous session, and do not ask the user')
         parser.add_argument('-nu','--nourl',action='store_true',
@@ -244,6 +245,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         logging.info('args:'+str(args))
 
         self.parent=parent
+        self.stsconfigpath='../sts.ini'
         self.rcFileName="plans_console.rc"
         self.configFileName="./local/plans_console.cfg"
         self.readConfigFile()
@@ -296,7 +298,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.load_data()
                 self.reloaded = True
         if not args.nourl and not self.reloaded:
-            name1=args.url
+            name1=args.mapID
             if name1:
                 if "#" in name1:
                     self.incidentURL="https://sartopo.com/m/"+name1[1:]        # remove the #
@@ -379,6 +381,23 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if self.incidentURL:
             self.ui.incidentMapField.setText(self.incidentURL)
             self.createSTS()
+
+        if args.debriefMapID:
+            name2=args.debriefMapID
+            if name2:
+                if "#" in name2:
+                    self.debriefURL="https://sartopo.com/m/"+name2[1:]        # remove the #
+                elif "$" in name2:
+                    self.debriefURL="http://localhost:8080/m/"+name2[1:]     # remove the $
+                else:    
+                    self.debriefURL="http://192.168.1.20:8080/m/"+name2
+                self.debriefButtonClicked()
+                self.targetMapID=name2
+                self.targetDomainAndPort=self.debriefURL.split('/')[2]
+                self.dmg.dd.ui.debriefMapField.setText(self.debriefURL)
+                self.ui.debriefMapField.setText(self.debriefURL)
+                QTimer.singleShot(1000,self.debriefButtonClicked) # raise again
+
         
     def createSTS(self):
         parse=self.incidentURL.replace("http://","").replace("https://","").split("/")
@@ -397,7 +416,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         try:
             if 'sartopo.com' in domainAndPort.lower():
                 self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,
-                                        configpath="../sts.ini",
+                                        configpath=self.stsconfigpath,
                                         account=self.accountName,
                                         sync=False)
             else:
