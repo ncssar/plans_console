@@ -390,10 +390,10 @@ class DebriefMapGenerator():
         for tidList in outing['tids']:
             ids.extend(tidList)
         logging.info('ids:'+str(ids))
-        bounds=self.sts2.getBounds(ids)
+        bounds=self.sts2.getBounds(ids,padPct=15)
 
         lonMult=math.cos(math.radians((bounds[3]+bounds[1])/2.0))
-        logging.info('longitude multiplier = '+str(lonMult))
+        # logging.info('longitude multiplier = '+str(lonMult))
 
         # determine orientation from initial aspect ratio, then snap the bounds to
         #  letter-size aspect ratio (map tiles will only be rendered for this area)
@@ -404,7 +404,7 @@ class DebriefMapGenerator():
         w=(bounds[2]-bounds[0])*lonMult
         h=bounds[3]-bounds[1]
         ar=w/h
-        logging.info('bounds before adjust (ar='+str(round(ar,4))+') : '+str(bounds))
+        # logging.info('bounds before adjust (ar='+str(round(ar,4))+') : '+str(bounds))
 
         if ar>1: # landscape
             size=[11,8.5]
@@ -424,20 +424,20 @@ class DebriefMapGenerator():
             targetW=h*tar
             dw=targetW-w
             dlon=dw/lonMult
-            logging.info('landscape: need to grow longitude by '+str(dlon))
+            # logging.info('landscape: need to grow longitude by '+str(dlon))
             bounds[0]=bounds[0]-(dlon/2)
             bounds[2]=bounds[2]+(dlon/2)
         elif ar>tar: # too wide: pad top and bottom
             targetH=w/tar
             dh=targetH-h
-            logging.info('landscape: need to grow h by '+str(dh))
+            # logging.info('need to grow latitude by '+str(dh))
             bounds[1]=bounds[1]-(dh/2)
             bounds[3]=bounds[3]+(dh/2)
 
         w=(bounds[2]-bounds[0])*lonMult
         h=bounds[3]-bounds[1]
         ar=w/h
-        logging.info('bounds after adjust (ar='+str(round(ar,4))+') : '+str(bounds))
+        # logging.info('bounds after adjust (ar='+str(round(ar,4))+') : '+str(bounds))
 
         features=[f for f in self.sts2.mapData['state']['features'] if f['id'] in ids]
 
@@ -472,6 +472,7 @@ class DebriefMapGenerator():
         # url='https://sartopo.com/api/v1/acct/'+self.accountID+'/PDFLink'
         id=self.sts2.sendRequest('post','api/v1/acct/'+self.accountID+'/PDFLink',payload,returnJson='ID')
         if id:
+            logging.info(outingName+' : PDF generated : '+id+' - opening in new browser tab...')
             webbrowser.open_new_tab('https://sartopo.com/p/'+id)
 
     # assignments={} # assignments dictionary
