@@ -142,6 +142,7 @@ import logging
 import sys
 import threading
 from threading import Thread
+import copy
 
 from shapely.geometry import LineString,Point,Polygon,MultiLineString,MultiPolygon,GeometryCollection
 from shapely.ops import split
@@ -157,8 +158,9 @@ class SartopoSession():
             mapID=None,
             configpath=None,
             account=None,
-            id=None,
-            key=None,
+            id=None, # 12-character credential ID
+            key=None, # credential key
+            accountId=None, # 6-character accountId
             sync=True,
             syncInterval=5,
             syncTimeout=10,
@@ -166,7 +168,8 @@ class SartopoSession():
             propertyUpdateCallback=None,
             geometryUpdateCallback=None,
             newFeatureCallback=None,
-            deletedFeatureCallback=None):
+            deletedFeatureCallback=None,
+            syncCallback=None):
         self.s=requests.session()
         self.apiVersion=-1
         if not mapID or not isinstance(mapID,str) or len(mapID)<3:
@@ -182,6 +185,7 @@ class SartopoSession():
         self.mapData={'ids':{},'state':{'features':[]}}
         self.id=id
         self.key=key
+        self.accountId=accountId
         self.sync=sync
         self.syncTimeout=syncTimeout
         self.syncPause=False
@@ -189,6 +193,7 @@ class SartopoSession():
         self.geometryUpdateCallback=geometryUpdateCallback
         self.newFeatureCallback=newFeatureCallback
         self.deletedFeatureCallback=deletedFeatureCallback
+        self.syncCallback=syncCallback
         self.syncInterval=syncInterval
         self.lastSuccessfulSyncTimestamp=0 # the server's integer milliseconds 'sincce' request completion time
         self.lastSuccessfulSyncTSLocal=0 # this object's integer milliseconds sync completion time
@@ -223,6 +228,7 @@ class SartopoSession():
                     section=config[self.account]
                     id=section.get("id",None)
                     key=section.get("key",None)
+                    accountId=section.get("accountId",None)
                     if id is None or key is None:
                         logging.error("account entry '"+self.account+"' in config file '"+self.configpath+"' is not complete:\n  it must specify id and key.")
                         return False
@@ -235,9 +241,12 @@ class SartopoSession():
                 id=self.id
             if self.key is not None:
                 key=self.key
+            if self.accountId is not None:
+                accountId=self.accountId
             # finally, save them back as parameters of this object
             self.id=id
             self.key=key
+            self.accountId=accountId
 
             if self.id is None:
                 logging.error("sartopo session is invalid: 'id' must be specified for online maps")
@@ -307,7 +316,7 @@ class SartopoSession():
         self.apiVersion=1
         self.apiUrlMid="/api/v1/map/[MAPID]/"
 
-        logging.info("API version:"+str(self.apiVersion))
+        # logging.info("API version:"+str(self.apiVersion))
         # sync needs to be done here instead of in the caller, so that
         #  edit functions can have access to the full json
         if self.sync:
@@ -338,6 +347,8 @@ class SartopoSession():
             # int(time.time()*1000))
             self.lastSuccessfulSyncTimestamp=rj['result']['timestamp']
             # logging.info('Successful sartopo sync: timestamp='+str(self.lastSuccessfulSyncTimestamp))
+            if self.syncCallback:
+                self.syncCallback()
             rjr=rj['result']
             rjrsf=rjr['state']['features']
             
@@ -407,11 +418,11 @@ class SartopoSession():
                 if mapSFIDs[i] not in self.mapIDs:
                     prop=self.mapData['state']['features'][i]['properties']
                     logging.info('  Deleting '+str(prop['class'])+':'+str(prop['title']))
-                    logging.info('     [ id='+mapSFIDs[i]+' ]')
+                    # logging.info('     [ id='+mapSFIDs[i]+' ]')
                     if self.deletedFeatureCallback:
                         self.deletedFeatureCallback(self.mapData['state']['features'][i])
                     del self.mapData['state']['features'][i]
-    
+
             if self.syncDumpFile:
                 with open(self.insertBeforeExt(self.syncDumpFile,'.cache'+str(self.lastSuccessfulSyncTimestamp)),"w") as f:
                     f.write('sync cleanup:')
@@ -528,8 +539,13 @@ class SartopoSession():
                 params["id"]=self.id
                 params["expires"]=expires
                 params["signature"]=token
+                paramsPrint=copy.deepcopy(params)
+                paramsPrint['id']='.....'
+                paramsPrint['signature']='.....'
+            else:
+                paramsPrint=params
             # logging.info("SENDING POST to '"+url+"':")
-            logging.info(json.dumps(params,indent=3))
+            logging.info(json.dumps(paramsPrint,indent=3))
             r=self.s.post(url,data=params,timeout=timeout)
         elif type=="get": # no need for json in GET; sending null JSON causes downstream error
 #             logging.info("SENDING GET to '"+url+"':")
@@ -547,11 +563,16 @@ class SartopoSession():
                 params["id"]=self.id
                 params["expires"]=expires
                 params["signature"]=token
+                paramsPrint=copy.deepcopy(params)
+                paramsPrint['id']='.....'
+                paramsPrint['signature']='.....'
+            else:
+                paramsPrint=params
             # logging.info("SENDING DELETE to '"+url+"':")
-            logging.info(json.dumps(params,indent=3))
+            logging.info(json.dumps(paramsPrint,indent=3))
             # logging.info("Key:"+str(self.key))
             r=self.s.delete(url,params=params,timeout=timeout)   ## use params for query vs data for body data
-            logging.info("URL:"+str(url))
+            # logging.info("URL:"+str(url))
             # logging.info("Ris:"+str(r))
         else:
             logging.error("sendRequest: Unrecognized request type:"+str(type))
@@ -1642,7 +1663,7 @@ class SartopoSession():
         else:
             logging.error('crop: boundary feature '+boundaryStr+' is not a polygon: '+boundaryType)
             return False
-        logging.info('crop: boundaryGeom:'+str(boundaryGeom))
+        # logging.info('crop: boundaryGeom:'+str(boundaryGeom))
 
         if not boundaryGeom.intersects(targetGeom):
             logging.error(targetShape['properties']['title']+','+boundaryShape['properties']['title']+': features do not intersect; no operation performed')

@@ -638,12 +638,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             time.sleep(0.25)
 
     def debriefButtonClicked(self):
-        if self.sts.apiVersion<0:
+        if not self.sts or self.sts.apiVersion<0:
             inform_user_about_issue('You must establish a link with the Incident Map first.')
         else:
             if not self.dmg:
                 self.dmg=DebriefMapGenerator(self,self.sts,self.debriefURL)
-            if self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
+            if self.dmg and self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
                 self.dmg.dd.show()
                 self.dmg.dd.raise_()
             else:

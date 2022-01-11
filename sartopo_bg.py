@@ -22,6 +22,7 @@ LINK_LIGHT_STYLES={
     -1:"background-color:#bb0000", # red - no link / link error
     0:"background-color:#aaaaaa", # gray - no link attempted
     1:"background-color:#009900", # medium green - good link
+    5:"background-color:#00dd00", # med-light green - sync heartbeat
     10:"background-color:#00ff00", # light green - good link, sync in progress
     100:"background-color:#00ffff" # cyan - data change in progress
 }
@@ -132,12 +133,6 @@ class DebriefMapGenerator():
         # is this being spawned from Plans Console?
         self.pc=self.parent.__class__.__name__=='PlansConsole'
         self.debriefURL=''
-
-
-
-        self.accountID='3MA660'
-
-
 
         # do not register the callbacks until after the initial processing; that way we
         #  can be sure to process existing assignments first
@@ -258,13 +253,16 @@ class DebriefMapGenerator():
             logging.critical('No source map.')
             return
 
+        if self.sts1:
+            self.sts1.syncCallback=self.syncCallback
+            
         if self.pc:
             self.dd.ui.incidentMapField.setText(self.parent.incidentURL)
 
         # self.sourceMapID=sourceMapID
         # self.targetMapID=targetMapID # must already be a saved map
         self.fileNameBase=self.sourceMapID+'_'+self.targetMapID
-        self.dmdFileName=self.fileNameBase+'.json'
+        self.dmdFileName='dmg_'+self.fileNameBase+'.json'
         # assignmentsFileName=fileNameBase+'_assignments.json'
 
         # different logging level for different modules:
@@ -344,6 +342,13 @@ class DebriefMapGenerator():
                 self.sts1.start()
 
         self.updateLinkLights()
+  
+        self.redrawFlag=True
+        self.syncBlinkFlag=False
+
+        self.mainTimer=QTimer()
+        self.mainTimer.timeout.connect(self.tick)
+        self.mainTimer.start(1000)
 
         # need to run this program in a loop - it's not a background/daemon process
         # while True:
@@ -365,22 +370,40 @@ class DebriefMapGenerator():
     def writeDmdFile(self):
         with open(self.dmdFileName,'w') as dmdFile:
             dmdFile.write(json.dumps(self.dmd,indent=3))
-        # populate the table
-        row=0
-        self.dd.ui.tableWidget.setSortingEnabled(False)
-        outings=self.dmd.get('outings',None)
-        self.dd.ui.tableWidget.setRowCount(len(outings))
-        for outingName in outings:
-            self.dd.ui.tableWidget.setItem(row,0,QTableWidgetItem(outingName))
-            self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['tids']))))
-            self.dd.ui.tableWidget.setItem(row,2,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['cids']))))
-            genPDFButton=QPushButton('Gen.\nPDF')
-            genPDFButton.clicked.connect(self.genPDFClicked)
-            self.dd.ui.tableWidget.setCellWidget(row,4,genPDFButton)
-            row+=1
-        self.dd.ui.tableWidget.viewport().update()
+        self.redrawFlag=True
+
+    def tick(self):
+        if self.redrawFlag:
+            logging.info('Debrief redraw was requested; redrawing the debrief table...')
+            row=0
+            self.dd.ui.tableWidget.setSortingEnabled(False)
+            outings=self.dmd.get('outings',None)
+            self.dd.ui.tableWidget.setRowCount(len(outings))
+            for outingName in outings:
+                self.dd.ui.tableWidget.setItem(row,0,QTableWidgetItem(outingName))
+                self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['tids']))))
+                self.dd.ui.tableWidget.setItem(row,2,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['cids']))))
+                genPDFButton=QPushButton('Gen.\nPDF')
+                genPDFButton.clicked.connect(self.genPDFClicked)
+                self.dd.ui.tableWidget.setCellWidget(row,4,genPDFButton)
+                row+=1
+            self.dd.ui.tableWidget.viewport().update()
+            self.dd.ui.tableWidget.setSortingEnabled(True)
+            self.redrawFlag=False
+        if self.syncBlinkFlag:
+            self.updateLinkLights(incidentLink=5)
+            QTimer.singleShot(500,self.updateLinkLights)
+            self.syncBlinkFlag=False
+
+    def syncCallback(self):
+        # this function is probably called from a sync thread:
+        #  can't create a timer or do some GUI operations from here, etc.
+        self.syncBlinkFlag=True
 
     def genPDFClicked(self,*args,**kwargs):
+        if not self.sts2.accountId:
+            inform_user_about_issue('AccountId was not defined; cannot generarte PDF.')
+            return
         row=self.dd.ui.tableWidget.currentRow()
         outingName=self.dd.ui.tableWidget.item(row,0).text()
         logging.info('Generate PDF button clicked for outing '+outingName)
@@ -470,7 +493,7 @@ class DebriefMapGenerator():
         }
 
         # url='https://sartopo.com/api/v1/acct/'+self.accountID+'/PDFLink'
-        id=self.sts2.sendRequest('post','api/v1/acct/'+self.accountID+'/PDFLink',payload,returnJson='ID')
+        id=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID')
         if id:
             logging.info(outingName+' : PDF generated : '+id+' - opening in new browser tab...')
             webbrowser.open_new_tab('https://sartopo.com/p/'+id)
@@ -883,6 +906,8 @@ class DebriefMapGenerator():
     #  folder: target title is identical to source title
     #  marker: 
     def newFeatureCallback(self,f):
+        # this function is probably called from a sync thread:
+        #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
         p=f['properties']
         c=p['class']
@@ -1024,6 +1049,8 @@ class DebriefMapGenerator():
     #        make no change on the target map.  If the number changes to another number on the source
     #        map, re-import and create a new pairing (folder and boundary) on the target map. 
     def propertyUpdateCallback(self,f):
+        # this function is probably called from a sync thread:
+        #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
         sid=f['id']
         sp=f['properties']
@@ -1145,6 +1172,8 @@ class DebriefMapGenerator():
             return False
 
     def geometryUpdateCallback(self,f):
+        # this function is probably called from a sync thread:
+        #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
         sid=f['id']
         sp=f['properties']
@@ -1214,6 +1243,8 @@ class DebriefMapGenerator():
         self.updateLinkLights() # set back to previous colors
 
     def deletedFeatureCallback(self,f):
+        # this function is probably called from a sync thread:
+        #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
         sid=f['id']
         logging.info('deletedFeatureCallback called for feature '+str(sid)+' :')
