@@ -202,52 +202,63 @@ class SartopoSession():
             raise STSException
         
     def setupSession(self):
-        if 'sartopo.com' in self.domainAndPort.lower():
-            id=None
-            key=None
-            # if configpath and account are specified,
-            #  conigpath must be the full pathname of a configparser-compliant
-            #  config file, and account must be the name of a section within it,
-            #  containing keys 'id' and 'key'.
-            # otherwise, those parameters must have been specified in this object's
-            #  constructor.
-            # if both are specified, first the config section is read and then
-            #  any parameters of this object are used to override the config file
-            #  values.
-            # if any of those three values are still not specified, abort.
-            if self.configpath is not None:
-                if os.path.isfile(self.configpath):
-                    if self.account is None:
-                        logging.error("config file '"+self.configpath+"' is specified, but no account name is specified.")
-                        return False
-                    config=configparser.ConfigParser()
-                    config.read(self.configpath)
-                    if self.account not in config.sections():
-                        logging.error("specified account '"+self.account+"' has no entry in config file '"+self.configpath+"'.")
-                        return False
-                    section=config[self.account]
-                    id=section.get("id",None)
-                    key=section.get("key",None)
-                    accountId=section.get("accountId",None)
-                    if id is None or key is None:
-                        logging.error("account entry '"+self.account+"' in config file '"+self.configpath+"' is not complete:\n  it must specify id and key.")
-                        return False
-                else:
-                    logging.error("specified config file '"+self.configpath+"' does not exist.")
+        # set a flag: is this an internet session?
+        #  if so, id and key are strictly required, and accountId is needed to print
+        #  if not, all three are only needed in order to print
+        internet=self.domainAndPort.lower() in ['sartopo.com','caltopo.com']
+        id=None
+        key=None
+        accountId=None
+        # if configpath and account are specified,
+        #  conigpath must be the full pathname of a configparser-compliant
+        #  config file, and account must be the name of a section within it,
+        #  containing keys 'id' and 'key'.
+        # otherwise, those parameters must have been specified in this object's
+        #  constructor.
+        # if both are specified, first the config section is read and then
+        #  any parameters of this object are used to override the config file
+        #  values.
+        # if any of those three values are still not specified, abort.
+        if self.configpath is not None:
+            if os.path.isfile(self.configpath):
+                if self.account is None:
+                    logging.error("config file '"+self.configpath+"' is specified, but no account name is specified.")
                     return False
+                config=configparser.ConfigParser()
+                config.read(self.configpath)
+                if self.account not in config.sections():
+                    logging.error("specified account '"+self.account+"' has no entry in config file '"+self.configpath+"'.")
+                    return False
+                section=config[self.account]
+                id=section.get("id",None)
+                key=section.get("key",None)
+                accountId=section.get("accountId",None)
+                if internet:
+                    if id is None or key is None:
+                        logging.error("account entry '"+self.account+"' in config file '"+self.configpath+"' is not complete:\n  it must specify 'id' and 'key'.")
+                        return False
+                    if accountId is None:
+                        logging.warning("account entry '"+self.account+"' in config file '"+self.configpath+"' does not specify 'accountId': you will not be able to print from this session.")
+                else:
+                    if id is None or key is None or accountId is None:
+                        logging.warning("account entry '"+self.account+"' in config file '"+self.configpath+"' is not complete:\n  it must specify 'id', 'key', and 'accountId' if you want to print from this session.")
+            else:
+                logging.error("specified config file '"+self.configpath+"' does not exist.")
+                return False
 
-            # now allow values specified in constructor to override config file values
-            if self.id is not None:
-                id=self.id
-            if self.key is not None:
-                key=self.key
-            if self.accountId is not None:
-                accountId=self.accountId
-            # finally, save them back as parameters of this object
-            self.id=id
-            self.key=key
-            self.accountId=accountId
+        # now allow values specified in constructor to override config file values
+        if self.id is not None:
+            id=self.id
+        if self.key is not None:
+            key=self.key
+        if self.accountId is not None:
+            accountId=self.accountId
+        # finally, save them back as parameters of this object
+        self.id=id
+        self.key=key
+        self.accountId=accountId
 
+        if internet:
             if self.id is None:
                 logging.error("sartopo session is invalid: 'id' must be specified for online maps")
                 return False
@@ -502,7 +513,7 @@ class SartopoSession():
             if self.sync: # don't bother with the sleep if sync is no longer True
                 time.sleep(self.syncInterval)
 
-    def sendRequest(self,type,apiUrlEnd,j,id="",returnJson=None,timeout=None):
+    def sendRequest(self,type,apiUrlEnd,j,id="",returnJson=None,timeout=None,domainAndPort=None):
         timeout=timeout or self.syncTimeout
         if self.apiVersion<0:
             logging.error("sendRequest: sartopo session is invalid; request aborted: type="+str(type)+" apiUrlEnd="+str(apiUrlEnd))
@@ -522,14 +533,23 @@ class SartopoSession():
             apiUrlEnd=apiUrlEnd+"/"+id
         mid=mid.replace("[MAPID]",self.mapID)
         apiUrlEnd=apiUrlEnd.replace("[MAPID]",self.mapID)
-        url="http://"+self.domainAndPort+mid+apiUrlEnd
+        domainAndPort=domainAndPort or self.domainAndPort # use arg value if specified
+        prefix='http://'
+        # set a flag: is this an internet request?
+        internet=domainAndPort.lower() in ['sartopo.com','caltopo.com']
+        if internet:
+            prefix='https://'
+            if not self.key or not self.id:
+                logging.error("There was an attempt to send an internet request, but 'id' and/or 'key' was not specified for this session.  The request will not be sent.")
+                return False
+        url=prefix+domainAndPort+mid+apiUrlEnd
         if '/since/' not in url:
             logging.info("sending "+str(type)+" to "+url)
         self.syncPause=True
         if type=="post":
             params={}
             params["json"]=json.dumps(j)
-            if "sartopo.com" in self.domainAndPort.lower():
+            if internet:
                 expires=int(time.time()*1000)+120000 # 2 minutes from current time, in milliseconds
                 data="POST "+mid+apiUrlEnd+"\n"+str(expires)+"\n"+json.dumps(j)
                 # logging.info("pre-hashed data:"+data)                
@@ -589,7 +609,7 @@ class SartopoSession():
             try:
                 rj=r.json()
             except:
-                logging.error("sendRequest: response had no decodable json")
+                logging.error("sendRequest: response had no decodable json:"+str(r))
                 self.syncPause=False
                 return False
             else:

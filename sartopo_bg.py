@@ -401,8 +401,14 @@ class DebriefMapGenerator():
         self.syncBlinkFlag=True
 
     def genPDFClicked(self,*args,**kwargs):
+        if not self.sts2.id:
+            inform_user_about_issue("'id' is not defined for the debrief map session; cannot generarte PDF.'")
+            return
+        if not self.sts2.key:
+            inform_user_about_issue("'key' is not defined for the debrief map session; cannot generarte PDF.'")
+            return
         if not self.sts2.accountId:
-            inform_user_about_issue('AccountId was not defined; cannot generarte PDF.')
+            inform_user_about_issue("'accountId' is not defined for the debrief map session; cannot generarte PDF.'")
             return
         row=self.dd.ui.tableWidget.currentRow()
         outingName=self.dd.ui.tableWidget.item(row,0).text()
@@ -481,7 +487,7 @@ class DebriefMapGenerator():
                 'markupSize':1,
                 'datum':'WGS84',
                 'dpi':200,
-                'title':outingName,
+                'title':outingName+'   '+time.strftime("%H:%M %m/%d/%Y"),
                 'qrcode':None,
                 'expires':expires,
                 'pages':[{
@@ -493,7 +499,8 @@ class DebriefMapGenerator():
         }
 
         # url='https://sartopo.com/api/v1/acct/'+self.accountID+'/PDFLink'
-        id=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID')
+        # send print request to sartopo.com, even if sts2 is local
+        id=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID',domainAndPort='sartopo.com')
         if id:
             logging.info(outingName+' : PDF generated : '+id+' - opening in new browser tab...')
             webbrowser.open_new_tab('https://sartopo.com/p/'+id)
