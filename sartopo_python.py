@@ -1833,3 +1833,23 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
+
+# handle uncaught exceptions at the top level or in a thread;
+#  deal with the fact that sys.excepthook and threading.excepthook use different arguments
+#   sys.excepthook wants a 3-tuple; threading.excepthook wants an instance of
+#   _thread._ExceptHookArgs, which provides a 4-namedtuple
+def handle_exception(*args):
+    if len(args)==1:
+        a=args[0]
+        [exc_type,exc_value,exc_traceback,thread]=[a.exc_type,a.exc_value,a.exc_traceback,a.thread]
+    else:
+        [exc_type,exc_value,exc_traceback]=args
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    prefix='Uncaught exception:' # not in a thread
+    if thread and thread.__class__.__name__=='Thread':
+        prefix='Uncaught exception in '+thread.name+':' # in a thread
+    logging.critical(prefix, exc_info=(exc_type, exc_value, exc_traceback))
+sys.excepthook = handle_exception
+threading.excepthook = handle_exception
