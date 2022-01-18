@@ -439,6 +439,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
+        logging.info('addMarker folders:'+str(folders))
         fid=False
         for folder in folders:
             if folder["properties"]["title"]=="aTEAMS":
@@ -460,7 +461,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
                                 self.curAssign,clr,markr,None,self.folderId)
         ## also add team number to assignment
-        rval2=self.sts.editObject(className='Assignment',letter=self.curAssign,properties={'number':self.curTeam})
+        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':self.curTeam})
         logging.info("RVAL rtn:",rval,rval2)
     
     def delMarker(self):
@@ -479,7 +480,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         self.feature2['properties'].get('title') == self.curTeam: # both folder and Team match
                             logging.info("Marker ID:"+self.feature2['id']+" of team: "+self.curTeam)
                             rval3 = self.sts.delMarker(self.feature2['id'])
-                            rval2=self.sts.editObject(className='Assignment',letter=self.curAssign, \
+                            rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign, \
                                                 properties={'number':" "})
                             logging.info("RTN of Delete:"+str(rval3),rval2)
                             break
@@ -524,7 +525,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             else:
                 logging.info("no return data, i.e. no new features of this class since the last check")
         else:
-            logging.info("No map link has been established yet.  Could not get Folder objects.")
+            logging.info("No map link has been established yet.  Could not get Folder features.")
             self.featureListDict[featureClass]=[]
             self.since[featureClass]=0
             items=[]
@@ -613,20 +614,20 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def tmAsOkButtonClicked(self):
         op=self.ui.geomOpButtonGroup.checkedButton().text()
-        selObj=self.ui.selObj.text()
-        editObj=self.ui.editor.text()
-        logging.info("%s shape %s with object %s"%(op,selObj,editObj))
+        selFeature=self.ui.selFeature.text()
+        editorFeature=self.ui.editorFeature.text()
+        logging.info("%s shape %s with feature %s"%(op,selFeature,editorFeature))
         ## check that the shapes exist; otherwise BEEP
         if op=='Cut':
-            if not self.sts.cut(selObj,editObj):
+            if not self.sts.cut(selFeature,editorFeature):
                self.BEEP()
                return
         elif op=='Expand':
-            if not self.sts.expand(selObj,editObj):
+            if not self.sts.expand(selFeature,editorFeature):
                self.BEEP()
                return
         elif op=='Crop':    
-            if not self.sts.crop(selObj,editObj):
+            if not self.sts.crop(selFeature,editorFeature):
                self.BEEP()
                return
         else:

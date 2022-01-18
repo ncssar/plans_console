@@ -120,7 +120,7 @@ QComboBox:{
         </widget>
        </item>
        <item>
-        <layout class="QHBoxLayout" name="TmAsAddHorizLayout" stretch="2,2,4,1,1">
+        <layout class="QHBoxLayout" name="TmAsAddHorizLayout" stretch="2,2,2,1,1">
          <item>
           <layout class="QVBoxLayout" name="teamVertLayout">
            <item>
@@ -136,7 +136,13 @@ QComboBox:{
             </widget>
            </item>
            <item>
-            <widget class="QLineEdit" name="Team"/>
+            <widget class="QLineEdit" name="Team">
+             <property name="font">
+              <font>
+               <pointsize>11</pointsize>
+              </font>
+             </property>
+            </widget>
            </item>
           </layout>
          </item>
@@ -155,7 +161,13 @@ QComboBox:{
             </widget>
            </item>
            <item>
-            <widget class="QLineEdit" name="Assign"/>
+            <widget class="QLineEdit" name="Assign">
+             <property name="font">
+              <font>
+               <pointsize>11</pointsize>
+              </font>
+             </property>
+            </widget>
            </item>
           </layout>
          </item>
@@ -264,20 +276,20 @@ QComboBox:{
          <item>
           <widget class="QPushButton" name="OKbut">
            <property name="sizePolicy">
-            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
              <horstretch>0</horstretch>
              <verstretch>0</verstretch>
             </sizepolicy>
            </property>
            <property name="minimumSize">
             <size>
-             <width>30</width>
+             <width>35</width>
              <height>0</height>
             </size>
            </property>
            <property name="font">
             <font>
-             <pointsize>12</pointsize>
+             <pointsize>14</pointsize>
             </font>
            </property>
            <property name="text">
@@ -542,21 +554,24 @@ QComboBox:{
              </layout>
             </item>
             <item>
-             <layout class="QHBoxLayout" name="geomFeatureHorizLayout">
+             <layout class="QHBoxLayout" name="geomFeatureHorizLayout" stretch="2,2,1">
+              <property name="sizeConstraint">
+               <enum>QLayout::SetDefaultConstraint</enum>
+              </property>
               <item>
-               <widget class="QLineEdit" name="selObj">
+               <widget class="QLineEdit" name="selFeature">
                 <property name="font">
                  <font>
                   <pointsize>12</pointsize>
                  </font>
                 </property>
                 <property name="text">
-                 <string>selObj</string>
+                 <string>selFeature</string>
                 </property>
                </widget>
               </item>
               <item>
-               <widget class="QLineEdit" name="editor">
+               <widget class="QLineEdit" name="editorFeature">
                 <property name="font">
                  <font>
                   <pointsize>12</pointsize>
@@ -569,6 +584,17 @@ QComboBox:{
               </item>
               <item>
                <widget class="QPushButton" name="doOper">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="font">
+                 <font>
+                  <pointsize>12</pointsize>
+                 </font>
+                </property>
                 <property name="text">
                  <string>Go</string>
                 </property>
