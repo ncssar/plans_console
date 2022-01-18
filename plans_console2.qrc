@@ -1,5 +1,9 @@
 <RCC>
   <qresource prefix="plans_console">
+    <file>generate_pdf_done.png</file>
+    <file>options_icon.png</file>
+    <file>generate_pdf_gen.png</file>
+    <file>generate_pdf_regen.png</file>
     <file>reload-icon.png</file>
   </qresource>
 </RCC>

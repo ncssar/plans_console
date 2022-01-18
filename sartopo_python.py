@@ -418,21 +418,28 @@ class SartopoSession():
                         if self.newFeatureCallback:
                             self.newFeatureCallback(f)
 
-            # 3 - cleanup - ids will be part of the response whenever feature(s) were added or deleted
+            # 3 - cleanup - remove features from the cache whose ids are no longer in cached id list
+            #  (ids will be part of the response whenever feature(s) were added or deleted)
             self.mapIDs=sum(self.mapData['ids'].values(),[])
             mapSFIDs=[f['id'] for f in self.mapData['state']['features']]
+            # edit the cache directly: https://stackoverflow.com/a/1157174/3577105
+            l1=len(self.mapData['state']['features'])
+            self.mapData['state']['features'][:]=(f for f in self.mapData['state']['features'] if f['id'] in self.mapIDs)
+            l2=len(self.mapData['state']['features'])
+            if l2!=l1:
+                logging.info('cleaned up '+str(l1-l2)+' feature(s) from the cache')
 
             # logging.info('mapData:\n'+json.dumps(self.mapData,indent=3))
-            # logging.info('\nself.mapIDs:'+str(self.mapIDs))
-            # logging.info('\n   mapSFIDs:'+str(mapSFIDs))
-            for i in range(len(mapSFIDs)):
-                if mapSFIDs[i] not in self.mapIDs:
-                    prop=self.mapData['state']['features'][i]['properties']
-                    logging.info('  Deleting '+str(prop['class'])+':'+str(prop['title']))
-                    # logging.info('     [ id='+mapSFIDs[i]+' ]')
-                    if self.deletedFeatureCallback:
-                        self.deletedFeatureCallback(self.mapData['state']['features'][i])
-                    del self.mapData['state']['features'][i]
+            # logging.info('\n'+self.mapID+':\n  mapIDs:'+str(self.mapIDs)+'\nmapSFIDs:'+str(mapSFIDs))
+
+            # bug: i is defined as an index into mapSFIDs but is used as an index into self.mapData['state']['features']:
+            # # for i in range(len(mapSFIDs)):
+            # #     if mapSFIDs[i] not in self.mapIDs:
+            # #         prop=self.mapData['state']['features'][i]['properties']
+            # #         logging.info('  Deleting '+mapSFIDs[i]+':'+str(prop['class'])+':'+str(prop['title']))
+            # #         if self.deletedFeatureCallback:
+            # #             self.deletedFeatureCallback(self.mapData['state']['features'][i])
+            # #         del self.mapData['state']['features'][i]
 
             if self.syncDumpFile:
                 with open(self.insertBeforeExt(self.syncDumpFile,'.cache'+str(self.lastSuccessfulSyncTimestamp)),"w") as f:
@@ -506,9 +513,19 @@ class SartopoSession():
     #  and it allows the blocking sleep call to happen here instead of inside doSync.
     def _syncLoop(self):
         while self.sync:
+            self.syncPauseMessageGiven=False
             while self.syncPause:
-                logging.info('  sync is paused - sleeping for one second')
+                if not threading.main_thread().is_alive():
+                    logging.info('Main thread has ended; sync is stopping...')
+                    self.syncPause=False
+                    self.sync=False
+                if not self.syncPauseMessageGiven:
+                    logging.info(self.mapID+': sync pause begins; sync will not happen until sync pause ends')
+                    self.syncPauseMessageGiven=True
                 time.sleep(1)
+            if self.syncPauseMessageGiven:
+                logging.info(self.mapID+': sync pause ends; resuming sync')
+                self.syncPauseMessageGiven=False
             self.doSync()
             if self.sync: # don't bother with the sleep if sync is no longer True
                 time.sleep(self.syncInterval)
@@ -1570,8 +1587,10 @@ class SartopoSession():
         # return the Shapely object(s)
         if len(outLines)>1:
             rval=MultiLineString(outLines)
-        else:
+        elif len(outLines)==1:
             rval=LineString(outLines[0])
+        else:
+            rval=None
         return rval
 
 
@@ -1627,7 +1646,7 @@ class SartopoSession():
     # crop - remove portions of a line or polygon that are outside a boundary polygon;
     #          grow the specified boundary polygon by the specified distance before cropping
 
-    def crop(self,target,boundary,beyond=0.0001,deleteBoundary=False):
+    def crop(self,target,boundary,beyond=0.0001,deleteBoundary=False,useResultNameSuffix=False):
         if isinstance(target,str): # if string, find feature by name; if id, find feature by id
             targetStr=target
             if len(target)==36: # id
@@ -1720,8 +1739,11 @@ class SartopoSession():
             for r in result[1:]:
                 suffix+=1
                 if tc=='Shape':
+                    title=tp['title']
+                    if useResultNameSuffix:
+                        title=title+':'+str(suffix)
                     rids.append(self.addPolygon(list(r.exterior.coords),
-                        title=tp['title']+':'+str(suffix),
+                        title=title,
                         stroke=tp['stroke'],
                         fill=tp['fill'],
                         strokeOpacity=tp['stroke-opacity'],
@@ -1731,9 +1753,12 @@ class SartopoSession():
                         folderId=tfid,
                         gpstype=tp['gpstype']))
                 elif tc=='Assignment':
+                    letter=tp['letter']
+                    if useResultNameSuffix:
+                        letter=letter+':'+str(suffix)
                     rids.append(self.addAreaAssignment(list(r.exterior.coords),
                         number=tp['number'],
-                        letter=tp['letter']+':'+str(suffix),
+                        letter=letter,
                         opId=tp.get('operationalPeriodId',None),
                         folderId=tp.get('folderId',None),
                         resourceType=tp['resourceType'],
@@ -1767,8 +1792,11 @@ class SartopoSession():
             for r in result[1:]:
                 suffix+=1
                 if tc=='Shape':
+                    title=tp['title']
+                    if useResultNameSuffix:
+                        title=title+':'+str(suffix)
                     rids.append(self.addLine(list(r.coords),
-                        title=tp['title']+':'+str(suffix),
+                        title=title,
                         color=tp['stroke'],
                         opacity=tp['stroke-opacity'],
                         width=tp['stroke-width'],
@@ -1777,9 +1805,12 @@ class SartopoSession():
                         folderId=tfid,
                         gpstype=tp['gpstype']))
                 elif tc=='Assignment':
+                    letter=tp['letter']
+                    if useResultNameSuffix:
+                        letter=letter+':'+str(suffix)
                     rids.append(self.addLineAssignment(list(r.coords),
                         number=tp['number'],
-                        letter=tp['letter']+':'+str(suffix),
+                        letter=letter,
                         opId=tp.get('operationalPeriodId',None),
                         folderId=tp.get('folderId',None),
                         resourceType=tp['resourceType'],
