@@ -528,7 +528,7 @@ class DebriefMapGenerator():
     # assignments={} # assignments dictionary
     # assignments_init={} # pre-filtered assignments dictionary (read from file on startup)
 
-
+    # slot (handler) including confirmation dialog for rebuild-all happens inside the options dialog class
     def rebuildClicked(self,*args,**kwargs):
         row=self.dd.ui.tableWidget.currentRow()
         outingName=self.dd.ui.tableWidget.item(row,0).text()
@@ -543,18 +543,23 @@ class DebriefMapGenerator():
     def rebuild(self,outingNameOrAll):
         if outingNameOrAll==':ALL:':
             logging.info('inside rebuild: about to rebuild the entire debrief map')
+            outingsToDelete=list(self.dmd['outings'].keys()) # wrapped in list() so it doesn't change as dmd changes
         else:
+            outingsToDelete=[outingNameOrAll]
+        self.sts1.syncPause=True
+        for outingName in outingsToDelete:
             # steps needed to rebuild one outing:
             # 1. delete related features from the debrief map
             # 2. delete related entries from dmd['corr']
             # 3. delete entire outing sub-dictionary, dmd['outings'][<outingName>]
-            outingName=outingNameOrAll
-            logging.info('inside rebuild: about to rebuild outing "'+outingName+'"')
             # pause sync until the entire rebuild is done
-            self.sts1.syncPause=True
+            logging.info('inside rebuild: about to rebuild outing "'+outingName+'"')
             o=self.dmd['outings'][outingName]
+            logging.info(json.dumps(o,indent=3))
             shapes=[o['bid']] # boundary / begin the delete list
-            shapes+=[s for t in o['tids'] for s in t] # cropped track segments
+            for tidlist in o['tids']:
+                if isinstance(tidlist,list):
+                    shapes+=tidlist
             shapes+=o['utids'] # uncropped tracks
             markers=o['cids'] # clues
             folders=[o['fid']] # folders - should never be more than one; this is to provide one flat feature list
@@ -583,11 +588,20 @@ class DebriefMapGenerator():
             # inform_user_about_issue('pause...')
             # self.sts2.doSync()
             # inform_user_about_issue('pause...')
-            # 4. call newFeatureCallback on all features in the source map
-            for f in self.sts1.mapData['state']['features']:
-                self.newFeatureCallback(f)
+        #3b - for entire map rebuild, also delete any remaining features and their corr entries
+        if outingNameOrAll==':ALL:':
+            for sid in self.dmd['corr'].keys():
+                for tid in self.dmd['corr'][sid]:
+                    f=self.sts2.getFeature(id=tid)
+                    if f: # if f is False, the feature was probably deleted by hand from the debrief map
+                        tc=f['properties']['class']
+                        self.sts2.delFeature(tc,tid)
+            self.dmd['corr']={}
+        # 4. call newFeatureCallback on all features in the source map
+        for f in self.sts1.mapData['state']['features']:
+            self.newFeatureCallback(f)
                 # inform_user_about_issue('pause...')
-            self.sts1.syncPause=False
+        self.sts1.syncPause=False
 
     # fids={} # folder IDs
 
@@ -1432,7 +1446,7 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
 
     def rebuildAllButtonClicked(self,*args,**kwargs):
         confirm=QMessageBox(QMessageBox.Warning,'Rebuild All?',
-                'Are you sure you want to rebuild the entire debrief map?\n\nAll features on the debrief map will be deleted, causing the entire debrief map to be rebuilt on the following sync cycle.\n\nFor large maps, this will cause a lot of network traffic and may slow everything else down while the rebuild is in progress.',
+                'Are you sure you want to rebuild the entire debrief map?\n\nAny work you did by hand on the debrief map will be lost.\n\nAll features on the debrief map will be deleted, causing the entire debrief map to be rebuilt on the following sync cycle.\n\nFor large maps, this will cause a lot of network traffic and may slow everything else down while the rebuild is in progress.',
                 QMessageBox.Yes|QMessageBox.Cancel)
         r=confirm.exec()
         if r==QMessageBox.Yes:
