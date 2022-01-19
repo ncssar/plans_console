@@ -541,12 +541,31 @@ class DebriefMapGenerator():
             self.rebuild(outingName)
 
     def rebuild(self,outingNameOrAll):
+        progressBox=QProgressDialog("Rebuilding, please wait...","Abort",0,100)
+        # progressBox.setWindowModality(Qt.WindowModal)
+        progressBox.setWindowTitle("Rebuilding")
+        progressBox.show()
+        progressBox.raise_()
+        QCoreApplication.processEvents()
+        # progressBox maximum = total number of ids to delete plus total number of incident map features
+        self.sts1.syncPause=True
         if outingNameOrAll==':ALL:':
             logging.info('inside rebuild: about to rebuild the entire debrief map')
             outingsToDelete=list(self.dmd['outings'].keys()) # wrapped in list() so it doesn't change as dmd changes
+            tidCount=0
+            for sid in self.dmd['corr']:
+                tidCount+=len(self.dmd['corr'][sid])
+            progressBox.setMaximum(tidCount+len(self.sts1.mapData['state']['features']))
         else:
             outingsToDelete=[outingNameOrAll]
-        self.sts1.syncPause=True
+            tidCount=2 # bid, fid; other item counts must be calculated
+            o=self.dmd['outings'][outingNameOrAll]
+            for tidlist in o['tids']:
+                tidCount+=len(tidlist)
+            tidCount+=len(o['utids'])
+            tidCount+=len(o['cids'])
+            progressBox.setMaximum(tidCount+len(self.sts1.mapData['state']['features']))
+        progress=0
         for outingName in outingsToDelete:
             # steps needed to rebuild one outing:
             # 1. delete related features from the debrief map
@@ -567,10 +586,16 @@ class DebriefMapGenerator():
             # logging.info('features that would be deleted:'+str(shapes+markers+folders))
             for shape in shapes:
                 self.sts2.delFeature('Shape',shape)
+                progress+=1
+                progressBox.setValue(progress)
             for marker in markers: # clues
                 self.sts2.delFeature('Marker',marker)
+                progress+=1
+                progressBox.setValue(progress)
             for folder in folders: # folder
                 self.sts2.delFeature('Folder',folder)
+                progress+=1
+                progressBox.setValue(progress)
             # 2. remove entries for self.dmd['corr']
             keysToDelete=[]
             for sid in self.dmd['corr'].keys():
@@ -588,7 +613,7 @@ class DebriefMapGenerator():
             # inform_user_about_issue('pause...')
             # self.sts2.doSync()
             # inform_user_about_issue('pause...')
-        #3b - for entire map rebuild, also delete any remaining features and their corr entries
+        #3b. for entire map rebuild, also delete any remaining features and their corr entries
         if outingNameOrAll==':ALL:':
             for sid in self.dmd['corr'].keys():
                 for tid in self.dmd['corr'][sid]:
@@ -596,12 +621,18 @@ class DebriefMapGenerator():
                     if f: # if f is False, the feature was probably deleted by hand from the debrief map
                         tc=f['properties']['class']
                         self.sts2.delFeature(tc,tid)
+                    progress+=1
+                    progressBox.setValue(progress)
             self.dmd['corr']={}
         # 4. call newFeatureCallback on all features in the source map
         for f in self.sts1.mapData['state']['features']:
             self.newFeatureCallback(f)
+            progress+=1
+            progressBox.setValue(progress)
                 # inform_user_about_issue('pause...')
         self.sts1.syncPause=False
+        progressBox.close()
+        inform_user_about_issue('Rebuild complete.',QMessageBox.Information,title='Success',timeout=2500)
 
     # fids={} # folder IDs
 
@@ -1451,6 +1482,7 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
         r=confirm.exec()
         if r==QMessageBox.Yes:
             logging.info('Full debrief map rebuild requested...')
+            self.close()
             self.parent.rebuild(':ALL:')
 
 
