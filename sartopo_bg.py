@@ -28,6 +28,16 @@ LINK_LIGHT_STYLES={
     100:"background-color:#00ffff" # cyan - data change in progress
 }
 
+BASEMAP_REGEX={
+    'mapbuilder topo':'mbt',
+    'mapbuilder hybrid':'mbh',
+    'scanned topo':'t',
+    'forest service.*2016.*green':'f16a',
+    'forest service.*2016.*white':'f16',
+    'forest service.*2013':'f',
+    'naip':'n'
+}
+
 # This class defines the dialog structure.
 # How should the content be updated?  Options:
 # - pushed from code that imports and instantiates this dialog:
@@ -127,6 +137,12 @@ def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.C
         QTimer.singleShot(timeout,box.close)
     box.exec_()
 
+# from https://stackoverflow.com/a/10995203/3577105
+def dictHasAllKeys(d,klist):
+    if not isinstance(d,dict) or not isinstance(klist,list):
+        logging.error('dictHasKeys: first arg must be dict; second arg must be list')
+        return False
+    return all(key in d for key in klist)
 
 class DebriefMapGenerator():
     def __init__(self,parent,sourceMap,targetMap):
@@ -161,7 +177,7 @@ class DebriefMapGenerator():
         self.dd=DebriefDialog()
 
         self.debriefOptionsDialog=DebriefOptionsDialog(self)
-        self.dd.ui.debriefOptionsButton.clicked.connect(self.debriefOptionsDialog.show)
+        self.dd.ui.debriefOptionsButton.clicked.connect(self.debriefOptionsButtonClicked)
 
         # determine / create SartopoSession objects
         #  process the target session first, since nocb definition checks for it
@@ -291,6 +307,7 @@ class DebriefMapGenerator():
         self.dmd={} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
         self.dmd['outings']={}
         self.dmd['corr']={}
+        self.writeDmdPause=False
 
         # self.pdfStatus={}
 
@@ -374,9 +391,10 @@ class DebriefMapGenerator():
                 self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[debriefLink])
 
     def writeDmdFile(self):
-        with open(self.dmdFileName,'w') as dmdFile:
-            dmdFile.write(json.dumps(self.dmd,indent=3))
-        self.redrawFlag=True
+        if not self.writeDmdPause:
+            with open(self.dmdFileName,'w') as dmdFile:
+                dmdFile.write(json.dumps(self.dmd,indent=3))
+            self.redrawFlag=True
 
     def tick(self):
         if self.redrawFlag:
@@ -389,11 +407,7 @@ class DebriefMapGenerator():
                 self.dd.ui.tableWidget.setItem(row,0,QTableWidgetItem(outingName))
                 self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['tids']))))
                 self.dd.ui.tableWidget.setItem(row,2,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['cids']))))
-                genPDFButton=QPushButton(self.dd.ui.generatePDFIcon,'')
-                genPDFButton.setIconSize(QSize(genPDFButton.width(),18))
-                # genPDFButton.icon().setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Preferred)
-                genPDFButton.clicked.connect(self.genPDFClicked)
-                self.dd.ui.tableWidget.setCellWidget(row,4,genPDFButton)
+                self.setPDFButton(row,'gen')
                 rebuildButton=QPushButton(self.dd.ui.rebuildIcon,'')
                 rebuildButton.clicked.connect(self.rebuildClicked)
                 self.dd.ui.tableWidget.setCellWidget(row,5,rebuildButton)
@@ -406,16 +420,32 @@ class DebriefMapGenerator():
             QTimer.singleShot(500,self.updateLinkLights)
             self.syncBlinkFlag=False
 
+    def setPDFButton(self,row,state):
+        if state=='gen':
+            icon=self.dd.ui.generatePDFIcon
+            slot=self.PDFGenClicked
+        elif state=='done':
+            icon=self.dd.ui.generatePDFDoneIcon
+            slot=self.PDFDoneClicked
+        elif state=='old':
+            icon=self.dd.ui.generatePDFRegenIcon
+            slot=self.PDFRegenClicked
+        button=QPushButton(icon,'')
+        button.setIconSize(QSize(button.width(),18))
+        # genPDFButton.icon().setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Preferred)
+        button.clicked.connect(slot)
+        self.dd.ui.tableWidget.setCellWidget(row,4,button)
+
     def syncCallback(self):
         # this function is probably called from a sync thread:
         #  can't create a timer or do some GUI operations from here, etc.
         self.syncBlinkFlag=True
 
-    def optionsButtonClicked(self,*args,**kwargs):
+    def debriefOptionsButtonClicked(self,*args,**kwargs):
         self.debriefOptionsDialog.show()
         self.debriefOptionsDialog.raise_()
         
-    def genPDFClicked(self,*args,**kwargs):
+    def PDFGenClicked(self,*args,**kwargs):
         if not self.sts2.id:
             inform_user_about_issue("'id' is not defined for the debrief map session; cannot generarte PDF.'")
             return
@@ -491,14 +521,32 @@ class DebriefMapGenerator():
         tsNow=int(datetime.now().timestamp()*1000)
         timeText=time.strftime("%H:%M %m/%d/%Y")
         expires=tsNow+(7*24*60*60*1000)
+
+        # process PDF options
+        layerString='t' # default
+        layerSelection=self.debriefOptionsDialog.ui.layerComboBox.currentText()
+        for key in BASEMAP_REGEX.keys():
+            if re.match(key,layerSelection,re.IGNORECASE):
+                layerString=BASEMAP_REGEX[key]
+                break
+        if self.debriefOptionsDialog.ui.contoursCheckbox.isChecked():
+            layerString+=',c'
+        if self.debriefOptionsDialog.ui.slopeShadingCheckbox.isChecked():
+            layerString+=',sf'
+        if self.debriefOptionsDialog.ui.mapBuilderOverlayCheckbox.isChecked():
+            layerString+=',mba'
+        logging.info('printing with layerstring='+str(layerString))
+        grids=[]
+        if self.debriefOptionsDialog.ui.utmGridCheckbox.isChecked():
+            grids=['utm']
         payload={
             'properties':{
                 'mapState':{
                     'type':'FeatureCollection',
                     'features':features
                 },
-                'layer':'t',
-                'grids':['utm'],
+                'layer':layerString,
+                'grids':grids,
                 'showOverview':False,
                 'markupSize':1,
                 'datum':'WGS84',
@@ -516,14 +564,34 @@ class DebriefMapGenerator():
 
         # url='https://sartopo.com/api/v1/acct/'+self.accountID+'/PDFLink'
         # send print request to sartopo.com, even if sts2 is local
-        id=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID',domainAndPort='sartopo.com')
-        if id:
-            logging.info(outingName+' : PDF generated : '+id+' - opening in new browser tab...')
-            webbrowser.open_new_tab('https://sartopo.com/p/'+id)
-            # self.pdfStatus[outing]=timeText
-            genPDFDoneButton=QPushButton(self.dd.ui.generatePDFDoneIcon,'')
-            genPDFDoneButton.setIconSize(QSize(genPDFDoneButton.width(),18))
-            self.dd.ui.tableWidget.setCellWidget(row,4,genPDFDoneButton)
+
+        r=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID',domainAndPort='sartopo.com')
+        if r:
+            if isinstance(r,str):
+                logging.info(outingName+' : PDF generated : '+r+' - opening in new browser tab...')
+                webbrowser.open_new_tab('https://sartopo.com/p/'+r)
+                # self.pdfStatus[outing]=timeText
+                self.setPDFButton(row,'done')
+            elif isinstance(r,dict) and dictHasAllKeys(r,['status','code','message']):
+                suffix=''
+                if 'account' in r['message'].lower():
+                    suffix='\n\nMake sure your accountId in '+str(self.sts2.configpath)+' is valid and up to date.'
+                inform_user_about_issue('Print request failed.  Response from server:\n\n'+str(r['code'])+':'+r['status']+'\n'+r['message']+suffix)
+            else:
+                inform_user_about_issue('Print request failed.  See the log file for details.')
+        else:
+            inform_user_about_issue('Print request failed.  See the log file for details.')
+
+
+
+
+    def PDFDoneClicked(self,*args,**kwargs):
+        self.PDFGenClicked(*args,**kwargs)
+
+    def PDFRegenClicked(self,*args,**kwargs):
+        self.PDFGenClicked(*args,**kwargs)
+
+
 
     # assignments={} # assignments dictionary
     # assignments_init={} # pre-filtered assignments dictionary (read from file on startup)
@@ -549,6 +617,7 @@ class DebriefMapGenerator():
         QCoreApplication.processEvents()
         # progressBox maximum = total number of ids to delete plus total number of incident map features
         self.sts1.syncPause=True
+        self.writeDmdPause=True
         if outingNameOrAll==':ALL:':
             logging.info('inside rebuild: about to rebuild the entire debrief map')
             outingsToDelete=list(self.dmd['outings'].keys()) # wrapped in list() so it doesn't change as dmd changes
@@ -631,8 +700,16 @@ class DebriefMapGenerator():
             progressBox.setValue(progress)
                 # inform_user_about_issue('pause...')
         self.sts1.syncPause=False
+        self.writeDmdPause=False
+        self.writeDmdFile()
         progressBox.close()
+        logging.info('rebuild complete')
         inform_user_about_issue('Rebuild complete.',QMessageBox.Information,title='Success',timeout=2500)
+        if outingNameOrAll==':ALL:':
+            for n in range(self.dd.ui.tableWidget.rowCount()):                
+                self.setPDFButton(n,'gen')
+        else:
+            self.setPDFButton(self.dd.ui.tableWidget.currentRow(),'gen')
 
     # fids={} # folder IDs
 
@@ -1098,7 +1175,7 @@ class DebriefMapGenerator():
             logging.info(' no correspondence entry found; adding the feature to the target map')
 
         if c=='Assignment':
-            a=self.addOuting(f)
+            self.addOuting(f)
 
         # new assignment:
         # 1. add a folder with name = assignment title (include the team# - we want one folder per pairing)
@@ -1421,7 +1498,7 @@ class DebriefMapGenerator():
             cval=self.dmd['corr'][sid]
             for tid in cval:
                 logging.info('deleting corresponding target map feature '+tid)
-                self.sts2.delFeature(f['properties']['class'],existingId=tid)
+                self.sts2.delFeature(f['properties']['class'],tid)
             del self.dmd['corr'][sid] # not currently iterating, so, del should be fine
             self.writeDmdFile()
         else:
@@ -1474,6 +1551,26 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
         self.ui=Ui_DebriefOptionsDialog()
         self.ui.setupUi(self)
         self.ui.rebuildAllButton.clicked.connect(self.rebuildAllButtonClicked)
+        self.onLayerComboChange()
+
+    def onLayerComboChange(self,*args,**kwargs):
+        text=self.ui.layerComboBox.currentText()
+        # only allow contours checkbox when NAIP imagery is selected; if so,
+        #  check contours by default but let the user uncheck
+        if 'naip' in text.lower():
+            self.ui.contoursCheckbox.setChecked(True)
+            self.ui.contoursCheckbox.setEnabled(True)
+        else:
+            self.ui.contoursCheckbox.setChecked(False)
+            self.ui.contoursCheckbox.setEnabled(False)
+        # only allow MapBuilder Overlay if MapBuilder topo or hybrid is not selected;
+        #  check by default but let the user uncheck
+        if 'mapbuilder' in text.lower():
+            self.ui.mapBuilderOverlayCheckbox.setChecked(False)
+            self.ui.mapBuilderOverlayCheckbox.setEnabled(False)
+        else:
+            self.ui.mapBuilderOverlayCheckbox.setChecked(True)
+            self.ui.mapBuilderOverlayCheckbox.setEnabled(True)
 
     def rebuildAllButtonClicked(self,*args,**kwargs):
         confirm=QMessageBox(QMessageBox.Warning,'Rebuild All?',

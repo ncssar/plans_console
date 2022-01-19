@@ -630,7 +630,9 @@ class SartopoSession():
                 self.syncPause=False
                 return False
             else:
-                # logging.info('rj:'+str(rj))
+                if 'status' in rj and rj['status'].lower()!='ok':
+                    logging.error('response status other than "ok":  '+str(rj))
+                    return rj
                 if returnJson=="ID":
                     id=None
                     if 'result' in rj and 'id' in rj['result']:
@@ -996,8 +998,8 @@ class SartopoSession():
         #     logging.info("At request adding points to track:"+str(existingId)+":"+str(since)+":"+str(j))
         #     return self.sendRequest("post","since/"+str(since),j,id=str(existingId),returnJson="ID")
 
-    def delMarker(self,existingId=""):
-        self.delFeature("marker",existingId=existingId)
+    def delMarker(self,id=""):
+        self.delFeature("marker",id=id)
 
     def delFeature(self,fClass,id=""):
         return self.sendRequest("delete",fClass,None,id=str(id),returnJson="ALL")
@@ -1040,20 +1042,31 @@ class SartopoSession():
                 if feature['id']==id:
                     rval.append(feature)
                     break
-                prop=feature['properties']
+                prop=feature.get('properties',None)
+                if prop and isinstance(prop,dict):
+                    pk=prop.keys()
+                else:
+                    logging.error('getFeatures: "properties" does not exist or is not a dict:'+str(feature))
+                    return [False]
                 c=prop['class']
                 if featureClass is None and c not in featureClassExcludeList:
-                    if prop['title']==title:
-                        titleMatchCount+=1
-                        rval.append(feature)
+                    if 'title' in pk:
+                        if prop['title']==title:
+                            titleMatchCount+=1
+                            rval.append(feature)
+                    else:
+                        logging.error('getFeatures: no title key exists:'+str(feature))
                 else:
                     if c==featureClass:
                         if title is None:
                             rval.append(feature)
                         else:
-                            if prop['title']==title:
-                                titleMatchCount+=1
-                                rval.append(feature) # return the entire json object
+                            if 'title' in pk:
+                                if prop['title']==title:
+                                    titleMatchCount+=1
+                                    rval.append(feature) # return the entire json object
+                            else:
+                                logging.error('getFeatures: no title key exists:'+str(feature))
             if len(rval)==0:
                 # question: do we want to try a refresh and try one more time?
                 logging.info('getFeatures: No features match the specified criteria.')
@@ -1453,7 +1466,7 @@ class SartopoSession():
                     logging.error('cut: target feature class was neither Shape nor Assigment; operation aborted.')
                     return False
         if deleteCutter:
-            self.delFeature(cutterShape['properties']['class'],existingId=cutterShape['id'])
+            self.delFeature(cutterShape['properties']['class'],cutterShape['id'])
 
     # expand - expand target polygon to include the area of p2 polygon
 
@@ -1524,7 +1537,7 @@ class SartopoSession():
             return False
 
         if deleteP2:
-            self.delFeature(p2Shape['properties']['class'],existingId=p2Shape['id'])
+            self.delFeature(p2Shape['properties']['class'],p2Shape['id'])
 
     # intersection2(targetGeom,boundaryGeom)
     # we want a function that can take the place of shapely.ops.intersection
@@ -1833,7 +1846,7 @@ class SartopoSession():
                     return False
 
         if deleteBoundary:
-            self.delFeature(boundaryShape['properties']['class'],existingId=boundaryShape['id'])
+            self.delFeature(boundaryShape['properties']['class'],boundaryShape['id'])
 
         return rids # resulting feature IDs
 

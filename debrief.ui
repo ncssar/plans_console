@@ -175,6 +175,6 @@
  </resources>
  <connections/>
  <slots>
-  <slot>optionsButtonClicked()</slot>
+  <slot>debriefOptionsButtonClicked()</slot>
  </slots>
 </ui>
