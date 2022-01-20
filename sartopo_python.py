@@ -421,13 +421,15 @@ class SartopoSession():
             # 3 - cleanup - remove features from the cache whose ids are no longer in cached id list
             #  (ids will be part of the response whenever feature(s) were added or deleted)
             self.mapIDs=sum(self.mapData['ids'].values(),[])
-            mapSFIDs=[f['id'] for f in self.mapData['state']['features']]
+            mapSFIDsBefore=[f['id'] for f in self.mapData['state']['features']]
             # edit the cache directly: https://stackoverflow.com/a/1157174/3577105
             l1=len(self.mapData['state']['features'])
             self.mapData['state']['features'][:]=(f for f in self.mapData['state']['features'] if f['id'] in self.mapIDs)
+            mapSFIDs=[f['id'] for f in self.mapData['state']['features']]
             l2=len(self.mapData['state']['features'])
             if l2!=l1:
-                logging.info('cleaned up '+str(l1-l2)+' feature(s) from the cache')
+                deletedIds=list(set(mapSFIDsBefore)-set(mapSFIDs))
+                logging.info('cleaned up '+str(l1-l2)+' feature(s) from the cache:'+str(deletedIds))
 
             # logging.info('mapData:\n'+json.dumps(self.mapData,indent=3))
             # logging.info('\n'+self.mapID+':\n  mapIDs:'+str(self.mapIDs)+'\nmapSFIDs:'+str(mapSFIDs))
@@ -650,6 +652,16 @@ class SartopoSession():
                     self.syncPause=False
                     return id
                 if returnJson=="ALL":
+                    # since CTD 4221 returns 'title' as an empty string for all assignments,
+                    #  set 'title' to <letter><space><number> for all assignments here
+                    # this code looks fairly resource intensive; for a map with 50 assignments, initial sync
+                    #  is about 6.5% slower with this if clause than without, but it would be good to profile
+                    #  memory consumption too - is this calling .keys() and creating new lists each time?
+                    #  maybe better to wrap it all in try/except, but, would that iterate over all features?
+                    if 'result' in rj.keys() and 'state' in rj['result'].keys() and 'features' in rj['result']['state'].keys():
+                        alist=[f for f in rj['result']['state']['features'] if 'properties' in f.keys() and 'class' in f['properties'].keys() and f['properties']['class'].lower()=='assignment']
+                        for a in alist:
+                            a['properties']['title']=a['properties']['letter']+' '+a['properties']['number']
                     self.syncPause=False
                     return rj
         self.syncPause=False
@@ -1070,6 +1082,7 @@ class SartopoSession():
             if len(rval)==0:
                 # question: do we want to try a refresh and try one more time?
                 logging.info('getFeatures: No features match the specified criteria.')
+                logging.info('  (was looking for featureClass='+str(featureClass)+'  title='+str(title)+'  id='+str(id)+')')
                 return [False]
             if titleMatchCount>1:
                 if allowMultiTitleMatch:
