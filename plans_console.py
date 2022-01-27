@@ -403,7 +403,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.incidentMapField.setText(self.incidentURL)
             self.createSTS()
 
-        if args.debriefMapID:
+        if args.debriefMapID and self.link>-1:
             name2=args.debriefMapID
             if name2:
                 if "#" in name2:
@@ -433,7 +433,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         box.show()
         QCoreApplication.processEvents()
         box.raise_()
-        logging.info("calling SartopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
+        logging.info("Creating SartopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
         try:
             if 'sartopo.com' in domainAndPort.lower():
                 self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,
@@ -445,6 +445,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.link=self.sts.apiVersion
             if self.link == -1:
                 self.ui.incidentLinkLight.setStyleSheet(BG_RED)
+                logging.error('Link could not be established with '+self.incidentURL)
                 self.incidentURLErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Link could not be established with "+self.incidentURL,
                                 QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
                 self.incidentURLErrMsgBox.exec_()
@@ -457,6 +458,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             logging.warning('Exception during createSTS:\n'+str(e))
             self.ui.incidentLinkLight.setStyleSheet(BG_RED)
         box.close()
+        if self.link>-1:
+            logging.info('Successfully connected.')
+        else:
+            logging.info('Connection failed.')
 
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
@@ -1016,6 +1021,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             event.ignore()
             self.exitClicked=False
             return
+        logging.info('Plans Console shutdown requsted')
         self.saveRcFile()
         event.accept()
         self.parent.quit()
