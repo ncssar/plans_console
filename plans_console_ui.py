@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\Users\caver\Documents\GitHub\plans_console\plans_console2.ui'
+# Form implementation generated from reading ui file 'C:\Users\caver\Documents\GitHub\plans_console\plans_console.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.6
 #
@@ -384,4 +384,4 @@ class Ui_PlansConsole(object):
         self.selFeature.setText(_translate("PlansConsole", "selFeature"))
         self.editorFeature.setText(_translate("PlansConsole", "editor"))
         self.doOper.setText(_translate("PlansConsole", "Go"))
-import plans_console2_rc
+import plans_console_rc

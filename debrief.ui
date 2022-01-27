@@ -49,7 +49,7 @@
           <string/>
          </property>
          <property name="icon">
-          <iconset resource="plans_console2.qrc">
+          <iconset resource="plans_console.qrc">
            <normaloff>:/plans_console/options_icon.png</normaloff>:/plans_console/options_icon.png</iconset>
          </property>
         </widget>
@@ -171,7 +171,7 @@
   </layout>
  </widget>
  <resources>
-  <include location="plans_console2.qrc"/>
+  <include location="plans_console.qrc"/>
  </resources>
  <connections/>
  <slots>

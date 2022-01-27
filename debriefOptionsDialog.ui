@@ -144,12 +144,6 @@
         </layout>
        </item>
       </layout>
-      <zorder>layoutWidget</zorder>
-      <zorder>slopeShadingCheckbox</zorder>
-      <zorder>utmGridCheckbox</zorder>
-      <zorder>contoursCheckbox</zorder>
-      <zorder>mapBuilderOverlayCheckbox</zorder>
-      <zorder></zorder>
       <zorder></zorder>
      </widget>
     </item>
@@ -161,7 +155,7 @@
          <string>Rebuild Entire Debrief Map</string>
         </property>
         <property name="icon">
-         <iconset resource="plans_console2.qrc">
+         <iconset resource="plans_console.qrc">
           <normaloff>:/plans_console/reload-icon.png</normaloff>:/plans_console/reload-icon.png</iconset>
         </property>
        </widget>
@@ -195,7 +189,7 @@
   </widget>
  </widget>
  <resources>
-  <include location="plans_console2.qrc"/>
+  <include location="plans_console.qrc"/>
  </resources>
  <connections>
   <connection>

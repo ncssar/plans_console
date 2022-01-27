@@ -118,4 +118,4 @@ class Ui_DebriefDialog(object):
         item.setText(_translate("DebriefDialog", "PDF"))
         item = self.tableWidget.horizontalHeaderItem(5)
         item.setText(_translate("DebriefDialog", "Rebuild"))
-import plans_console2_rc
+import plans_console_rc

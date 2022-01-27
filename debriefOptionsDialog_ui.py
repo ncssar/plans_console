@@ -68,10 +68,6 @@ class Ui_DebriefOptionsDialog(object):
         self.label_2.setObjectName("label_2")
         self.verticalLayout.addWidget(self.label_2)
         self.horizontalLayout_2.addLayout(self.verticalLayout)
-        self.slopeShadingCheckbox.raise_()
-        self.utmGridCheckbox.raise_()
-        self.contoursCheckbox.raise_()
-        self.mapBuilderOverlayCheckbox.raise_()
         self.verticalLayout_2.addWidget(self.groupBox)
         self.horizontalLayout_3 = QtWidgets.QHBoxLayout()
         self.horizontalLayout_3.setObjectName("horizontalLayout_3")
@@ -114,4 +110,4 @@ class Ui_DebriefOptionsDialog(object):
         self.utmGridCheckbox.setText(_translate("DebriefOptionsDialog", "Show UTM Grid (at auto-interval)"))
         self.label_2.setText(_translate("DebriefOptionsDialog", "* These layers may cause slower PDF generation.  For fastest PDF generation, use static layers (USGS, USFS, NAIP, etc.)."))
         self.rebuildAllButton.setText(_translate("DebriefOptionsDialog", "Rebuild Entire Debrief Map"))
-import plans_console2_rc
+import plans_console_rc
