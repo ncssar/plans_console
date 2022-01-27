@@ -113,6 +113,16 @@ from plans_console_ui import Ui_PlansConsole
 from incidentMapDialog_ui import Ui_IncidentMapDialog
 from sartopo_bg import *
 
+def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
+	opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
+	buttons = QMessageBox.StandardButton(QMessageBox.Yes | QMessageBox.No)
+	box = QMessageBox(icon, title, question, buttons, parent, opts)
+	box.setDefaultButton(QMessageBox.No)
+	box.show()
+	QCoreApplication.processEvents()
+	box.raise_()
+	return box.exec_() == QMessageBox.Yes
+
 def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
 	opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
 	if title == "":
@@ -1002,6 +1012,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         rcFile.close()
                 
     def closeEvent(self,event):  # to save RC file
+        if not ask_user_to_confirm("Exit Plans Console?", icon=QMessageBox.Warning, parent = self):
+            event.ignore()
+            self.exitClicked=False
+            return
         self.saveRcFile()
         event.accept()
         self.parent.quit()
