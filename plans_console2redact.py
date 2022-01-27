@@ -287,7 +287,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.setStyleSheet("background-color:#d6d6d6")
         self.ui.tableWidget.cellClicked.connect(self.tableCellClicked)        
         self.ui.OKbut.clicked.connect(self.assignTab_OK_clicked)
-        self.ui.doOper.clicked.connect(self.tmAsOkButtonClicked)
+        self.ui.doOper.clicked.connect(self.doOperClicked)
         self.ui.debriefButton.clicked.connect(self.debriefButtonClicked)
         self.reloaded = False
         self.incidentURL=None
@@ -345,6 +345,17 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         logging.info("Scale:"+str(self.scl))
 
         self.updateClock()
+
+        
+        
+        
+        # hardcode workarounds to avoid uncaught exceptions during save_data TMG 1-18-21
+        self.watchedFile='watched.csv'
+        self.offsetFileName='offset.csv'
+        self.csvFiles=[]
+
+
+
 
         if self.watchedDir:
             self.ui.notYet=QMessageBox(QMessageBox.Information,"Waiting...","No valid radiolog file was found.\nRe-scanning every few seconds...",
@@ -462,7 +473,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                 self.curAssign,clr,markr,None,self.folderId)
         ## also add team number to assignment
         rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':self.curTeam})
-        logging.info("RVAL rtn:",rval,rval2)
+        logging.info("RVAL rtn:"+str(rval)+' : '+str(rval2))
     
     def delMarker(self):
         rval = self.sts.getFeatures("Folder")     # get Folders
@@ -482,7 +493,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             rval3 = self.sts.delMarker(self.feature2['id'])
                             rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign, \
                                                 properties={'number':" "})
-                            logging.info("RTN of Delete:"+str(rval3),rval2)
+                            logging.info("RTN of Delete:"+str(rval3)+str(rval2))
                             break
         ##print("RestDel:"+json.dumps(rval3,indent=2))
               
@@ -612,7 +623,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # exit()
         self.rescanTimer.stop()
 
-    def tmAsOkButtonClicked(self):
+    def doOperClicked(self):
         op=self.ui.geomOpButtonGroup.checkedButton().text()
         selFeature=self.ui.selFeature.text()
         editorFeature=self.ui.editorFeature.text()
@@ -795,7 +806,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 break
         if self.ui.Team.text() == "" or ifnd == 0:  # error - checking select below when entry does not exist
             pass  # beepX1
-            logging.error("Issue with Assign inputs",self.ui.Team.text(),str(ifnd))
+            logging.error("Issue with Assign inputs: "+str(self.ui.Team.text())+" : "+str(ifnd))
             return
         ifnd = 0                      # flag for found of existing Team assignment
         irow = 0

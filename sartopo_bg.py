@@ -404,10 +404,21 @@ class DebriefMapGenerator():
             outings=self.dmd.get('outings',None)
             self.dd.ui.tableWidget.setRowCount(len(outings))
             for outingName in outings:
+                o=self.dmd['outings'][outingName]
                 self.dd.ui.tableWidget.setItem(row,0,QTableWidgetItem(outingName))
-                self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['tids']))))
-                self.dd.ui.tableWidget.setItem(row,2,QTableWidgetItem(str(len(self.dmd['outings'][outingName]['cids']))))
-                self.setPDFButton(row,'gen')
+                self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(str(len(o['tids']))))
+                self.dd.ui.tableWidget.setItem(row,2,QTableWidgetItem(str(len(o['cids']))))
+                pdf=o.get('PDF',None)
+                if pdf:
+                    pdfts=o['PDF'][1]
+                    latestts=o['log'][-1][0]
+                    if pdfts>latestts:
+                        # pdf was generated more recently than the latest modification of this outing's data
+                        self.setPDFButton(row,'done')
+                    else:
+                        self.setPDFButton(row,'old')
+                else:
+                    self.setPDFButton(row,'gen')
                 rebuildButton=QPushButton(self.dd.ui.rebuildIcon,'')
                 rebuildButton.clicked.connect(self.rebuildClicked)
                 self.dd.ui.tableWidget.setCellWidget(row,5,rebuildButton)
@@ -420,16 +431,47 @@ class DebriefMapGenerator():
             QTimer.singleShot(500,self.updateLinkLights)
             self.syncBlinkFlag=False
 
-    def setPDFButton(self,row,state):
+    def setPDFButton(self,outingNameOrRow,state):
+        if isinstance(outingNameOrRow,int):
+            row=outingNameOrRow
+            outingName=self.dd.ui.tableWidget.item(row,0).text()
+        elif isinstance(outingNameOrRow,str):
+            outingName=outingNameOrRow
+            row=-1
+            if not outingName in self.dmd['outings'].keys():
+                return False
+            for n in range(self.dd.ui.tableWidget.rowCount()):
+                v=self.dd.ui.tableWidget.item(n,0).text()
+                logging.info('checking '+str(n)+': "'+str(v)+'"')
+                if v==outingName:
+                    logging.info('  match!')
+                    row=n
+                    break
+            if row<0:
+                logging.error('Call to setPDFButton but outing name "'+outingNameOrRow+'" was not found in the debrief outings table.')
+                return False
+
+        # state=changed: specified during callbacks, which aren't aware if a pdf has already been generated
+        if state=='changed':
+            [lastPDFCode,lastPDFTime]=self.dmd['outings'][outingName].get('PDF',[None,None])
+            if lastPDFCode: # a PDF has previously been generated; set the icon to 'regen'
+                state='old'
+            else:
+                state='gen'
+
+        # state=gen: no pdf has been generated; show the initial black-arrow icon
         if state=='gen':
             icon=self.dd.ui.generatePDFIcon
             slot=self.PDFGenClicked
+        # state=done: pdf successfully generated and (apparently) up-to-date; show the checked icon
         elif state=='done':
             icon=self.dd.ui.generatePDFDoneIcon
             slot=self.PDFDoneClicked
+        # state=old: pdf previously generated but now out-of-date; show the refresh circle icon
         elif state=='old':
             icon=self.dd.ui.generatePDFRegenIcon
             slot=self.PDFRegenClicked
+            
         button=QPushButton(icon,'')
         button.setIconSize(QSize(button.width(),18))
         # genPDFButton.icon().setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Preferred)
@@ -463,8 +505,19 @@ class DebriefMapGenerator():
         ids.extend(outing['cids'])
         for tidList in outing['tids']:
             ids.extend(tidList)
-        logging.info('ids:'+str(ids))
+        logging.info('ids for this outing:'+str(ids))
         bounds=self.sts2.getBounds(ids,padPct=15)
+
+        # also print non-outing-related features
+        # while there could be folders of non-outing-related features in the incident map,
+        #  the debrief map should have no folders other than outings, so just checking
+        #  for fetures that are not in folders should be sufficient
+        nonOutingFeatureIds=[f['id'] for f in self.sts2.mapData['state']['features']
+                if 'folderId' not in f['properties'].keys()
+                and f['properties']['class'].lower() in ['marker','shape']]
+        logging.info('non-outing ids:'+str(nonOutingFeatureIds))
+
+        ids=ids+nonOutingFeatureIds
 
         lonMult=math.cos(math.radians((bounds[3]+bounds[1])/2.0))
         # logging.info('longitude multiplier = '+str(lonMult))
@@ -525,9 +578,12 @@ class DebriefMapGenerator():
         # process PDF options
         layerString='t' # default
         layerSelection=self.debriefOptionsDialog.ui.layerComboBox.currentText()
+        logging.info('layerSelection='+str(layerSelection))
         for key in BASEMAP_REGEX.keys():
-            if re.match(key,layerSelection,re.IGNORECASE):
+            logging.info('checking '+str(key))
+            if re.match('.*'+key+'.*',layerSelection,re.IGNORECASE):
                 layerString=BASEMAP_REGEX[key]
+                logging.info('found!')
                 break
         if self.debriefOptionsDialog.ui.contoursCheckbox.isChecked():
             layerString+=',c'
@@ -570,8 +626,9 @@ class DebriefMapGenerator():
             if isinstance(r,str):
                 logging.info(outingName+' : PDF generated : '+r+' - opening in new browser tab...')
                 webbrowser.open_new_tab('https://sartopo.com/p/'+r)
-                # self.pdfStatus[outing]=timeText
+                self.dmd['outings'][outingName]['PDF']=[r,tsNow]
                 self.setPDFButton(row,'done')
+                self.writeDmdFile()
             elif isinstance(r,dict) and dictHasAllKeys(r,['status','code','message']):
                 suffix=''
                 if 'account' in r['message'].lower():
@@ -876,6 +933,12 @@ class DebriefMapGenerator():
         # write the correspondence file
         self.writeDmdFile()
 
+    def addOutingLogEntry(self,outingName,entryText):
+        tsnow=int(datetime.now().timestamp()*1000)
+        self.dmd['outings'][outingName]['log'].append([tsnow,entryText])
+        self.redrawFlag=True
+        self.writeDmdFile()
+
     def getOutingSuffixIndex(self,t):
         n=self.outingSuffixDict.get(t,2)
         self.outingSuffixDict[t]=n+1
@@ -964,7 +1027,10 @@ class DebriefMapGenerator():
                 'sid':id,
                 'cids':[],
                 'tids':[],
-                'utids':[]}
+                'utids':[],
+                'log':[]}
+            if not a: # boundary not defined; add a log entry now
+                self.addOutingLogEntry(t,'Outing entry created')
             fid=self.sts2.addFolder(t)
             # fids[t]=fid
             self.dmd['outings'][t]['fid']=fid
@@ -985,6 +1051,7 @@ class DebriefMapGenerator():
                 logging.error('newly detected assignment '+t+' has an unhandled geometry type '+gt)
                 return
             self.dmd['outings'][t]['bid']=bid
+            self.addOutingLogEntry(t,'Added assignment boundary')
             # addCorrespondence(id,bid)
             logging.info('boundary created for assingment '+t+': '+self.dmd['outings'][t]['bid'])
         # since addLine adds the new feature to .mapData immediately, no new 'since' request is needed
@@ -992,7 +1059,7 @@ class DebriefMapGenerator():
             self.cropUncroppedTracks()
         self.writeDmdFile()
 
-    def addShape(self,f):
+    def addShape(self,f,outingLogMessageOverride=None):
         p=f['properties']
         g=f['geometry']
         gt=g['type']
@@ -1013,38 +1080,43 @@ class DebriefMapGenerator():
                         pattern=p['pattern'])
                 self.addCorrespondence(sid,lineID)
             else: # it's a track; crop it now if needed, since newFeatureCallback is called once per feature, not once per sync interval
-                at=tparse[0]+' '+tparse[1] # 'AA 101' - should match a folder name
+                ot=tparse[0]+' '+tparse[1] # 'AA 101' - should match a folder name
                 # logging.info('entire assignments dict:')
                 # logging.info(json.dumps(self.dmd['outings'],indent=3))
-                a=self.dmd['outings'].get(at,None)
-                if a==None: # assignment entry hasn't been created yet
-                    logging.info('processing line \''+t+'\' which appears to belong to assignment \''+at+'\' which has not been processed yet.  Creating the assignment dictionary and adding this track to the uncropped tracks list.')
-                    self.addOuting(at)
-                    a=self.dmd['outings'][at]
+                o=self.dmd['outings'].get(ot,None)
+                if o==None: # assignment entry hasn't been created yet
+                    logging.info('Processing line \''+t+'\' which appears to belong to outing \''+ot+'\' which has not been processed yet.  Creating the outing dictionary and adding this track to the uncropped tracks list.')
+                    self.addOuting(ot)
+                    o=self.dmd['outings'][ot]
                 # add the line in the assignment folder, and crop to the assignment shape
-                logging.info('creating line \''+t+'\' in folder \''+at+'\'')
-                logging.info('  assignment fid='+a['fid'])
-                bid=a['bid']
-                # color=trackColorList[(len(a['tids'])+len(a['utids']))%len(trackColorList)]
+                logging.info('creating line \''+t+'\' in folder \''+ot+'\'')
+                logging.info('  outing fid='+o['fid'])
+                bid=o['bid']
+                # color=trackColorList[(len(o['tids'])+len(o['utids']))%len(trackColorList)]
                 color=self.trackColorDict.get(tparse[2].lower(),'#444444')
-                uncroppedTrack=self.sts2.addLine(gc,title=tparse[0].upper()+tparse[1]+tparse[2].lower(),color=color,folderId=a['fid'])
+                title=tparse[0].upper()+tparse[1]+tparse[2].lower()
+                uncroppedTrack=self.sts2.addLine(gc,title=title,color=color,folderId=o['fid'])
                 logging.info(' generated uncropped track '+uncroppedTrack)
                 if bid==None:
                     logging.info('   assignment boundary has not been processed yet; saving the uncropped track in utids')
-                    self.dmd['outings'][at]['utids'].append(uncroppedTrack)
+                    self.dmd['outings'][ot]['utids'].append(uncroppedTrack)
                     self.addCorrespondence(sid,uncroppedTrack)
-                    # logging.info('  utids:'+str(assignments[at]['utids']))
+                    # logging.info('  utids:'+str(assignments[ot]['utids']))
                 else:
-                    logging.info('  assignment bid='+bid)
-                    croppedTrackList=self.sts2.crop(uncroppedTrack,a['bid'],beyond=0.001) # about 100 meters
+                    logging.info('  outing bid='+bid)
+                    croppedTrackList=self.sts2.crop(uncroppedTrack,o['bid'],beyond=0.001) # about 100 meters
                     if croppedTrackList: # the crop worked
-                        self.dmd['outings'][at]['tids'].append(croppedTrackList)
+                        self.dmd['outings'][ot]['tids'].append(croppedTrackList)
                         self.addCorrespondence(sid,croppedTrackList)
                     else: # the crop did not work
-                        self.dmd['outings'][at]['utids'].append(uncroppedTrack)
+                        self.dmd['outings'][ot]['utids'].append(uncroppedTrack)
                         self.addCorrespondence(sid,uncroppedTrack)
                     # sts2.doSync(once=True)
-                    # sts2.crop(track,a['bid'],beyond=0.001) # about 100 meters
+                    # sts2.crop(track,o['bid'],beyond=0.001) # about 100 meters
+                msg='Added track '+title
+                if outingLogMessageOverride:
+                    msg=outingLogMessageOverride+' '+title
+                self.addOutingLogEntry(ot,msg)
                 self.writeDmdFile()
         elif gt=='Polygon':
             logging.info('creating polygon \''+t+'\' in default folder')
@@ -1092,25 +1164,27 @@ class DebriefMapGenerator():
         # add outing now if not already done
         outingNames=[name for name in self.dmd['outings'] if self.dmd['outings'][name]['sid']==aid]
         if not outingNames:
+            logging.info('  The assignment that owns the clue does not yet have an outings dictionary.  Adding the outing now.')
             self.addOuting(aid)
         outingName=[name for name in self.dmd['outings'] if self.dmd['outings'][name]['sid']==aid][0]
         self.dmd['outings'][outingName]['cids'].append(clueID)
+        self.addOutingLogEntry(outingName,'Added clue '+t)
         self.addCorrespondence(f['id'],clueID)
 
     def cropUncroppedTracks(self):
         # logging.info('inside cropUncroppedTracks:')
-        for a in self.dmd['outings']:
-            utids=self.dmd['outings'][a]['utids']
+        for outingName in self.dmd['outings']:
+            utids=self.dmd['outings'][outingName]['utids']
             if len(utids)>0:
-                bid=self.dmd['outings'][a]['bid']
+                bid=self.dmd['outings'][outingName]['bid']
                 if bid is not None:
-                    logging.info('  Assignment '+a+': cropping '+str(len(utids))+' uncropped track(s):'+str(utids))
+                    logging.info('  Outing '+outingName+': cropping '+str(len(utids))+' uncropped track(s):'+str(utids))
                     for utid in utids:
                         # since newly created features are immediately added to the local cache,
                         #  the boundary feature should be available by this time
                         croppedTrackLines=self.sts2.crop(utid,bid,beyond=0.001) # about 100 meters
                         logging.info('crop return value:'+str(croppedTrackLines))
-                        self.dmd['outings'][a]['tids'].append(croppedTrackLines)
+                        self.dmd['outings'][outingName]['tids'].append(croppedTrackLines)
                         # cropped track line(s) should correspond to the source map line, 
                         #  not the source map assignment; source map line id will be
                         #  the corr key whose val is the utid; also remove the utid
@@ -1126,10 +1200,10 @@ class DebriefMapGenerator():
                             logging.error('    corresponding source map line id could not be determined')
                             logging.error('    corresponding source line id list:'+str(slidList))
                         # assignments[a]['utids'].remove(utid)
-                    self.dmd['outings'][a]['utids']=[] # don't modify the list during iteration over the list!
+                    self.dmd['outings'][outingName]['utids']=[] # don't modify the list during iteration over the list!
                     self.writeDmdFile()
                 else:
-                    logging.info('  Assignment '+a+' has '+str(len(self.dmd['outings'][a]['utids']))+' uncropped tracks, but the boundary has not been imported yet; skipping.')
+                    logging.info('  Outing '+outingName+' has '+str(len(self.dmd['outings'][outingName]['utids']))+' uncropped tracks, but the boundary has not been imported yet; skipping.')
 
 
     # initialNewFeatureCallback: since dmd must be generated before the add<Type> functions
@@ -1146,7 +1220,7 @@ class DebriefMapGenerator():
     #   can be deleted, and the newly imported feature can be used instead
     #  folder: target title is identical to source title
     #  marker: 
-    def newFeatureCallback(self,f):
+    def newFeatureCallback(self,f,outingLogMessageOverride=None):
         # this function is probably called from a sync thread:
         #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
@@ -1218,7 +1292,7 @@ class DebriefMapGenerator():
     #     #   a. create a new polygon with the same geometry in the default folder
 
         if c=='Shape':
-            self.addShape(f)
+            self.addShape(f,outingLogMessageOverride)
             # g=f['geometry']
             # gc=g['coordinates']
             # gt=g['type']
@@ -1293,6 +1367,7 @@ class DebriefMapGenerator():
         # this function is probably called from a sync thread:
         #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
+        logging.info('propertyUpdateCallback:'+str(json.dumps(f,indent=3)))
         sid=f['id']
         sp=f['properties']
         sg=f['geometry']
@@ -1311,16 +1386,16 @@ class DebriefMapGenerator():
                 #  so scan all assignments for id(s)
                 # tparse=parseTrackName(st)
                 # if tparse:
-                for at in self.dmd['outings']:
+                for ot in self.dmd['outings']:
                     # at=tparse[0]+' '+tparse[1]
                     # don't modify list while iterating!
                     newTidList=[]
-                    for tidList in self.dmd['outings'][at]['tids']:
+                    for tidList in self.dmd['outings'][ot]['tids']:
                         if not all(elem in tidList for elem in corrList):
                             newTidList.append(tidList)
-                    self.dmd['outings'][at]['tids']=newTidList
+                    self.dmd['outings'][ot]['tids']=newTidList
                 del self.dmd[sid]
-                self.newFeatureCallback(f) # this will crop the track automatically
+                self.newFeatureCallback(f,outingLogMessageOverride='Reimported track due to property changes:') # this will crop the track automatically
             elif len(corrList)==1: # exactly one correlating feature exists
                 logging.info('  exactly one target map feature corresponds to the source map feature; updating the target map feature properties')
                 tf=self.sts2.getFeature(id=corrList[0])
@@ -1330,6 +1405,17 @@ class DebriefMapGenerator():
                 c=sp['class']
                 if c=='Clue':
                     logging.info('  mapping properties from Clue to Marker')
+                    taid=tp['assignmentId']
+                    said=tp['assignmentId']
+                    outingNames=self.dmd['outings'].keys()
+                    targetOutingName=[x for x in outingNames if self.dmd['outings'][x]['sid']==taid][0]
+                    sourceOutingName=[x for x in outingNames if self.dmd['outings'][x]['sid']==said][0]
+                    if taid!=said:
+                        self.dmd['outings'][targetOutingName].remove(sid)
+                        self.addOutingLogEntry(targetOutingName,'Moved clue '+st+' from this outing to '+sourceOutingName)
+                        self.addClue(f)
+                    if tp['title']!=sp['title']:
+                        self.addOutingLogEntry(targetOutingName,'Clue title changed: '+tp['title']+' --> '+sp['title'])
                     tp['title']=sp['title']
                     tp['description']=sp['description']
                 elif c=='Assignment': # this may be dead code - if assignment, it should have two corr entries
@@ -1382,6 +1468,7 @@ class DebriefMapGenerator():
                         tp['title']=sp['title'].upper()
                         self.sts2.editFeature(id=tid,properties=tp)
                     self.dmd['outings'][tp['title']]=self.dmd['outings'][oldTitle]
+                    self.addOutingLogEntry(tp['title'],'Outing name changed: '+oldTitle+' --> '+tp['title'])
                     # fids[tp['title']]=fids[oldTitle]
                     del self.dmd['outings'][oldTitle]
                     # del fids[oldTitle]
@@ -1433,12 +1520,12 @@ class DebriefMapGenerator():
         #     but not the previous ones)
 
         logging.info('geometryUpdateCallback called for '+sp['class']+':'+sp['title'])
-        if sid in self.dmd.keys():
+        if sid in self.dmd['corr'].keys():
             tparse=self.parseTrackName(sp['title'])
             if sg['type']=='LineString' and sp['class']=='Shape' and tparse:
                 logging.info('  edited feature '+sp['title']+' appears to be a track; correspoding previous imported and cropped tracks will be deleted, and the new track will be re-imported (and re-cropped)')
-                corrList=self.dmd[sid]
-                for ttid in self.dmd[sid]:
+                corrList=self.dmd['corr'][sid]
+                for ttid in corrList:
                     self.sts2.delFeature('Shape',ttid)
                 # also delete from the assignments dict and correspondence dict, so that it will be added anew
                 at=tparse[0]+' '+tparse[1]
@@ -1448,13 +1535,17 @@ class DebriefMapGenerator():
                     if not all(elem in tidList for elem in corrList):
                         newTidList.append(tidList)
                 self.dmd['outings'][at]['tids']=newTidList
-                del self.dmd[sid]
-                self.newFeatureCallback(f) # this will crop the track automatically
+                del self.dmd['corr'][sid]
+                self.newFeatureCallback(f,outingLogMessageOverride='Reimported track due to geometry change:') # this will crop the track automatically
             else:
-                for tid in self.dmd[sid]:
+                for tid in self.dmd['corr'][sid]:
                     if 'geometry' in self.sts2.getFeature(id=tid).keys():
                         logging.info('  corresponding target map feature '+tid+' has geometry; setting it equal to the edited source feature geometry')
                         self.sts2.editFeature(id=tid,geometry=sg)
+                        # Is it a clue?  If so, add an outing log entry
+                        outingNames=[x for x in self.dmd['outings'].keys() if tid in self.dmd['outings'][x]['cids']]
+                        if outingNames:
+                            self.addOutingLogEntry(outingNames[0],'Geometry edited for '+st)
                     else:
                         logging.info('  corresponding target map feature '+tid+' has no geometry; no edit performed')
         elif sid in osids:
@@ -1463,6 +1554,7 @@ class DebriefMapGenerator():
                 if o['sid']==sid and ot==st: # the title is current
                     logging.info('  assignment geometry was edited: applying the same edit to corresponding target map boundary that has the same title "'+st+'" as the edited feature (to preserve previous outing boundaries)')
                     self.sts2.editFeature(id=o['bid'],geometry=sg)
+                    self.addOutingLogEntry(ot,'Geometry edited for assignment boundary')
         # # 1. determine which target-map feature, if any, corresponds to the edited source-map feature
         # if sid in corr.keys():
         #     cval=corr[sid]
@@ -1493,12 +1585,18 @@ class DebriefMapGenerator():
         # 1. determine which target-map feature, if any, corresponds to the edited source-map feature
         # logging.info('corr keys:')
         # logging.info(str(dmd['corr'].keys()))
-        logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
+        # logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
         if sid in self.dmd['corr'].keys():
             cval=self.dmd['corr'][sid]
             for tid in cval:
                 logging.info('deleting corresponding target map feature '+tid)
                 self.sts2.delFeature(f['properties']['class'],tid)
+            # # TODO: if the deleted feature belonged to any outings, add an outing log entry
+            # for outingName in self.dmd['outings'].keys():
+            #     found=False
+            #     o=self.dmd['outings'][outingName]
+            #     if sid==o['sid']:
+            #         pass # entire outing deleted
             del self.dmd['corr'][sid] # not currently iterating, so, del should be fine
             self.writeDmdFile()
         else:
