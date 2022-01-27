@@ -174,7 +174,7 @@ class DebriefMapGenerator():
         # sourceMapID='V80'
         # targetMapID='0SD' # must already be a saved map
 
-        self.dd=DebriefDialog()
+        self.dd=DebriefDialog(self)
 
         self.debriefOptionsDialog=DebriefOptionsDialog(self)
         self.dd.ui.debriefOptionsButton.clicked.connect(self.debriefOptionsButtonClicked)
@@ -1730,7 +1730,8 @@ class DebriefMapDialog(QDialog,Ui_DebriefMapDialog):
 
 
 class DebriefDialog(QDialog,Ui_DebriefDialog):
-    def __init__(self):
+    def __init__(self,parent):
+        self.parent=parent
         QDialog.__init__(self)
         self.ui=Ui_DebriefDialog()
         self.ui.setupUi(self)
@@ -1751,7 +1752,14 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
 
         self.ui.rebuildIcon=QtGui.QIcon()
         self.ui.rebuildIcon.addPixmap(QtGui.QPixmap(":/plans_console/reload-icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
-        
+    
+    def resizeEvent(self,*args):
+        if self.parent.pc:
+            (self.parent.parent.debriefX,self.parent.parent.debriefY,self.parent.parent.debriefW,self.parent.parent.debriefH)=self.geometry().getRect()
+
+    def moveEvent(self,*args):
+        self.resizeEvent(None)
+
     # def showEvent(self,*args,**kwargs):
     #     if self.pc:
     #         self.ui.incidentMapField.setText(self.parent.incidentURL)

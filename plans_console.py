@@ -346,9 +346,39 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.y = self.yd
         self.w = self.wd
         self.h = self.hd
+        self.debriefX=0
+        self.debriefY=0
+        self.debriefW=0
+        self.debriefH=0
         self.color = ["#ffff00", "#cccccc"]
                      
         self.loadRcFile()
+
+		# main window:
+        # make sure x/y/w/h from resource file will fit on the available display
+        d=QApplication.desktop()
+        if self.x+self.w > d.width():
+            self.x=50
+        if self.y+self.h > d.height():
+            self.y=50
+        # try to use specified w and h; shrink if needed
+        if self.x+self.w > d.width():
+            self.w=d.availableGeometry(self).width()-100
+        if self.y+self.h > d.height():
+            self.h=d.availableGeometry(self).height()-100
+        
+		# debrief dialog (in case it is opened):
+        # make sure x/y/w/h from resource file will fit on the available display
+        if self.debriefX+self.debriefW > d.width():
+            self.debriefX=50
+        if self.debriefY+self.debriefH > d.height():
+            self.debriefY=50
+        # try to use specified w and h; shrink if needed
+        if self.debriefX+self.debriefW > d.width():
+            self.debriefW=d.availableGeometry(self).width()-100
+        if self.debriefY+self.debriefH > d.height():
+            self.debriefH=d.availableGeometry(self).height()-100
+
         self.setGeometry(int(self.x),int(self.y),int(self.w),int(self.h))
         self.scl = min(self.w/self.wd, self.h/self.hd)
         self.fontSize = int(self.fontSize*self.scl)
@@ -671,6 +701,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if not self.dmg:
                 self.dmg=DebriefMapGenerator(self,self.sts,self.debriefURL)
             if self.dmg and self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
+                self.dmg.dd.setGeometry(int(self.debriefX),int(self.debriefY),int(self.debriefW),int(self.debriefH))
                 self.dmg.dd.show()
                 self.dmg.dd.raise_()
             else:
@@ -979,6 +1010,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         out << "y=" << self.y << "\n"
         out << "w=" << self.w << "\n"
         out << "h=" << self.h << "\n"
+        # debrief geometry values are set during resizeEvent of that dialog
+        out << "[Debrief]\n"
+        out << "debriefX=" << self.debriefX << "\n"
+        out << "debriefY=" << self.debriefY << "\n"
+        out << "debriefW=" << self.debriefW << "\n"
+        out << "debriefH=" << self.debriefH << "\n"
         rcFile.close()
         
     def loadRcFile(self):
@@ -1014,6 +1051,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.h=int(tokens[1])
             elif tokens[0]=="font-size":
                 self.fontSize=int(tokens[1].replace('pt',''))
+            elif tokens[0]=="debriefX":
+                self.debriefX=int(tokens[1])
+            elif tokens[0]=="debriefY":
+                self.debriefY=int(tokens[1])
+            elif tokens[0]=="debriefW":
+                self.debriefW=int(tokens[1])
+            elif tokens[0]=="debriefH":
+                self.debriefH=int(tokens[1])
         rcFile.close()
                 
     def closeEvent(self,event):  # to save RC file
