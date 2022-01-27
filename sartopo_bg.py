@@ -1370,14 +1370,13 @@ class DebriefMapGenerator():
         logging.info('propertyUpdateCallback:'+str(json.dumps(f,indent=3)))
         sid=f['id']
         sp=f['properties']
-        sg=f['geometry']
         sc=sp['class']
         st=sp['title']
-        sgt=sg['type']
+        sgt=self.sts1.getFeature(id=sid)['geometry']['type']
         logging.info('propertyUpdateCallback called for '+sc+':'+st)
         # determine which target-map feature, if any, corresponds to the edited source-map feature
-        if sid in self.dmd.keys(): # this means there's a match but it's not an outing
-            corrList=self.dmd[sid]
+        if sid in self.dmd['corr'].keys(): # this means there's a match but it's not an outing
+            corrList=self.dmd['corr'][sid]
             if sc=='Shape' and sgt=='LineString':
                 for ttid in corrList:
                     self.sts2.delFeature('Shape',ttid)
@@ -1394,7 +1393,7 @@ class DebriefMapGenerator():
                         if not all(elem in tidList for elem in corrList):
                             newTidList.append(tidList)
                     self.dmd['outings'][ot]['tids']=newTidList
-                del self.dmd[sid]
+                del self.dmd['corr'][sid]
                 self.newFeatureCallback(f,outingLogMessageOverride='Reimported track due to property changes:') # this will crop the track automatically
             elif len(corrList)==1: # exactly one correlating feature exists
                 logging.info('  exactly one target map feature corresponds to the source map feature; updating the target map feature properties')
