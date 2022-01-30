@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>965</width>
-    <height>625</height>
+    <width>900</width>
+    <height>511</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -35,14 +35,14 @@ QGroupBox::title{
 	padding-top:-18px;
 	left:10px;
 }
-QComboBox:{
+QComboBox{
 	padding-top:5px;
 }</string>
   </property>
   <property name="sizeGripEnabled">
    <bool>true</bool>
   </property>
-  <layout class="QHBoxLayout" name="horizontalLayout">
+  <layout class="QHBoxLayout" name="topLayout">
    <item>
     <layout class="QHBoxLayout" name="mainHorizLayout" stretch="10,1">
      <property name="sizeConstraint">
@@ -80,6 +80,12 @@ QComboBox:{
      </item>
      <item>
       <layout class="QVBoxLayout" name="rightVertLayout" stretch="10,1,1,1,0,4">
+       <property name="spacing">
+        <number>6</number>
+       </property>
+       <property name="sizeConstraint">
+        <enum>QLayout::SetDefaultConstraint</enum>
+       </property>
        <property name="rightMargin">
         <number>0</number>
        </property>
@@ -93,7 +99,7 @@ QComboBox:{
          </property>
          <property name="minimumSize">
           <size>
-           <width>290</width>
+           <width>100</width>
            <height>200</height>
           </size>
          </property>
@@ -343,7 +349,7 @@ QComboBox:{
          <property name="title">
           <string>Maps</string>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_2">
+         <layout class="QVBoxLayout" name="mapsGroupVerticalLayout">
           <property name="leftMargin">
            <number>6</number>
           </property>
@@ -378,6 +384,12 @@ QComboBox:{
               <property name="enabled">
                <bool>false</bool>
               </property>
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
               <property name="font">
                <font>
                 <pointsize>10</pointsize>
@@ -402,12 +414,6 @@ QComboBox:{
                 <height>0</height>
                </size>
               </property>
-              <property name="maximumSize">
-               <size>
-                <width>20</width>
-                <height>16777215</height>
-               </size>
-              </property>
              </widget>
             </item>
             <item row="0" column="2">
@@ -425,12 +431,6 @@ QComboBox:{
                <size>
                 <width>20</width>
                 <height>0</height>
-               </size>
-              </property>
-              <property name="maximumSize">
-               <size>
-                <width>20</width>
-                <height>16777215</height>
                </size>
               </property>
              </widget>
@@ -498,7 +498,19 @@ QComboBox:{
          <property name="checkable">
           <bool>false</bool>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout">
+         <layout class="QVBoxLayout" name="geomGroupVerticalLayout">
+          <property name="leftMargin">
+           <number>6</number>
+          </property>
+          <property name="topMargin">
+           <number>6</number>
+          </property>
+          <property name="rightMargin">
+           <number>6</number>
+          </property>
+          <property name="bottomMargin">
+           <number>6</number>
+          </property>
           <item>
            <layout class="QVBoxLayout" name="geomVertLayout">
             <item>

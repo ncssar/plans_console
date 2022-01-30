@@ -41,6 +41,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
 from pygtail import Pygtail
+import math
 import sys
 import os
 import shutil
@@ -56,7 +57,6 @@ import argparse
 import logging
 from datetime import datetime
 import winsound
-# from debrief import DebriefDialog
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -72,6 +72,11 @@ from sartopo_python import SartopoSession
 BG_GREEN = "background-color:#00bb00"
 BG_RED = "background-color:#bb0000"
 BG_GRAY = "background-color:#aaaaaa"
+
+# default size scaling variables - must be defined at top level for use by top level QMessageBoxes such as uncaught exceptions
+#  these values are set by PlansConsole.moveEvent() - at startup, and, moving from one screen to another of a differet ldpi value
+LDPI=96 # default logicalDotsPerInch 
+LPIX={} # default pixels-per-pt-equivalent dictionary
 
 # print by default; let the caller change this if needed
 # (note, caller would need to clear all handlers first,
@@ -114,27 +119,44 @@ from incidentMapDialog_ui import Ui_IncidentMapDialog
 from sartopo_bg import *
 
 def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
-	opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
-	buttons = QMessageBox.StandardButton(QMessageBox.Yes | QMessageBox.No)
-	box = QMessageBox(icon, title, question, buttons, parent, opts)
-	box.setDefaultButton(QMessageBox.No)
-	box.show()
-	QCoreApplication.processEvents()
-	box.raise_()
-	return box.exec_() == QMessageBox.Yes
+    opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
+    buttons = QMessageBox.StandardButton(QMessageBox.Yes | QMessageBox.No)
+    box = QMessageBox(icon, title, question, buttons, parent, opts)
+    box.setDefaultButton(QMessageBox.No)
+    box.setStyleSheet('''
+    *{
+        font-size:'''+str(LPIX[12])+'''px;
+        icon-size:'''+str(LPIX[36])+'''px '''+str(LPIX[36])+'''px;
+    }''')
+    box.show()
+    QCoreApplication.processEvents()
+    box.raise_()
+    return box.exec_() == QMessageBox.Yes
 
 def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
-	opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
-	if title == "":
-		title = "Warning" if (icon == QMessageBox.Warning) else "Error"
-	buttons = QMessageBox.StandardButton(QMessageBox.Ok)
-	box = QMessageBox(icon, title, message, buttons, parent, opts)
-	box.show()
-	QCoreApplication.processEvents()
-	box.raise_()
-	if timeout:
-		QTimer.singleShot(timeout,box.close)
-	box.exec_()
+    opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
+    if title == "":
+        title = "Warning" if (icon == QMessageBox.Warning) else "Error"
+    buttons = QMessageBox.StandardButton(QMessageBox.Ok)
+    box = QMessageBox(icon, title, message, buttons, parent, opts)
+    # attempt to set larger min width on hi res - none of these seem to work
+    # from https://www.qtcentre.org/threads/22298-QMessageBox-Controlling-the-width
+    # spacer=QSpacerItem(int(8000*(LDPI/96)),0,QSizePolicy.Minimum,QSizePolicy.Expanding)
+    # layout=box.layout()
+    # layout.addItem(spacer,layout.rowCount(),0,1,layout.columnCount())
+    # box.setMaximumWidth(int(800*(LDPI/96)))
+    # box.setFixedWidth(int(800*(LDPI/96)))
+    box.setStyleSheet('''
+    *{
+        font-size:'''+str(LPIX[12])+'''px;
+        icon-size:'''+str(LPIX[36])+'''px '''+str(LPIX[36])+'''px;
+    }''')
+    box.show()
+    QCoreApplication.processEvents()
+    box.raise_()
+    if timeout:
+        QTimer.singleShot(timeout,box.close)
+    box.exec_()
 
 statusColorDict={}
 statusColorDict["At IC"]=["22ff22","000000"]
@@ -266,26 +288,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             err.raise_()
             err.exec_()
             exit(-1)
-              
+
+        self.ldpi=1 # font size calculations (see moveEvent)
         self.ui=Ui_PlansConsole()
         self.ui.setupUi(self)
 
-        # set fixed width for first, second, fourth columns;
-        #  set the third column to expand as the layout is resized
-        self.ui.tableWidget.setColumnWidth(0, 100)
-        self.ui.tableWidget.setColumnWidth(1, 100)
-        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(2,1)
-        self.ui.tableWidget.setColumnWidth(3, 150)
-
-        self.ui.tableWidget_TmAs.setColumnWidth(0, 50)
-        self.ui.tableWidget_TmAs.setColumnWidth(1, 100)
-        self.ui.tableWidget_TmAs.setColumnWidth(2, 75)
-        self.ui.tableWidget_TmAs.setColumnWidth(3, 60)
-
         self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
         self.ui.debriefLinkLight.setStyleSheet(BG_GRAY)
-
-        # self.DebriefDialog=DebriefDialog(self)
 
         self.setAttribute(Qt.WA_DeleteOnClose) 
         self.medval = ""
@@ -294,11 +303,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.forceRescan = 0
         self.feature = {}
         self.feature2 = {}
-        self.setStyleSheet("background-color:#d6d6d6")
+        # self.setStyleSheet("background-color:#d6d6d6")
         self.ui.tableWidget.cellClicked.connect(self.tableCellClicked)        
         self.ui.OKbut.clicked.connect(self.assignTab_OK_clicked)
         self.ui.doOper.clicked.connect(self.doOperClicked)
         self.ui.debriefButton.clicked.connect(self.debriefButtonClicked)
+        # self.screen().logicalDotsPerInchChanged.connect(self.lldpiChanged)
         self.reloaded = False
         self.incidentURL=None
         self.debriefURL=None
@@ -1060,7 +1070,94 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             elif tokens[0]=="debriefH":
                 self.debriefH=int(tokens[1])
         rcFile.close()
-                
+    
+    def moveEvent(self,event):
+        screen=self.screen()
+        # logicalDotsPerInch seems to give a bit better match across differently scaled extended screen
+        #  than physicalDotsPerInch - though not exactly perfect, probably due to testing on monitors
+        #  with different physical sizes; but logicalDotsPerInch incorporates Windows display zoom,
+        #  while physicalDotsPerInch does not
+        ldpi=screen.logicalDotsPerInch()
+        if ldpi!=self.ldpi:
+            global LDPI
+            global LPIX
+            pix={}
+            for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
+                pix[ptSize]=math.floor((ldpi*ptSize)/72)
+            logging.info('Window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
+            self.ldpi=ldpi
+            LDPI=ldpi
+            LPIX=pix
+
+            # # from https://doc.qt.io/qt-5/qmetaobject.html#propertyCount
+            # metaobject=screen.metaObject()
+            # d={}
+            # for i in range(metaobject.propertyOffset(),metaobject.propertyCount()):
+            #     metaproperty=metaobject.property(i)
+            #     name=metaproperty.name()
+            #     d[name]=str(screen.property(name))
+            # logging.info('dict:\n'+json.dumps(d,indent=3))
+
+            self.setStyleSheet('''
+                *{
+                    font-size:'''+str(pix[12])+'''px;
+                }
+                QDialog{
+                    padding:'''+str(pix[6])+'''px;
+                }
+                QLineEdit{
+                    height:'''+str(pix[16])+'''px;
+                }
+                QLineEdit#incidentLinkLight,QLineEdit#debriefLinkLight{
+                    width:'''+str(pix[16])+'''px;
+                }
+                QGroupBox{
+                    border:'''+str(pix[1])+'''px solid darkgray;
+                    border-radius:'''+str(pix[4])+'''px;
+                    margin-top:'''+str(pix[10])+'''px;
+                    padding:'''+str(pix[3])+'''px;
+                    padding-top:'''+str(pix[6])+'''px;
+                    font-size:'''+str(pix[10])+'''px;
+                }
+                QGroupBox::title{
+                    padding-top:-'''+str(pix[14])+'''px;
+                    left:'''+str(pix[8])+'''px;
+                }
+                QComboBox{
+                    padding-top:'''+str(pix[4])+'''px;
+                }
+                QMessageBox,QDialogButtonBox{
+                    icon-size:'''+str(pix[36])+'''px '''+str(pix[36])+'''px;
+                }
+                ''')
+            # now set the sizes that don't respond to stylesheets for whatever reason
+            self.ui.incidentLinkLight.setFixedWidth(pix[18])
+            self.ui.debriefLinkLight.setFixedWidth(pix[18])
+            # logging.info('style:'+self.styleSheet())
+            self.ui.topLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
+            self.ui.rescanButton.setIconSize(QtCore.QSize(pix[18],pix[18]))
+            self.setMinimumSize(QtCore.QSize(int(900*(ldpi/96)),int(600*(ldpi/96))))
+            self.ui.tableWidget_TmAs.setMinimumSize(QtCore.QSize(int(300*(ldpi/96)),int(200*(ldpi/96))))
+            self.ui.rightVertLayout.setSpacing(pix[6])
+            self.ui.mapsGroupVerticalLayout.setSpacing(pix[8])
+            self.ui.geomGroupVerticalLayout.setSpacing(pix[8])
+            self.resizeTableColumns()
+        event.accept()
+
+    def resizeTableColumns(self):
+        ldpi=self.ldpi
+        # set fixed width for first, second, fourth columns;
+        #  set the third column to expand as the layout is resized
+        self.ui.tableWidget.setColumnWidth(0, int(100*(ldpi/96)))
+        self.ui.tableWidget.setColumnWidth(1, int(100*(ldpi/96)))
+        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(2,1)
+        self.ui.tableWidget.setColumnWidth(3, int(150*(ldpi/96)))
+
+        self.ui.tableWidget_TmAs.setColumnWidth(0, int(50*(ldpi/96)))
+        self.ui.tableWidget_TmAs.setColumnWidth(1, int(100*(ldpi/96)))
+        self.ui.tableWidget_TmAs.setColumnWidth(2, int(75*(ldpi/96)))
+        self.ui.tableWidget_TmAs.setColumnWidth(3, int(60*(ldpi/96)))
+
     def closeEvent(self,event):  # to save RC file
         if not ask_user_to_confirm("Exit Plans Console?", icon=QMessageBox.Warning, parent = self):
             event.ignore()
@@ -1070,7 +1167,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.saveRcFile()
         event.accept()
         self.parent.quit()
-        
+
+    # prevent esc key from closing the program
+    def reject(self,*args):
+        pass
+       
 def main():
     app = QApplication(sys.argv)
     w = PlansConsole(app)
