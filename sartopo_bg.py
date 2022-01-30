@@ -621,7 +621,7 @@ class DebriefMapGenerator():
         # url='https://sartopo.com/api/v1/acct/'+self.accountID+'/PDFLink'
         # send print request to sartopo.com, even if sts2 is local
 
-        r=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID',domainAndPort='sartopo.com')
+        r=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID')
         if r:
             if isinstance(r,str):
                 logging.info(outingName+' : PDF generated : '+r+' - opening in new browser tab...')
@@ -994,7 +994,7 @@ class DebriefMapGenerator():
                     break
                 else:
                     logging.info('    but the title is not a match, so it must be an old outing')
-            elif not osid:
+            elif ot==t and not osid:
                 logging.info('  an outing with the same name but null sid was found; assuming it is a match and setting its sid')
                 alreadyExists=True
                 self.dmd['outings'][ot]['sid']=id
@@ -1053,7 +1053,7 @@ class DebriefMapGenerator():
             self.dmd['outings'][t]['bid']=bid
             self.addOutingLogEntry(t,'Added assignment boundary')
             # addCorrespondence(id,bid)
-            logging.info('boundary created for assingment '+t+': '+self.dmd['outings'][t]['bid'])
+            logging.info('boundary created for assignment '+t+': '+self.dmd['outings'][t]['bid'])
         # since addLine adds the new feature to .mapData immediately, no new 'since' request is needed
         if self.dmd['outings'][t]['utids']!=[]:
             self.cropUncroppedTracks()
