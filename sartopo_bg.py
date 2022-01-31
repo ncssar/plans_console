@@ -471,10 +471,15 @@ class DebriefMapGenerator():
                 else:
                     self.setPDFButton(row,'gen')
                 rebuildButton=QPushButton(self.dd.ui.rebuildIcon,'')
+                rebuildButton.setIconSize(QSize(self.lpix[16],self.lpix[16]))
                 rebuildButton.clicked.connect(self.rebuildClicked)
                 self.dd.ui.tableWidget.setCellWidget(row,5,rebuildButton)
                 row+=1
+            vh=self.dd.ui.tableWidget.verticalHeader()
+            for n in range(self.dd.ui.tableWidget.columnCount()):
+                vh.resizeSection(n,self.dd.lpix[16])
             self.dd.ui.tableWidget.viewport().update()
+            self.dd.moveEvent(None) # initialize sizes
             self.dd.ui.tableWidget.setSortingEnabled(True)
             self.redrawFlag=False
         if self.syncBlinkFlag:
@@ -524,7 +529,7 @@ class DebriefMapGenerator():
             slot=self.PDFRegenClicked
             
         button=QPushButton(icon,'')
-        button.setIconSize(QSize(button.width(),18))
+        button.setIconSize(QSize(self.lpix[36],self.lpix[14]))
         # genPDFButton.icon().setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Preferred)
         button.clicked.connect(slot)
         self.dd.ui.tableWidget.setCellWidget(row,4,button)
@@ -1715,6 +1720,7 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
         self.ui.setupUi(self)
         self.ui.rebuildAllButton.clicked.connect(self.rebuildAllButtonClicked)
         self.onLayerComboChange()
+        self.ldpi=0
 
     def onLayerComboChange(self,*args,**kwargs):
         text=self.ui.layerComboBox.currentText()
@@ -1744,6 +1750,79 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
             logging.info('Full debrief map rebuild requested...')
             self.close()
             self.parent.rebuild(':ALL:')
+
+    def moveEvent(self,event):
+        screen=self.screen()
+        # logicalDotsPerInch seems to give a bit better match across differently scaled extended screen
+        #  than physicalDotsPerInch - though not exactly perfect, probably due to testing on monitors
+        #  with different physical sizes; but logicalDotsPerInch incorporates Windows display zoom,
+        #  while physicalDotsPerInch does not
+        ldpi=screen.logicalDotsPerInch()
+        if ldpi!=self.ldpi:
+            pix=genLpix(ldpi)
+            logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
+            self.ldpi=ldpi
+            self.parent.lpix=pix
+            self.lpix=pix
+
+            # # from https://doc.qt.io/qt-5/qmetaobject.html#propertyCount
+            # metaobject=screen.metaObject()
+            # d={}
+            # for i in range(metaobject.propertyOffset(),metaobject.propertyCount()):
+            #     metaproperty=metaobject.property(i)
+            #     name=metaproperty.name()
+            #     d[name]=str(screen.property(name))
+            # logging.info('dict:\n'+json.dumps(d,indent=3))
+
+            self.setStyleSheet('''
+                *{
+                    font-size:'''+str(pix[12])+'''px;
+                }
+                QDialog{
+                    padding:'''+str(pix[6])+'''px;
+                }
+                QGroupBox{
+                    border:'''+str(pix[1])+'''px solid darkgray;
+                    border-radius:'''+str(pix[4])+'''px;
+                    margin-top:'''+str(pix[10])+'''px;
+                    padding:'''+str(pix[3])+'''px;
+                    padding-top:'''+str(pix[6])+'''px;
+                    font-size:'''+str(pix[10])+'''px;
+                }
+                QGroupBox::title{
+                    padding-top:-'''+str(pix[14])+'''px;
+                    left:'''+str(pix[8])+'''px;
+                }
+                QHeaderView::section{
+                    border-style:none;
+                }
+                QHeaderView::section:horizontal{
+                    border-bottom:'''+str(pix[2])+'''px solid gray;
+                }
+                QMessageBox,QDialogButtonBox{
+                    icon-size:'''+str(pix[36])+'''px '''+str(pix[36])+'''px;
+                }''')
+            # # now set the sizes that don't respond to stylesheets for whatever reason
+            # self.ui.incidentLinkLight.setFixedWidth(pix[18])
+            # self.ui.debriefLinkLight.setFixedWidth(pix[18])
+            # for n in range(self.ui.tableWidget.rowCount()):
+            #     self.ui.tableWidget.cellWidget(n,4).setIconSize(QtCore.QSize(pix[36],pix[14]))
+            #     self.ui.tableWidget.cellWidget(n,5).setIconSize(QtCore.QSize(pix[14],pix[14]))
+            # vh=self.ui.tableWidget.verticalHeader()
+            # for n in range(self.ui.tableWidget.columnCount()):
+            #     vh.resizeSection(n,pix[16])
+            self.ui.topLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
+            self.ui.pdfGroupBoxLayout.setSpacing(pix[6])
+            self.ui.pdfGroupBoxLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
+            self.ui.verticalLayout.setSpacing(pix[6])
+            self.ui.rebuildAllButton.setIconSize(QtCore.QSize(pix[18],pix[18]))
+            self.setMinimumSize(QtCore.QSize(int(500*(ldpi/96)),int(500*(ldpi/96))))
+            self.setMaximumSize(QtCore.QSize(int(800*(ldpi/96)),screen.size().height()-50))
+            # self.ui.verticalLayout.setSpacing(pix[6])
+            # self.resizeTableColumns()
+        if event:
+            event.accept()
+
 
 
 
@@ -1803,13 +1882,6 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
         self.ui.setupUi(self)
         self.ldpi=0
         
-        self.ui.tableWidget.setColumnWidth(0,125)
-        self.ui.tableWidget.setColumnWidth(1,75)
-        self.ui.tableWidget.setColumnWidth(2,75)
-        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(3,1)
-        self.ui.tableWidget.setColumnWidth(4,60)
-        self.ui.tableWidget.setColumnWidth(5,50)
-
         self.ui.generatePDFIcon=QtGui.QIcon()
         self.ui.generatePDFIcon.addPixmap(QtGui.QPixmap(":/plans_console/generate_pdf_gen.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
         self.ui.generatePDFDoneIcon=QtGui.QIcon()
@@ -1819,15 +1891,20 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
 
         self.ui.rebuildIcon=QtGui.QIcon()
         self.ui.rebuildIcon.addPixmap(QtGui.QPixmap(":/plans_console/reload-icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
+
+        self.ui.tableWidget.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+
+        self.moveEvent(None) # initialize sizes
     
-    def resizeEvent(self,event):
-        if self.parent.pc:
-            (self.parent.parent.debriefX,self.parent.parent.debriefY,self.parent.parent.debriefW,self.parent.parent.debriefH)=self.geometry().getRect()
-        if event:
-            event.accept()
+    def resizeTableColumns(self):
+        self.ui.tableWidget.setColumnWidth(0,int(80*(self.ldpi/96)))
+        self.ui.tableWidget.setColumnWidth(1,int(60*(self.ldpi/96)))
+        self.ui.tableWidget.setColumnWidth(2,int(60*(self.ldpi/96)))
+        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(3,1)
+        self.ui.tableWidget.setColumnWidth(4,int(70*(self.ldpi/96)))
+        self.ui.tableWidget.setColumnWidth(5,int(70*(self.ldpi/96)))
 
     def moveEvent(self,event):
-        self.resizeEvent(None)
         screen=self.screen()
         # logicalDotsPerInch seems to give a bit better match across differently scaled extended screen
         #  than physicalDotsPerInch - though not exactly perfect, probably due to testing on monitors
@@ -1850,51 +1927,36 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
             #     d[name]=str(screen.property(name))
             # logging.info('dict:\n'+json.dumps(d,indent=3))
 
-            # self.setStyleSheet('''
-            #     *{
-            #         font-size:'''+str(pix[12])+'''px;
-            #     }
-            #     QDialog{
-            #         padding:'''+str(pix[6])+'''px;
-            #     }
-            #     QLineEdit{
-            #         height:'''+str(pix[16])+'''px;
-            #     }
-            #     QLineEdit#incidentLinkLight,QLineEdit#debriefLinkLight{
-            #         width:'''+str(pix[16])+'''px;
-            #     }
-            #     QGroupBox{
-            #         border:'''+str(pix[1])+'''px solid darkgray;
-            #         border-radius:'''+str(pix[4])+'''px;
-            #         margin-top:'''+str(pix[10])+'''px;
-            #         padding:'''+str(pix[3])+'''px;
-            #         padding-top:'''+str(pix[6])+'''px;
-            #         font-size:'''+str(pix[10])+'''px;
-            #     }
-            #     QGroupBox::title{
-            #         padding-top:-'''+str(pix[14])+'''px;
-            #         left:'''+str(pix[8])+'''px;
-            #     }
-            #     QComboBox{
-            #         padding-top:'''+str(pix[4])+'''px;
-            #     }
-            #     QMessageBox,QDialogButtonBox{
-            #         icon-size:'''+str(pix[36])+'''px '''+str(pix[36])+'''px;
-            #     }
-            #     ''')
+            self.setStyleSheet('''
+                *{
+                    font-size:'''+str(pix[12])+'''px;
+                }
+                QDialog{
+                    padding:'''+str(pix[6])+'''px;
+                }
+                QLineEdit{
+                    height:'''+str(pix[16])+'''px;
+                }
+                QMessageBox,QDialogButtonBox{
+                    icon-size:'''+str(pix[36])+'''px '''+str(pix[36])+'''px;
+                }''')
             # # now set the sizes that don't respond to stylesheets for whatever reason
-            # self.ui.incidentLinkLight.setFixedWidth(pix[18])
-            # self.ui.debriefLinkLight.setFixedWidth(pix[18])
-            # # logging.info('style:'+self.styleSheet())
-            # self.ui.topLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
-            # self.ui.rescanButton.setIconSize(QtCore.QSize(pix[18],pix[18]))
-            # self.setMinimumSize(QtCore.QSize(int(900*(ldpi/96)),int(600*(ldpi/96))))
-            # self.ui.tableWidget_TmAs.setMinimumSize(QtCore.QSize(int(300*(ldpi/96)),int(200*(ldpi/96))))
-            # self.ui.rightVertLayout.setSpacing(pix[6])
-            # self.ui.mapsGroupVerticalLayout.setSpacing(pix[8])
-            # self.ui.geomGroupVerticalLayout.setSpacing(pix[8])
-            # self.resizeTableColumns()
-        event.accept()
+            self.ui.incidentLinkLight.setFixedWidth(pix[18])
+            self.ui.debriefLinkLight.setFixedWidth(pix[18])
+            for n in range(self.ui.tableWidget.rowCount()):
+                self.ui.tableWidget.cellWidget(n,4).setIconSize(QtCore.QSize(pix[36],pix[14]))
+                self.ui.tableWidget.cellWidget(n,5).setIconSize(QtCore.QSize(pix[14],pix[14]))
+            vh=self.ui.tableWidget.verticalHeader()
+            for n in range(self.ui.tableWidget.columnCount()):
+                vh.resizeSection(n,pix[16])
+            self.ui.topLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
+            self.ui.debriefOptionsButton.setIconSize(QtCore.QSize(pix[24],pix[24]))
+            self.setMinimumSize(QtCore.QSize(int(500*(ldpi/96)),int(500*(ldpi/96))))
+            self.setMaximumSize(QtCore.QSize(int(800*(ldpi/96)),screen.size().height()-50))
+            self.ui.verticalLayout.setSpacing(pix[6])
+            self.resizeTableColumns()
+        if event:
+            event.accept()
 
 
     # def showEvent(self,*args,**kwargs):

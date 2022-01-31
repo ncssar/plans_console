@@ -1053,6 +1053,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         out << "w=" << self.w << "\n"
         out << "h=" << self.h << "\n"
         # debrief geometry values are set during resizeEvent of that dialog
+        if self.dmg:
+            (self.debriefX,self.debriefY,self.debriefW,self.debriefH)=self.dmg.dd.geometry().getRect()
         out << "[Debrief]\n"
         out << "debriefX=" << self.debriefX << "\n"
         out << "debriefY=" << self.debriefY << "\n"
@@ -1105,7 +1107,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def moveEvent(self,event):
         screen=self.screen()
-        logging.info(self.__class__.__name__+' moveEvent called')
+        # logging.info(self.__class__.__name__+' moveEvent called')
         # logicalDotsPerInch seems to give a bit better match across differently scaled extended screen
         #  than physicalDotsPerInch - though not exactly perfect, probably due to testing on monitors
         #  with different physical sizes; but logicalDotsPerInch incorporates Windows display zoom,

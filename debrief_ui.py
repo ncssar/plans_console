@@ -14,9 +14,14 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_DebriefDialog(object):
     def setupUi(self, DebriefDialog):
         DebriefDialog.setObjectName("DebriefDialog")
-        DebriefDialog.resize(675, 299)
-        self.horizontalLayout = QtWidgets.QHBoxLayout(DebriefDialog)
-        self.horizontalLayout.setObjectName("horizontalLayout")
+        DebriefDialog.resize(1122, 697)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(DebriefDialog.sizePolicy().hasHeightForWidth())
+        DebriefDialog.setSizePolicy(sizePolicy)
+        self.topLayout = QtWidgets.QHBoxLayout(DebriefDialog)
+        self.topLayout.setObjectName("topLayout")
         self.verticalLayout = QtWidgets.QVBoxLayout()
         self.verticalLayout.setObjectName("verticalLayout")
         self.debriefDialogLabel = QtWidgets.QLabel(DebriefDialog)
@@ -74,6 +79,21 @@ class Ui_DebriefDialog(object):
         font = QtGui.QFont()
         font.setPointSize(12)
         self.tableWidget.setFont(font)
+        self.tableWidget.setStyleSheet("QHeaderView::section {\n"
+"    border-style: none;\n"
+"    border-bottom: 1px solid #fffff8;\n"
+"    border-right: 1px solid #fffff8;\n"
+"}\n"
+"\n"
+"QHeaderView::section:horizontal\n"
+"{\n"
+"    border-top: 1px solid #fffff8;\n"
+"}\n"
+"\n"
+"QHeaderView::section:vertical\n"
+"{\n"
+"    border-left: 1px solid #fffff8;\n"
+"}")
         self.tableWidget.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.tableWidget.setObjectName("tableWidget")
         self.tableWidget.setColumnCount(6)
@@ -93,7 +113,7 @@ class Ui_DebriefDialog(object):
         self.tableWidget.verticalHeader().setVisible(False)
         self.tableWidget.verticalHeader().setHighlightSections(False)
         self.verticalLayout.addWidget(self.tableWidget)
-        self.horizontalLayout.addLayout(self.verticalLayout)
+        self.topLayout.addLayout(self.verticalLayout)
 
         self.retranslateUi(DebriefDialog)
         QtCore.QMetaObject.connectSlotsByName(DebriefDialog)
