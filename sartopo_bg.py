@@ -124,20 +124,28 @@ class CustomHandler(logging.StreamHandler):
 
 logging.root.addHandler(CustomHandler())
 
-# default size scaling variables - must be defined at top level for use by top level QMessageBoxes such as uncaught exceptions
-#  these values are set by moveEvent() - at startup, and, moving from one screen to another of a differet ldpi value
-LDPI=0 # default logicalDotsPerInch 
-LPIX={} # default pixels-per-pt-equivalent dictionary
+def genLpix(ldpi):
+    lpix={}
+    for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
+        lpix[ptSize]=math.floor((ldpi*ptSize)/72)
+    return lpix
 
 def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
     buttons = QMessageBox.StandardButton(QMessageBox.Yes | QMessageBox.No)
     box = QMessageBox(icon, title, question, buttons, parent, opts)
+    # determine logical pixel equivalents: take prom parent if possible, so that the messagebox uses the same DPI as the spawning window
+    if hasattr(parent,'lpix'):
+        lpix=parent.lpix
+        # logging.info('using parent lpix: '+str(lpix))
+    else:
+        lpix=genLpix(96) # use 96dpi as a default when the parent doesn't have any lpix attribute
+        # logging.info('using default 96dpi lpix: '+str(lpix))
     box.setDefaultButton(QMessageBox.No)
     box.setStyleSheet('''
     *{
-        font-size:'''+str(LPIX[12])+'''px;
-        icon-size:'''+str(LPIX[36])+'''px '''+str(LPIX[36])+'''px;
+        font-size:'''+str(lpix[12])+'''px;
+        icon-size:'''+str(lpix[36])+'''px '''+str(lpix[36])+'''px;
     }''')
     box.show()
     QCoreApplication.processEvents()
@@ -150,6 +158,13 @@ def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.C
         title = "Warning" if (icon == QMessageBox.Warning) else "Error"
     buttons = QMessageBox.StandardButton(QMessageBox.Ok)
     box = QMessageBox(icon, title, message, buttons, parent, opts)
+    # determine logical pixel equivalents: take prom parent if possible, so that the messagebox uses the same DPI as the spawning window
+    if hasattr(parent,'lpix'):
+        lpix=parent.lpix
+        # logging.info('using parent lpix: '+str(lpix))
+    else:
+        lpix=genLpix(96) # use 96dpi as a default when the parent doesn't have any lpix attribute
+        # logging.info('using default 96dpi lpix: '+str(lpix))
     # attempt to set larger min width on hi res - none of these seem to work
     # from https://www.qtcentre.org/threads/22298-QMessageBox-Controlling-the-width
     # spacer=QSpacerItem(int(8000*(LDPI/96)),0,QSizePolicy.Minimum,QSizePolicy.Expanding)
@@ -159,8 +174,8 @@ def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.C
     # box.setFixedWidth(int(800*(LDPI/96)))
     box.setStyleSheet('''
     *{
-        font-size:'''+str(LPIX[12])+'''px;
-        icon-size:'''+str(LPIX[36])+'''px '''+str(LPIX[36])+'''px;
+        font-size:'''+str(lpix[12])+'''px;
+        icon-size:'''+str(lpix[36])+'''px '''+str(lpix[36])+'''px;
     }''')
     box.show()
     QCoreApplication.processEvents()
@@ -654,8 +669,6 @@ class DebriefMapGenerator():
             }
         }
 
-        logging.info('LPIX:'+str(LPIX))
-
         # if the request is CTD, offer to retry to internet if CTD request fails
         attempt=1
         tryAgain=True
@@ -677,19 +690,19 @@ class DebriefMapGenerator():
                     if 'account' in r['message'].lower():
                         suffix='\n\nMake sure your accountId in '+str(self.sts2.configpath)+' is valid and up to date.'
                     if attempt==1:
-                        if ask_user_to_confirm('Print request failed.  Response from server:\n\n'+str(r['code'])+':'+r['status']+'\n'+r['message']+suffix+'\nWould you like to try sending the request to sartopo.com?'):
+                        if ask_user_to_confirm('Print request failed.  Response from server:\n\n'+str(r['code'])+':'+r['status']+'\n'+r['message']+suffix+'\nWould you like to try sending the request to sartopo.com?',parent=self.dd):
                             attempt=2
                             printDomainAndPort='sartopo.com'
                             tryAgain=True
                 else:
                     if attempt==1:
-                        if ask_user_to_confirm('Print request failed.  See the log file for details.\nWould you like to try sending the request to sartopo.com?'):
+                        if ask_user_to_confirm('Print request failed.  See the log file for details.\nWould you like to try sending the request to sartopo.com?',parent=self.dd):
                             attempt=2
                             printDomainAndPort='sartopo.com'
                             tryAgain=True
             else:
                 if attempt==1:
-                    if ask_user_to_confirm('No response received from print request.  See the log file for details.\nWould you like to try sending the request to sartopo.com?'):
+                    if ask_user_to_confirm('No response received from print request.  See the log file for details.\nWould you like to try sending the request to sartopo.com?',parent=self.dd):
                         attempt=2
                         printDomainAndPort='sartopo.com'
                         tryAgain=True
@@ -1822,15 +1835,11 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
         #  while physicalDotsPerInch does not
         ldpi=screen.logicalDotsPerInch()
         if ldpi!=self.ldpi:
-            global LDPI
-            global LPIX
-            pix={}
-            for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
-                pix[ptSize]=math.floor((ldpi*ptSize)/72)
+            pix=genLpix(ldpi)
             logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
             self.ldpi=ldpi
-            LDPI=ldpi
-            LPIX=pix
+            self.parent.lpix=pix
+            self.lpix=pix
 
             # # from https://doc.qt.io/qt-5/qmetaobject.html#propertyCount
             # metaobject=screen.metaObject()

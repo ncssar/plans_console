@@ -113,20 +113,26 @@ from plans_console_ui import Ui_PlansConsole
 from incidentMapDialog_ui import Ui_IncidentMapDialog
 from sartopo_bg import *
 
-# default size scaling variables - must be defined at top level for use by top level QMessageBoxes such as uncaught exceptions
-#  these values are set by moveEvent() - at startup, and, moving from one screen to another of a differet ldpi value
-LDPI=0 # default logicalDotsPerInch 
-LPIX={} # default pixels-per-pt-equivalent dictionary
+def genLpix(ldpi):
+    lpix={}
+    for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
+        lpix[ptSize]=math.floor((ldpi*ptSize)/72)
+    return lpix
 
 def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
     buttons = QMessageBox.StandardButton(QMessageBox.Yes | QMessageBox.No)
     box = QMessageBox(icon, title, question, buttons, parent, opts)
+    # determine logical pixel equivalents: take prom parent if possible, so that the messagebox uses the same DPI as the spawning window
+    if hasattr(parent,'lpix'):
+        lpix=parent.lpix
+    else:
+        lpix=genLpix(96) # use 96dpi as a default when the parent doesn't have any lpix attribute
     box.setDefaultButton(QMessageBox.No)
     box.setStyleSheet('''
     *{
-        font-size:'''+str(LPIX[12])+'''px;
-        icon-size:'''+str(LPIX[36])+'''px '''+str(LPIX[36])+'''px;
+        font-size:'''+str(lpix[12])+'''px;
+        icon-size:'''+str(lpix[36])+'''px '''+str(lpix[36])+'''px;
     }''')
     box.show()
     QCoreApplication.processEvents()
@@ -139,6 +145,11 @@ def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.C
         title = "Warning" if (icon == QMessageBox.Warning) else "Error"
     buttons = QMessageBox.StandardButton(QMessageBox.Ok)
     box = QMessageBox(icon, title, message, buttons, parent, opts)
+    # determine logical pixel equivalents: take prom parent if possible, so that the messagebox uses the same DPI as the spawning window
+    if hasattr(parent,'lpix'):
+        lpix=parent.lpix
+    else:
+        lpix=genLpix(96) # use 96dpi as a default when the parent doesn't have any lpix attribute
     # attempt to set larger min width on hi res - none of these seem to work
     # from https://www.qtcentre.org/threads/22298-QMessageBox-Controlling-the-width
     # spacer=QSpacerItem(int(8000*(LDPI/96)),0,QSizePolicy.Minimum,QSizePolicy.Expanding)
@@ -148,8 +159,8 @@ def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.C
     # box.setFixedWidth(int(800*(LDPI/96)))
     box.setStyleSheet('''
     *{
-        font-size:'''+str(LPIX[12])+'''px;
-        icon-size:'''+str(LPIX[36])+'''px '''+str(LPIX[36])+'''px;
+        font-size:'''+str(lpix[12])+'''px;
+        icon-size:'''+str(lpix[36])+'''px '''+str(lpix[36])+'''px;
     }''')
     box.show()
     QCoreApplication.processEvents()
@@ -325,8 +336,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.debriefH=d.availableGeometry(self).height()-100
 
         self.setGeometry(int(self.x),int(self.y),int(self.w),int(self.h))
-
-        self.moveEvent(None) # initialize LPIX
 
         parser=argparse.ArgumentParser()
         parser.add_argument('mapID',nargs='?',default=None) # optional incident map ID (#abcd or $abcd for now)
@@ -1093,24 +1102,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             elif tokens[0]=="debriefH":
                 self.debriefH=int(tokens[1])
         rcFile.close()
-    
-    # def calcDPI(self):
-    #     screen=self.screen()
-    #     # logicalDotsPerInch seems to give a bit better match across differently scaled extended screen
-    #     #  than physicalDotsPerInch - though not exactly perfect, probably due to testing on monitors
-    #     #  with different physical sizes; but logicalDotsPerInch incorporates Windows display zoom,
-    #     #  while physicalDotsPerInch does not
-    #     ldpi=screen.logicalDotsPerInch()
-    #     if ldpi!=self.ldpi:
-    #         global LDPI
-    #         global LPIX
-    #         pix={}
-    #         for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
-    #             pix[ptSize]=math.floor((ldpi*ptSize)/72)
-    #         logging.info('Window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
-    #         self.ldpi=ldpi
-    #         LDPI=ldpi
-    #         LPIX=pix
 
     def moveEvent(self,event):
         screen=self.screen()
@@ -1121,15 +1112,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         #  while physicalDotsPerInch does not
         ldpi=screen.logicalDotsPerInch()
         if ldpi!=self.ldpi:
-            global LDPI
-            global LPIX
-            pix={}
-            for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
-                pix[ptSize]=math.floor((ldpi*ptSize)/72)
+            pix=genLpix(ldpi)
             logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
             self.ldpi=ldpi
-            LDPI=ldpi
-            LPIX=pix
+            self.lpix=pix
 
             # # from https://doc.qt.io/qt-5/qmetaobject.html#propertyCount
             # metaobject=screen.metaObject()
