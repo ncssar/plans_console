@@ -124,12 +124,44 @@ class CustomHandler(logging.StreamHandler):
 
 logging.root.addHandler(CustomHandler())
 
+# default size scaling variables - must be defined at top level for use by top level QMessageBoxes such as uncaught exceptions
+#  these values are set by moveEvent() - at startup, and, moving from one screen to another of a differet ldpi value
+LDPI=0 # default logicalDotsPerInch 
+LPIX={} # default pixels-per-pt-equivalent dictionary
+
+def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
+    opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
+    buttons = QMessageBox.StandardButton(QMessageBox.Yes | QMessageBox.No)
+    box = QMessageBox(icon, title, question, buttons, parent, opts)
+    box.setDefaultButton(QMessageBox.No)
+    box.setStyleSheet('''
+    *{
+        font-size:'''+str(LPIX[12])+'''px;
+        icon-size:'''+str(LPIX[36])+'''px '''+str(LPIX[36])+'''px;
+    }''')
+    box.show()
+    QCoreApplication.processEvents()
+    box.raise_()
+    return box.exec_() == QMessageBox.Yes
+
 def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
     if title == "":
         title = "Warning" if (icon == QMessageBox.Warning) else "Error"
     buttons = QMessageBox.StandardButton(QMessageBox.Ok)
     box = QMessageBox(icon, title, message, buttons, parent, opts)
+    # attempt to set larger min width on hi res - none of these seem to work
+    # from https://www.qtcentre.org/threads/22298-QMessageBox-Controlling-the-width
+    # spacer=QSpacerItem(int(8000*(LDPI/96)),0,QSizePolicy.Minimum,QSizePolicy.Expanding)
+    # layout=box.layout()
+    # layout.addItem(spacer,layout.rowCount(),0,1,layout.columnCount())
+    # box.setMaximumWidth(int(800*(LDPI/96)))
+    # box.setFixedWidth(int(800*(LDPI/96)))
+    box.setStyleSheet('''
+    *{
+        font-size:'''+str(LPIX[12])+'''px;
+        icon-size:'''+str(LPIX[36])+'''px '''+str(LPIX[36])+'''px;
+    }''')
     box.show()
     QCoreApplication.processEvents()
     box.raise_()
@@ -175,6 +207,9 @@ class DebriefMapGenerator():
         # targetMapID='0SD' # must already be a saved map
 
         self.dd=DebriefDialog(self)
+
+        if self.parent.debriefX and self.parent.debriefY and self.parent.debriefW and self.parent.debriefH:
+            self.dd.setGeometry(int(self.parent.debriefX),int(self.parent.debriefY),int(self.parent.debriefW),int(self.parent.debriefH))
 
         self.debriefOptionsDialog=DebriefOptionsDialog(self)
         self.dd.ui.debriefOptionsButton.clicked.connect(self.debriefOptionsButtonClicked)
@@ -242,6 +277,7 @@ class DebriefMapGenerator():
 
         if self.pc:
             self.dd.ui.debriefDialogLabel.setText('Debrief Map Generator is running in the background.  You can safely close and reopen this dialog as needed.\n\nDebrief data (tracks from returning searchers) should be imported to the INCIDENT map.  The DEBRIEF map is automatically updated and should not need to be directly edited.')
+            self.parent.debriefURL=self.debriefURL
 
         # determine / create sts1 (source map SartopoSession instance)
         self.sts1=None
@@ -618,29 +654,45 @@ class DebriefMapGenerator():
             }
         }
 
-        # url='https://sartopo.com/api/v1/acct/'+self.accountID+'/PDFLink'
-        # send print request to sartopo.com, even if sts2 is local
+        logging.info('LPIX:'+str(LPIX))
 
-        r=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID')
-        if r:
-            if isinstance(r,str):
-                logging.info(outingName+' : PDF generated : '+r+' - opening in new browser tab...')
-                webbrowser.open_new_tab('https://sartopo.com/p/'+r)
-                self.dmd['outings'][outingName]['PDF']=[r,tsNow]
-                self.setPDFButton(row,'done')
-                self.writeDmdFile()
-            elif isinstance(r,dict) and dictHasAllKeys(r,['status','code','message']):
-                suffix=''
-                if 'account' in r['message'].lower():
-                    suffix='\n\nMake sure your accountId in '+str(self.sts2.configpath)+' is valid and up to date.'
-                inform_user_about_issue('Print request failed.  Response from server:\n\n'+str(r['code'])+':'+r['status']+'\n'+r['message']+suffix)
+        # if the request is CTD, offer to retry to internet if CTD request fails
+        attempt=1
+        tryAgain=True
+        if 'topo.com' in self.sts2.domainAndPort.lower():
+            attempt=2
+        printDomainAndPort=self.sts2.domainAndPort
+        while tryAgain:
+            tryAgain=False
+            r=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID',domainAndPort=printDomainAndPort)
+            if r:
+                if isinstance(r,str):
+                    logging.info(outingName+' : PDF generated : '+r+' - opening in new browser tab...')
+                    webbrowser.open_new_tab(printDomainAndPort+'/p/'+r)
+                    self.dmd['outings'][outingName]['PDF']=[r,tsNow]
+                    self.setPDFButton(row,'done')
+                    self.writeDmdFile()
+                elif isinstance(r,dict) and dictHasAllKeys(r,['status','code','message']):
+                    suffix=''
+                    if 'account' in r['message'].lower():
+                        suffix='\n\nMake sure your accountId in '+str(self.sts2.configpath)+' is valid and up to date.'
+                    if attempt==1:
+                        if ask_user_to_confirm('Print request failed.  Response from server:\n\n'+str(r['code'])+':'+r['status']+'\n'+r['message']+suffix+'\nWould you like to try sending the request to sartopo.com?'):
+                            attempt=2
+                            printDomainAndPort='sartopo.com'
+                            tryAgain=True
+                else:
+                    if attempt==1:
+                        if ask_user_to_confirm('Print request failed.  See the log file for details.\nWould you like to try sending the request to sartopo.com?'):
+                            attempt=2
+                            printDomainAndPort='sartopo.com'
+                            tryAgain=True
             else:
-                inform_user_about_issue('Print request failed.  See the log file for details.')
-        else:
-            inform_user_about_issue('Print request failed.  See the log file for details.')
-
-
-
+                if attempt==1:
+                    if ask_user_to_confirm('No response received from print request.  See the log file for details.\nWould you like to try sending the request to sartopo.com?'):
+                        attempt=2
+                        printDomainAndPort='sartopo.com'
+                        tryAgain=True
 
     def PDFDoneClicked(self,*args,**kwargs):
         self.PDFGenClicked(*args,**kwargs)
@@ -1604,6 +1656,7 @@ class DebriefMapGenerator():
 
 
 
+
     # initial sync is different than callback handling because:
     #    ...
     #
@@ -1735,6 +1788,7 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
         QDialog.__init__(self)
         self.ui=Ui_DebriefDialog()
         self.ui.setupUi(self)
+        self.ldpi=0
         
         self.ui.tableWidget.setColumnWidth(0,125)
         self.ui.tableWidget.setColumnWidth(1,75)
@@ -1753,12 +1807,86 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
         self.ui.rebuildIcon=QtGui.QIcon()
         self.ui.rebuildIcon.addPixmap(QtGui.QPixmap(":/plans_console/reload-icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
     
-    def resizeEvent(self,*args):
+    def resizeEvent(self,event):
         if self.parent.pc:
             (self.parent.parent.debriefX,self.parent.parent.debriefY,self.parent.parent.debriefW,self.parent.parent.debriefH)=self.geometry().getRect()
+        if event:
+            event.accept()
 
-    def moveEvent(self,*args):
+    def moveEvent(self,event):
         self.resizeEvent(None)
+        screen=self.screen()
+        # logicalDotsPerInch seems to give a bit better match across differently scaled extended screen
+        #  than physicalDotsPerInch - though not exactly perfect, probably due to testing on monitors
+        #  with different physical sizes; but logicalDotsPerInch incorporates Windows display zoom,
+        #  while physicalDotsPerInch does not
+        ldpi=screen.logicalDotsPerInch()
+        if ldpi!=self.ldpi:
+            global LDPI
+            global LPIX
+            pix={}
+            for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
+                pix[ptSize]=math.floor((ldpi*ptSize)/72)
+            logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
+            self.ldpi=ldpi
+            LDPI=ldpi
+            LPIX=pix
+
+            # # from https://doc.qt.io/qt-5/qmetaobject.html#propertyCount
+            # metaobject=screen.metaObject()
+            # d={}
+            # for i in range(metaobject.propertyOffset(),metaobject.propertyCount()):
+            #     metaproperty=metaobject.property(i)
+            #     name=metaproperty.name()
+            #     d[name]=str(screen.property(name))
+            # logging.info('dict:\n'+json.dumps(d,indent=3))
+
+            # self.setStyleSheet('''
+            #     *{
+            #         font-size:'''+str(pix[12])+'''px;
+            #     }
+            #     QDialog{
+            #         padding:'''+str(pix[6])+'''px;
+            #     }
+            #     QLineEdit{
+            #         height:'''+str(pix[16])+'''px;
+            #     }
+            #     QLineEdit#incidentLinkLight,QLineEdit#debriefLinkLight{
+            #         width:'''+str(pix[16])+'''px;
+            #     }
+            #     QGroupBox{
+            #         border:'''+str(pix[1])+'''px solid darkgray;
+            #         border-radius:'''+str(pix[4])+'''px;
+            #         margin-top:'''+str(pix[10])+'''px;
+            #         padding:'''+str(pix[3])+'''px;
+            #         padding-top:'''+str(pix[6])+'''px;
+            #         font-size:'''+str(pix[10])+'''px;
+            #     }
+            #     QGroupBox::title{
+            #         padding-top:-'''+str(pix[14])+'''px;
+            #         left:'''+str(pix[8])+'''px;
+            #     }
+            #     QComboBox{
+            #         padding-top:'''+str(pix[4])+'''px;
+            #     }
+            #     QMessageBox,QDialogButtonBox{
+            #         icon-size:'''+str(pix[36])+'''px '''+str(pix[36])+'''px;
+            #     }
+            #     ''')
+            # # now set the sizes that don't respond to stylesheets for whatever reason
+            # self.ui.incidentLinkLight.setFixedWidth(pix[18])
+            # self.ui.debriefLinkLight.setFixedWidth(pix[18])
+            # # logging.info('style:'+self.styleSheet())
+            # self.ui.topLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
+            # self.ui.rescanButton.setIconSize(QtCore.QSize(pix[18],pix[18]))
+            # self.setMinimumSize(QtCore.QSize(int(900*(ldpi/96)),int(600*(ldpi/96))))
+            # self.ui.tableWidget_TmAs.setMinimumSize(QtCore.QSize(int(300*(ldpi/96)),int(200*(ldpi/96))))
+            # self.ui.rightVertLayout.setSpacing(pix[6])
+            # self.ui.mapsGroupVerticalLayout.setSpacing(pix[8])
+            # self.ui.geomGroupVerticalLayout.setSpacing(pix[8])
+            # self.resizeTableColumns()
+        event.accept()
+
 
     # def showEvent(self,*args,**kwargs):
     #     if self.pc:

@@ -73,11 +73,6 @@ BG_GREEN = "background-color:#00bb00"
 BG_RED = "background-color:#bb0000"
 BG_GRAY = "background-color:#aaaaaa"
 
-# default size scaling variables - must be defined at top level for use by top level QMessageBoxes such as uncaught exceptions
-#  these values are set by PlansConsole.moveEvent() - at startup, and, moving from one screen to another of a differet ldpi value
-LDPI=96 # default logicalDotsPerInch 
-LPIX={} # default pixels-per-pt-equivalent dictionary
-
 # print by default; let the caller change this if needed
 # (note, caller would need to clear all handlers first,
 #   per stackoverflow.com/questions/12158048)
@@ -117,6 +112,11 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
 from plans_console_ui import Ui_PlansConsole
 from incidentMapDialog_ui import Ui_IncidentMapDialog
 from sartopo_bg import *
+
+# default size scaling variables - must be defined at top level for use by top level QMessageBoxes such as uncaught exceptions
+#  these values are set by moveEvent() - at startup, and, moving from one screen to another of a differet ldpi value
+LDPI=0 # default logicalDotsPerInch 
+LPIX={} # default pixels-per-pt-equivalent dictionary
 
 def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
@@ -266,80 +266,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     def __init__(self,parent):
         QDialog.__init__(self)
 
-        parser=argparse.ArgumentParser()
-        parser.add_argument('mapID',nargs='?',default=None) # optional incident map ID (#abcd or $abcd for now)
-        parser.add_argument('debriefMapID',nargs='?',default=None) # optional debrief map ID (#abcd or $abcd for now)
-        parser.add_argument('-nr','--norestore',action='store_true',
-                help='do not try to restore the previous session, and do not ask the user')
-        parser.add_argument('-nu','--nourl',action='store_true',
-                help='disable all interactions with SARTopo/Caltopo')
-        args=parser.parse_args()
-        logging.info('args:'+str(args))
-
+        self.ldpi=1 # font size calculations (see moveEvent)
         self.parent=parent
         self.stsconfigpath='../sts.ini'
         self.rcFileName="plans_console.rc"
         self.configFileName="./local/plans_console.cfg"
-        self.readConfigFile()
-        if self.watchedDir and not os.path.isdir(self.watchedDir):
-            err=QMessageBox(QMessageBox.Critical,"Error","Specified directory to be watched does not exist:\n \n  "+self.watchedDir+"\n \nAborting.",
-                            QMessageBox.Close,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
-            err.show()
-            err.raise_()
-            err.exec_()
-            exit(-1)
 
-        self.ldpi=1 # font size calculations (see moveEvent)
         self.ui=Ui_PlansConsole()
         self.ui.setupUi(self)
 
-        self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
-        self.ui.debriefLinkLight.setStyleSheet(BG_GRAY)
-
-        self.setAttribute(Qt.WA_DeleteOnClose) 
-        self.medval = ""
-        self.save_mod_date = 0
-        self.assignments = []
-        self.forceRescan = 0
-        self.feature = {}
-        self.feature2 = {}
-        # self.setStyleSheet("background-color:#d6d6d6")
-        self.ui.tableWidget.cellClicked.connect(self.tableCellClicked)        
-        self.ui.OKbut.clicked.connect(self.assignTab_OK_clicked)
-        self.ui.doOper.clicked.connect(self.doOperClicked)
-        self.ui.debriefButton.clicked.connect(self.debriefButtonClicked)
-        # self.screen().logicalDotsPerInchChanged.connect(self.lldpiChanged)
-        self.reloaded = False
-        self.incidentURL=None
-        self.debriefURL=None
-        if not args.norestore:
-            name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
-            if "y" in name1.lower():
-                self.load_data()
-                self.reloaded = True
-        if not args.nourl and not self.reloaded:
-            name1=args.mapID
-            if name1:
-                if "#" in name1:
-                    self.incidentURL="https://sartopo.com/m/"+name1[1:]        # remove the #
-                elif "$" in name1:
-                    self.incidentURL="http://localhost:8080/m/"+name1[1:]     # remove the $
-                else:    
-                    self.incidentURL="http://192.168.1.20:8080/m/"+name1
-            else:
-                self.incidentMapDialog=IncidentMapDialog(self)
-                self.incidentMapDialog.exec() # force modal
-        self.folderId=None
-        self.sts=None
-        self.dmg=None # DebriefMapGenerator instance
-        self.link=-1
-        self.latField = "0.0"
-        self.lonField = "0.0"
-        self.NCSO = [39.27, -121.026]
-        self.sinceFolder=0 # sartopo wants integer milliseconds
-        self.sinceMarker=0 # sartopo wants integer milliseconds
-        self.markerList=[] # list of all sartopo markers and their ids
-        
         # default window geometry; overridden by previous rc file
         
         self.xd=100
@@ -356,10 +291,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.y = self.yd
         self.w = self.wd
         self.h = self.hd
-        self.debriefX=0
-        self.debriefY=0
-        self.debriefW=0
-        self.debriefH=0
+        self.debriefX=None
+        self.debriefY=None
+        self.debriefW=None
+        self.debriefH=None
         self.color = ["#ffff00", "#cccccc"]
                      
         self.loadRcFile()
@@ -390,6 +325,77 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.debriefH=d.availableGeometry(self).height()-100
 
         self.setGeometry(int(self.x),int(self.y),int(self.w),int(self.h))
+
+        self.moveEvent(None) # initialize LPIX
+
+        parser=argparse.ArgumentParser()
+        parser.add_argument('mapID',nargs='?',default=None) # optional incident map ID (#abcd or $abcd for now)
+        parser.add_argument('debriefMapID',nargs='?',default=None) # optional debrief map ID (#abcd or $abcd for now)
+        parser.add_argument('-nr','--norestore',action='store_true',
+                help='do not try to restore the previous session, and do not ask the user')
+        parser.add_argument('-nu','--nourl',action='store_true',
+                help='disable all interactions with SARTopo/Caltopo')
+        args=parser.parse_args()
+        logging.info('args:'+str(args))
+
+        self.readConfigFile()
+        if self.watchedDir and not os.path.isdir(self.watchedDir):
+            err=QMessageBox(QMessageBox.Critical,"Error","Specified directory to be watched does not exist:\n \n  "+self.watchedDir+"\n \nAborting.",
+                            QMessageBox.Close,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
+            err.show()
+            err.raise_()
+            err.exec_()
+            exit(-1)
+
+        self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
+        self.ui.debriefLinkLight.setStyleSheet(BG_GRAY)
+
+        self.setAttribute(Qt.WA_DeleteOnClose) 
+        self.medval = ""
+        self.save_mod_date = 0
+        self.assignments = []
+        self.forceRescan = 0
+        self.feature = {}
+        self.feature2 = {}
+        # self.setStyleSheet("background-color:#d6d6d6")
+        self.ui.tableWidget.cellClicked.connect(self.tableCellClicked)        
+        self.ui.OKbut.clicked.connect(self.assignTab_OK_clicked)
+        self.ui.doOper.clicked.connect(self.doOperClicked)
+        self.ui.debriefButton.clicked.connect(self.debriefButtonClicked)
+        # self.screen().logicalDotsPerInchChanged.connect(self.lldpiChanged)
+        self.reloaded = False
+        self.incidentURL=None
+        self.debriefURL=None
+        if not args.norestore:
+            if ask_user_to_confirm('Should the session be restored?',parent=self):
+            # name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
+            # if "y" in name1.lower():
+                self.load_data()
+                self.reloaded = True
+        if not args.nourl and not self.reloaded:
+            name1=args.mapID
+            if name1:
+                if "#" in name1:
+                    self.incidentURL="https://sartopo.com/m/"+name1[1:]        # remove the #
+                elif "$" in name1:
+                    self.incidentURL="http://localhost:8080/m/"+name1[1:]     # remove the $
+                else:    
+                    self.incidentURL="http://192.168.1.20:8080/m/"+name1
+            else:
+                self.incidentMapDialog=IncidentMapDialog(self)
+                self.incidentMapDialog.exec() # force modal
+        self.folderId=None
+        self.sts=None
+        self.dmg=None # DebriefMapGenerator instance
+        self.link=-1
+        self.latField = "0.0"
+        self.lonField = "0.0"
+        self.NCSO = [39.27, -121.026]
+        self.sinceFolder=0 # sartopo wants integer milliseconds
+        self.sinceMarker=0 # sartopo wants integer milliseconds
+        self.markerList=[] # list of all sartopo markers and their ids
+        
+
         self.scl = min(self.w/self.wd, self.h/self.hd)
         self.fontSize = int(self.fontSize*self.scl)
         logging.info("Scale:"+str(self.scl))
@@ -443,6 +449,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.incidentMapField.setText(self.incidentURL)
             self.createSTS()
 
+        self.save_data()
+
+        # if debrief map was specified both on command line and in restored file,
+        #  then ignore so that the user will have to specify the debrief map in the GUI
+        if self.debriefURL and args.debriefMapID:
+            self.debriefMapID=None
+            self.debriefURL=None
+
         if args.debriefMapID and self.link>-1:
             name2=args.debriefMapID
             if name2:
@@ -452,12 +466,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     self.debriefURL="http://localhost:8080/m/"+name2[1:]     # remove the $
                 else:    
                     self.debriefURL="http://192.168.1.20:8080/m/"+name2
-                self.debriefButtonClicked()
-                self.targetMapID=name2
-                self.targetDomainAndPort=self.debriefURL.split('/')[2]
-                self.dmg.dd.ui.debriefMapField.setText(self.debriefURL)
-                self.ui.debriefMapField.setText(self.debriefURL)
-                QTimer.singleShot(1000,self.debriefButtonClicked) # raise again
+            # self.targetMapID=name2
+            # self.targetDomainAndPort=self.debriefURL.split('/')[2]
+        
+        if self.debriefURL:
+            self.debriefButtonClicked()
+            self.dmg.dd.ui.debriefMapField.setText(self.debriefURL)
+            self.ui.debriefMapField.setText(self.debriefURL)
+            QTimer.singleShot(1000,self.debriefButtonClicked) # raise again
 
         
     def createSTS(self):
@@ -710,6 +726,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         else:
             if not self.dmg:
                 self.dmg=DebriefMapGenerator(self,self.sts,self.debriefURL)
+            self.save_data()
             if self.dmg and self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
                 self.dmg.dd.setGeometry(int(self.debriefX),int(self.debriefY),int(self.debriefW),int(self.debriefH))
                 self.dmg.dd.show()
@@ -790,7 +807,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             data1.update({'type': self.ui.tableWidget_TmAs.item(itm2, 2).text()})
             data1.update({'med': self.ui.tableWidget_TmAs.item(itm2, 3).text()})
             rowy['rowB'+str(itm2)] = data1.copy()
-        alld = json.dumps([{'incidentURL':self.incidentURL},{'csv':self.watchedFile+'%'+self.offsetFileName+ \
+        
+        maps={}
+        maps['incidentURL']=self.incidentURL
+        if self.dmg and self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
+            maps['debriefURL']=self.debriefURL
+        alld = json.dumps([maps,{'csv':self.watchedFile+'%'+self.offsetFileName+ \
                                              '%'+str(self.csvFiles)}, rowx, rowy])
         fid = open("save_plans_console.txt",'w')
         fid.write(alld)
@@ -803,6 +825,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         l = json.loads(alld)
         logging.info("Get:"+str(l))
         self.incidentURL = l[0]['incidentURL']
+        self.debriefURL=l[0].get('debriefURL',None)
         self.watchedFile,self.offsetFileName, self.csvFiles = l[1]['csv'].split('%')
         irow = 0
         for key in l[2]:
@@ -1071,8 +1094,27 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.debriefH=int(tokens[1])
         rcFile.close()
     
+    # def calcDPI(self):
+    #     screen=self.screen()
+    #     # logicalDotsPerInch seems to give a bit better match across differently scaled extended screen
+    #     #  than physicalDotsPerInch - though not exactly perfect, probably due to testing on monitors
+    #     #  with different physical sizes; but logicalDotsPerInch incorporates Windows display zoom,
+    #     #  while physicalDotsPerInch does not
+    #     ldpi=screen.logicalDotsPerInch()
+    #     if ldpi!=self.ldpi:
+    #         global LDPI
+    #         global LPIX
+    #         pix={}
+    #         for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
+    #             pix[ptSize]=math.floor((ldpi*ptSize)/72)
+    #         logging.info('Window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
+    #         self.ldpi=ldpi
+    #         LDPI=ldpi
+    #         LPIX=pix
+
     def moveEvent(self,event):
         screen=self.screen()
+        logging.info(self.__class__.__name__+' moveEvent called')
         # logicalDotsPerInch seems to give a bit better match across differently scaled extended screen
         #  than physicalDotsPerInch - though not exactly perfect, probably due to testing on monitors
         #  with different physical sizes; but logicalDotsPerInch incorporates Windows display zoom,
@@ -1084,7 +1126,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             pix={}
             for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
                 pix[ptSize]=math.floor((ldpi*ptSize)/72)
-            logging.info('Window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
+            logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
             self.ldpi=ldpi
             LDPI=ldpi
             LPIX=pix
@@ -1142,7 +1184,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.mapsGroupVerticalLayout.setSpacing(pix[8])
             self.ui.geomGroupVerticalLayout.setSpacing(pix[8])
             self.resizeTableColumns()
-        event.accept()
+        if event:
+            event.accept()
 
     def resizeTableColumns(self):
         ldpi=self.ldpi
