@@ -838,7 +838,7 @@ class SartopoSession():
             description='',
             previousEfforts='',
             transportation='',
-            timeAllocated='',
+            timeAllocated=0,
             primaryFrequency='',
             secondaryFrequency='',
             preparedBy='',
@@ -921,7 +921,7 @@ class SartopoSession():
             description='',
             previousEfforts='',
             transportation='',
-            timeAllocated='',
+            timeAllocated=0,
             primaryFrequency='',
             secondaryFrequency='',
             preparedBy='',
@@ -1063,7 +1063,7 @@ class SartopoSession():
                 c=prop['class']
                 if featureClass is None and c not in featureClassExcludeList:
                     if 'title' in pk:
-                        if prop['title']==title:
+                        if prop['title'].rstrip()==title: # since assignments without number will still have a space after letter
                             titleMatchCount+=1
                             rval.append(feature)
                     else:
@@ -1413,23 +1413,23 @@ class SartopoSession():
                     self.addAreaAssignment(list(r.exterior.coords),
                         number=tp['number'],
                         letter=tp['letter']+':'+str(suffix),
-                        opId=tp.get('operationalPeriodId',None),
-                        folderId=tp.get('folderId',None),
-                        resourceType=tp['resourceType'],
-                        teamSize=tp['teamSize'],
-                        priority=tp['priority'],
-                        responsivePOD=tp['responsivePOD'],
-                        unresponsivePOD=tp['unresponsivePOD'],
-                        cluePOD=tp['cluePOD'],
-                        description=tp['description'],
-                        previousEfforts=tp['previousEfforts'],
-                        transportation=tp['transportation'],
-                        timeAllocated=tp['timeAllocated'],
-                        primaryFrequency=tp['primaryFrequency'],
-                        secondaryFrequency=tp['secondaryFrequency'],
-                        preparedBy=tp['preparedBy'],
-                        gpstype=tp['gpstype'],
-                        status=tp['status'])
+                        opId=tp.get('operationalPeriodId',''),
+                        folderId=tp.get('folderId',None), # empty string will create an unnamed folder!
+                        resourceType=tp.get('resourceType',''),
+                        teamSize=tp.get('teamSize',0),
+                        priority=tp.get('priority',''),
+                        responsivePOD=tp.get('responsivePOD',''),
+                        unresponsivePOD=tp.get('unresponsivePOD',''),
+                        cluePOD=tp.get('cluePOD',''),
+                        description=tp.get('description',''),
+                        previousEfforts=tp.get('previousEfforts',''),
+                        transportation=tp.get('transportation',''),
+                        timeAllocated=tp.get('timeAllocated',0),
+                        primaryFrequency=tp.get('primaryFrequency',''),
+                        secondaryFrequency=tp.get('secondaryFrequency',''),
+                        preparedBy=tp.get('preparedBy',''),
+                        gpstype=tp.get('gpstype',''),
+                        status=tp.get('status',''))
                 else:
                     logging.error('cut: target feature class was neither Shape nor Assigment; operation aborted.')
                     return False
@@ -1458,23 +1458,23 @@ class SartopoSession():
                     self.addLineAssignment(list(r.coords),
                         number=tp['number'],
                         letter=tp['letter']+':'+str(suffix),
-                        opId=tp.get('operationalPeriodId',None),
-                        folderId=tp.get('folderId',None),
-                        resourceType=tp['resourceType'],
-                        teamSize=tp['teamSize'],
-                        priority=tp['priority'],
-                        responsivePOD=tp['responsivePOD'],
-                        unresponsivePOD=tp['unresponsivePOD'],
-                        cluePOD=tp['cluePOD'],
-                        description=tp['description'],
-                        previousEfforts=tp['previousEfforts'],
-                        transportation=tp['transportation'],
-                        timeAllocated=tp['timeAllocated'],
-                        primaryFrequency=tp['primaryFrequency'],
-                        secondaryFrequency=tp['secondaryFrequency'],
-                        preparedBy=tp['preparedBy'],
-                        gpstype=tp['gpstype'],
-                        status=tp['status'])
+                        opId=tp.get('operationalPeriodId',''),
+                        folderId=tp.get('folderId',None), # empty string will create an unnamed folder!
+                        resourceType=tp.get('resourceType',''),
+                        teamSize=tp.get('teamSize',0),
+                        priority=tp.get('priority',''),
+                        responsivePOD=tp.get('responsivePOD',''),
+                        unresponsivePOD=tp.get('unresponsivePOD',''),
+                        cluePOD=tp.get('cluePOD',''),
+                        description=tp.get('description',''),
+                        previousEfforts=tp.get('previousEfforts',''),
+                        transportation=tp.get('transportation',''),
+                        timeAllocated=tp.get('timeAllocated',0),
+                        primaryFrequency=tp.get('primaryFrequency',''),
+                        secondaryFrequency=tp.get('secondaryFrequency',''),
+                        preparedBy=tp.get('preparedBy',''),
+                        gpstype=tp.get('gpstype',''),
+                        status=tp.get('status',''))
                 else:
                     logging.error('cut: target feature class was neither Shape nor Assigment; operation aborted.')
                     return False
@@ -1785,23 +1785,23 @@ class SartopoSession():
                     rids.append(self.addAreaAssignment(list(r.exterior.coords),
                         number=tp['number'],
                         letter=letter,
-                        opId=tp.get('operationalPeriodId',None),
-                        folderId=tp.get('folderId',None),
-                        resourceType=tp['resourceType'],
-                        teamSize=tp['teamSize'],
-                        priority=tp['priority'],
-                        responsivePOD=tp['responsivePOD'],
-                        unresponsivePOD=tp['unresponsivePOD'],
-                        cluePOD=tp['cluePOD'],
-                        description=tp['description'],
-                        previousEfforts=tp['previousEfforts'],
-                        transportation=tp['transportation'],
-                        timeAllocated=tp['timeAllocated'],
-                        primaryFrequency=tp['primaryFrequency'],
-                        secondaryFrequency=tp['secondaryFrequency'],
-                        preparedBy=tp['preparedBy'],
-                        gpstype=tp['gpstype'],
-                        status=tp['status']))
+                        opId=tp.get('operationalPeriodId',''),
+                        folderId=tp.get('folderId',None), # empty string will create an unnamed folder!
+                        resourceType=tp.get('resourceType',''),
+                        teamSize=tp.get('teamSize',0),
+                        priority=tp.get('priority',''),
+                        responsivePOD=tp.get('responsivePOD',''),
+                        unresponsivePOD=tp.get('unresponsivePOD',''),
+                        cluePOD=tp.get('cluePOD',''),
+                        description=tp.get('description',''),
+                        previousEfforts=tp.get('previousEfforts',''),
+                        transportation=tp.get('transportation',''),
+                        timeAllocated=tp.get('timeAllocated',0),
+                        primaryFrequency=tp.get('primaryFrequency',''),
+                        secondaryFrequency=tp.get('secondaryFrequency',''),
+                        preparedBy=tp.get('preparedBy',''),
+                        gpstype=tp.get('gpstype',''),
+                        status=tp.get('status','')))
                 else:
                     logging.error('crop: target feature class was neither Shape nor Assigment')
         elif isinstance(result,LineString):
@@ -1837,23 +1837,23 @@ class SartopoSession():
                     rids.append(self.addLineAssignment(list(r.coords),
                         number=tp['number'],
                         letter=letter,
-                        opId=tp.get('operationalPeriodId',None),
-                        folderId=tp.get('folderId',None),
-                        resourceType=tp['resourceType'],
-                        teamSize=tp['teamSize'],
-                        priority=tp['priority'],
-                        responsivePOD=tp['responsivePOD'],
-                        unresponsivePOD=tp['unresponsivePOD'],
-                        cluePOD=tp['cluePOD'],
-                        description=tp['description'],
-                        previousEfforts=tp['previousEfforts'],
-                        transportation=tp['transportation'],
-                        timeAllocated=tp['timeAllocated'],
-                        primaryFrequency=tp['primaryFrequency'],
-                        secondaryFrequency=tp['secondaryFrequency'],
-                        preparedBy=tp['preparedBy'],
-                        gpstype=tp['gpstype'],
-                        status=tp['status']))
+                        opId=tp.get('operationalPeriodId',''),
+                        folderId=tp.get('folderId',None), # empty string will create an unnamed folder!
+                        resourceType=tp.get('resourceType',''),
+                        teamSize=tp.get('teamSize',0),
+                        priority=tp.get('priority',''),
+                        responsivePOD=tp.get('responsivePOD',''),
+                        unresponsivePOD=tp.get('unresponsivePOD',''),
+                        cluePOD=tp.get('cluePOD',''),
+                        description=tp.get('description',''),
+                        previousEfforts=tp.get('previousEfforts',''),
+                        transportation=tp.get('transportation',''),
+                        timeAllocated=tp.get('timeAllocated',0),
+                        primaryFrequency=tp.get('primaryFrequency',''),
+                        secondaryFrequency=tp.get('secondaryFrequency',''),
+                        preparedBy=tp.get('preparedBy',''),
+                        gpstype=tp.get('gpstype',''),
+                        status=tp.get('status','')))
                 else:
                     logging.error('crop: target feature class was neither Shape nor Assigment')
                     return False

@@ -138,4 +138,5 @@ plans_console.rc
 *.4
 *.5
 *.json
+*.json.pp
 *.swp
