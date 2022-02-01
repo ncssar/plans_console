@@ -15,8 +15,9 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
+from specifyMap import SpecifyMapDialog
+
 from debrief_ui import Ui_DebriefDialog
-from debriefMapDialog_ui import Ui_DebriefMapDialog
 from debriefOptionsDialog_ui import Ui_DebriefOptionsDialog
 
 LINK_LIGHT_STYLES={
@@ -218,9 +219,6 @@ class DebriefMapGenerator():
         #     tids - list of ids of associated tracks (in the target map)
         #     utids - list of uncropped track ids (since the track may be processed before the boundary)
 
-        # sourceMapID='V80'
-        # targetMapID='0SD' # must already be a saved map
-
         self.dd=DebriefDialog(self)
 
         if self.parent.debriefX and self.parent.debriefY and self.parent.debriefW and self.parent.debriefH:
@@ -234,33 +232,39 @@ class DebriefMapGenerator():
 
         # determine / create sts2 (target map SartopoSession instance)
         self.sts2=None
-        self.targetDomainAndPort=None
+        self.debriefDomainAndPort=None
         tcn=targetMap.__class__.__name__
         if tcn=='SartopoSession':
             # logging.info('Target map argument = SartopoSession instance')
             self.sts2=targetMap
-            self.targetDomainAndPort=self.sts2.domainAndPort
-            self.targetMapID=self.sts2.mapID
+            self.debriefDomainAndPort=self.sts2.domainAndPort
+            self.debriefMapID=self.sts2.mapID
         elif tcn=='str':
             # logging.info('Target map argument = string')
-            self.targetDomainAndPort='localhost:8080'
+            self.debriefDomainAndPort='localhost:8080'
             targetParse=targetMap.split('/')
-            self.targetMapID=targetParse[-1]
-            self.debriefURL=self.targetDomainAndPort+'/m/'+self.targetMapID
+            self.debriefMapID=targetParse[-1]
+            self.debriefURL=self.debriefDomainAndPort+'/m/'+self.debriefMapID
             if targetMap.lower().startswith('http'):
                 self.debriefURL=targetMap
-                self.targetDomainAndPort=targetParse[2]
+                self.debriefDomainAndPort=targetParse[2]
         else:
             logging.info('No debrief map; raising DebriefMapDialog')
+            self.defaultDomainAndPort=None
             if hasattr(self.parent,'defaultDomainAndPort'):
                 self.defaultDomainAndPort=self.parent.defaultDomainAndPort
-            self.debriefMapDialog=DebriefMapDialog(self)
+            self.debriefMapDialog=SpecifyMapDialog(self,'Debrief','Some stuff',self.defaultDomainAndPort)
             self.debriefMapDialog.exec() # force modal
-            # logging.info('No target map; using default')
-            # self.targetDomainAndPort='localhost:8080'
-            # self.targetMapID='81M'
+            self.debriefURL=self.debriefMapDialog.url
+            if self.debriefURL:
+                parse=self.debriefURL.replace("http://","").replace("https://","").split("/")
+                self.debriefDomainAndPort=parse[0]
+                self.debriefMapID=parse[-1]
+                self.dd.ui.debriefMapField.setText(self.debriefURL)
+                if self.pc:
+                    self.parent.ui.debriefMapField.setText(self.debriefURL)
         
-        if not self.targetDomainAndPort:
+        if not self.debriefDomainAndPort:
             # debrief map dialog was canceled
             return
 
@@ -278,12 +282,15 @@ class DebriefMapGenerator():
                 account=self.parent.accountName
             QCoreApplication.processEvents()
             box.raise_()
-            self.sts2=SartopoSession(self.targetDomainAndPort,self.targetMapID,
+            parse=self.debriefURL.replace("http://","").replace("https://","").split("/")
+            domainAndPort=parse[0]
+            mapID=parse[-1]
+            self.sts2=SartopoSession(self.debriefDomainAndPort,self.debriefMapID,
                 sync=False,
                 account=account,
                 configpath=configpath,
                 syncTimeout=10,
-                syncDumpFile='../../'+self.targetMapID+'.txt')
+                syncDumpFile='../../'+self.debriefMapID+'.txt')
             box.close()
 
         if self.sts2 and self.sts2.apiVersion<0:
@@ -301,16 +308,16 @@ class DebriefMapGenerator():
             logging.info('Source map argument = SartopoSession instance: '+sourceMap.domainAndPort+'/m/'+sourceMap.mapID)
             self.sts1=sourceMap
             self.sourceMapID=self.sts1.mapID
-            self.sourceDomainAndPort=self.sts1.domainAndPort
+            self.incidentDomainAndPort=self.sts1.domainAndPort
         elif scn=='str':
             logging.info('Source map argument = string')
-            self.sourceDomainAndPort='localhost:8080'        
+            self.incidentDomainAndPort='localhost:8080'        
             sourceParse=sourceMap.split('/')
             self.sourceMapID=sourceParse[-1]
             if sourceMap.lower().startswith('http'):
-                self.sourceDomainAndPort=sourceParse[2]
+                self.incidentDomainAndPort=sourceParse[2]
             try:
-                self.sts1=SartopoSession(self.sourceDomainAndPort,self.sourceMapID,
+                self.sts1=SartopoSession(self.incidentDomainAndPort,self.sourceMapID,
                     syncDumpFile='../../'+self.sourceMapID+'.txt',
                     # newFeatureCallback=self.initialNewFeatureCallback,
                     # propertyUpdateCallback=self.propertyUpdateCallback,
@@ -331,8 +338,8 @@ class DebriefMapGenerator():
             self.dd.ui.incidentMapField.setText(self.parent.incidentURL)
 
         # self.sourceMapID=sourceMapID
-        # self.targetMapID=targetMapID # must already be a saved map
-        self.fileNameBase=self.sourceMapID+'_'+self.targetMapID
+        # self.debriefMapID=debriefMapID # must already be a saved map
+        self.fileNameBase=self.sourceMapID+'_'+self.debriefMapID
         self.dmdFileName='dmg_'+self.fileNameBase+'.json'
         # assignmentsFileName=fileNameBase+'_assignments.json'
 
@@ -371,16 +378,16 @@ class DebriefMapGenerator():
         # # open a session on the target map first, since nocb definition checks for it
         # if not self.sts2:
         #     try:
-        #         self.sts2=SartopoSession(self.targetDomainAndPort,self.targetMapID,
+        #         self.sts2=SartopoSession(self.debriefDomainAndPort,self.debriefMapID,
         #             sync=False,
         #             syncTimeout=10,
-        #             syncDumpFile='../../'+self.targetMapID+'.txt')
+        #             syncDumpFile='../../'+self.debriefMapID+'.txt')
         #     except:
         #         sys.exit()
 
         # if not self.sts1:  
         #     try:
-        #         self.sts1=SartopoSession(self.sourceDomainAndPort,self.sourceMapID,
+        #         self.sts1=SartopoSession(self.incidentDomainAndPort,self.sourceMapID,
         #             syncDumpFile='../../'+self.sourceMapID+'.txt',
         #             # newFeatureCallback=self.initialNewFeatureCallback,
         #             # propertyUpdateCallback=self.propertyUpdateCallback,
@@ -1822,56 +1829,6 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
             # self.resizeTableColumns()
         if event:
             event.accept()
-
-
-
-
-class DebriefMapDialog(QDialog,Ui_DebriefMapDialog):
-    def __init__(self,parent):
-        QDialog.__init__(self)
-        self.parent=parent
-        self.ui=Ui_DebriefMapDialog()
-        self.ui.setupUi(self)
-        self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
-        self.urlChanged()
-        self.ui.mapIDField.setFocus()
-        ddap=None
-        if hasattr(self.parent,'defaultDomainAndPort'):
-            ddap=self.parent.defaultDomainAndPort
-        if ddap:
-            found=False
-            for button in self.ui.domainAndPortButtonGroup.buttons():
-                if ddap==button.text():
-                    found=True
-                    button.click()
-            if not found:
-                self.ui.otherButton.click()
-                self.ui.domainAndPortOtherField.setText(ddap)
-
-    def domainAndPortClicked(self,*args,**kwargs):
-        val=self.ui.domainAndPortButtonGroup.checkedButton().text()
-        self.ui.domainAndPortOtherField.setEnabled(val=='Other')
-        self.urlChanged()
-
-    def urlChanged(self):
-        dap=self.ui.domainAndPortButtonGroup.checkedButton().text()
-        if dap=='Other':
-            dap=self.ui.domainAndPortOtherField.text()
-        prefix='http://'
-        if '.com' in dap:
-            prefix='https://'
-        mapID=self.ui.mapIDField.text()
-        url=prefix+dap+'/m/'+mapID
-        self.ui.urlField.setText(url)
-    
-    def accept(self):
-        self.parent.targetDomainAndPort=self.ui.domainAndPortButtonGroup.checkedButton().text()
-        self.parent.targetMapID=self.ui.mapIDField.text()
-        self.parent.debriefURL=self.ui.urlField.text()
-        self.parent.dd.ui.debriefMapField.setText(self.ui.urlField.text())
-        if self.parent.pc:
-            self.parent.parent.ui.debriefMapField.setText(self.ui.urlField.text())
-        super(DebriefMapDialog,self).accept()
 
 
 class DebriefDialog(QDialog,Ui_DebriefDialog):

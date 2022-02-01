@@ -1905,8 +1905,11 @@ def handle_exception(*args):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     prefix='Uncaught exception:' # not in a thread
-    if thread and thread.__class__.__name__=='Thread':
-        prefix='Uncaught exception in '+thread.name+':' # in a thread
+    try:
+        if thread and thread.__class__.__name__=='Thread':
+            prefix='Uncaught exception in '+thread.name+':' # in a thread
+    except UnboundLocalError:
+        pass
     logging.critical(prefix, exc_info=(exc_type, exc_value, exc_traceback))
 sys.excepthook = handle_exception
 threading.excepthook = handle_exception

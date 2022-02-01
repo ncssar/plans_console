@@ -57,6 +57,7 @@ import argparse
 import logging
 from datetime import datetime
 import winsound
+from specifyMap import SpecifyMapDialog
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -110,7 +111,6 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
         os.system(cmd)
 
 from plans_console_ui import Ui_PlansConsole
-from incidentMapDialog_ui import Ui_IncidentMapDialog
 from sartopo_bg import *
 
 def genLpix(ldpi):
@@ -226,52 +226,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 sys.excepthook = handle_exception
 
 def sortByTitle(item):
-    return item["properties"]["title"]        
-
-
-class IncidentMapDialog(QDialog,Ui_IncidentMapDialog):
-    def __init__(self,parent):
-        QDialog.__init__(self)
-        self.parent=parent
-        self.ui=Ui_IncidentMapDialog()
-        self.ui.setupUi(self)
-        self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
-        self.urlChanged()
-        self.ui.mapIDField.setFocus()
-        ddap=None
-        if hasattr(self.parent,'defaultDomainAndPort'):
-            ddap=self.parent.defaultDomainAndPort
-        if ddap:
-            found=False
-            for button in self.ui.domainAndPortButtonGroup.buttons():
-                if ddap==button.text():
-                    found=True
-                    button.click()
-            if not found:
-                self.ui.otherButton.click()
-                self.ui.domainAndPortOtherField.setText(ddap)
-
-    def domainAndPortClicked(self,*args,**kwargs):
-        val=self.ui.domainAndPortButtonGroup.checkedButton().text()
-        self.ui.domainAndPortOtherField.setEnabled(val=='Other')
-        self.parent.sourceDomainAndPort=val
-        self.urlChanged()
-
-    def urlChanged(self):
-        dap=self.ui.domainAndPortButtonGroup.checkedButton().text()
-        if dap=='Other':
-            dap=self.ui.domainAndPortOtherField.text()
-        prefix='http://'
-        if '.com' in dap:
-            prefix='https://'
-        mapID=self.ui.mapIDField.text()
-        url=prefix+dap+'/m/'+mapID
-        self.ui.urlField.setText(url)
-
-    def accept(self):
-        self.parent.incidentURL=self.ui.urlField.text()
-        super(IncidentMapDialog,self).accept()
-
+    return item["properties"]["title"]
 
 class PlansConsole(QDialog,Ui_PlansConsole):
     def __init__(self,parent):
@@ -391,8 +346,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 else:    
                     self.incidentURL="http://192.168.1.20:8080/m/"+name1
             else:
-                self.incidentMapDialog=IncidentMapDialog(self)
+                self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.defaultDomainAndPort)
                 self.incidentMapDialog.exec() # force modal
+                self.incidentURL=self.incidentMapDialog.url
+                self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
         self.folderId=None
         self.sts=None
         self.dmg=None # DebriefMapGenerator instance
@@ -475,8 +432,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     self.debriefURL="http://localhost:8080/m/"+name2[1:]     # remove the $
                 else:    
                     self.debriefURL="http://192.168.1.20:8080/m/"+name2
-            # self.targetMapID=name2
-            # self.targetDomainAndPort=self.debriefURL.split('/')[2]
         
         if self.debriefURL:
             self.debriefButtonClicked()
