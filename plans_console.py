@@ -658,7 +658,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # exit()
         self.rescanTimer.stop()
 
+    
     def doOperClicked(self):
+        # eventually, we can use STSFeatureComboBox to allow autocomplete on each feature name;
+        #  that will also do an immediate cache refresh when the fileds are opened; until then,
+        #  we can force an immediate refresh now, when the button is clicked.
+        self.sts.refresh(forceImmediate=True)
         op=self.ui.geomOpButtonGroup.checkedButton().text()
         selFeature=self.ui.selFeature.text()
         editorFeature=self.ui.editorFeature.text()

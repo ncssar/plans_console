@@ -140,3 +140,4 @@ plans_console.rc
 *.json
 *.json.pp
 *.swp
+*.code-workspace

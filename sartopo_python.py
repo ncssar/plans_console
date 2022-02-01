@@ -1298,7 +1298,7 @@ class SartopoSession():
     #   - slice a line, using a line
     #  the arguments (target, cutter) can be name (string), id (string), or feature (json)
 
-    def cut(self,target,cutter,deleteCutter=True):
+    def cut(self,target,cutter,deleteCutter=True,useResultNameSuffix=True):
         if isinstance(target,str): # if string, find feature by name; if id, find feature by id
             targetStr=target
             if len(target)==36: # id
@@ -1378,6 +1378,9 @@ class SartopoSession():
         tc=tp['class'] # Shape or Assignment
         tfid=tp.get('folderId',None)
 
+        # collect resulting feature ids to return as the return value
+        rids=[]
+
         if isinstance(result,GeometryCollection): # polygons, linestrings, or both
             try:
                 result=MultiPolygon(result)
@@ -1388,19 +1391,24 @@ class SartopoSession():
                     logging.error('cut: resulting GeometryCollection could not be converted to MultiPolygon or MultiLineString.  Operation aborted.')
                     return False
         if isinstance(result,Polygon):
-            if not self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result.exterior.coords)]}):
+            rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result.exterior.coords)]}))
+            if rids==[]:
                 logging.error('cut: target shape not found; operation aborted.')
                 return False
         elif isinstance(result,MultiPolygon):
-            if not self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}):
+            rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}))
+            if rids==[]:
                 logging.error('cut: target shape not found; operation aborted.')
                 return False
             suffix=0
             for r in result[1:]:
                 suffix+=1
                 if tc=='Shape':
-                    self.addPolygon(list(r.exterior.coords),
-                        title=tp['title']+':'+str(suffix),
+                    title=tp['title']
+                    if useResultNameSuffix:
+                        title=title+':'+str(suffix)
+                    rids.append(self.addPolygon(list(r.exterior.coords),
+                        title=title,
                         stroke=tp['stroke'],
                         fill=tp['fill'],
                         strokeOpacity=tp['stroke-opacity'],
@@ -1408,11 +1416,14 @@ class SartopoSession():
                         fillOpacity=tp['fill-opacity'],
                         description=tp['description'],
                         folderId=tfid,
-                        gpstype=tp['gpstype'])
+                        gpstype=tp['gpstype']))
                 elif tc=='Assignment':
-                    self.addAreaAssignment(list(r.exterior.coords),
+                    letter=tp['letter']
+                    if useResultNameSuffix:
+                        letter=letter+':'+str(suffix)
+                    rids.append(self.addAreaAssignment(list(r.exterior.coords),
                         number=tp['number'],
-                        letter=tp['letter']+':'+str(suffix),
+                        letter=letter,
                         opId=tp.get('operationalPeriodId',''),
                         folderId=tp.get('folderId',None), # empty string will create an unnamed folder!
                         resourceType=tp.get('resourceType',''),
@@ -1429,35 +1440,43 @@ class SartopoSession():
                         secondaryFrequency=tp.get('secondaryFrequency',''),
                         preparedBy=tp.get('preparedBy',''),
                         gpstype=tp.get('gpstype',''),
-                        status=tp.get('status',''))
+                        status=tp.get('status','')))
                 else:
                     logging.error('cut: target feature class was neither Shape nor Assigment; operation aborted.')
                     return False
         elif isinstance(result,LineString):
-            if not self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result.coords)}):
+            rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result.coords)}))
+            if rids==[]:
                 logging.error('cut: target shape not found; operation aborted.')
                 return False
         elif isinstance(result,MultiLineString):
-            if not self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result[0].coords)}):
+            rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result[0].coords)}))
+            if rids==[]:
                 logging.error('cut: target shape not found; operation aborted.')
                 return False
             suffix=0
             for r in result[1:]:
                 suffix+=1
                 if tc=='Shape':
-                    self.addLine(list(r.coords),
-                        title=tp['title']+':'+str(suffix),
+                    title=tp['title']
+                    if useResultNameSuffix:
+                        title=title+':'+str(suffix)
+                    rids.append(self.addLine(list(r.coords),
+                        title=title,
                         color=tp['stroke'],
                         opacity=tp['stroke-opacity'],
                         width=tp['stroke-width'],
                         pattern=tp['pattern'],
                         description=tp['description'],
                         folderId=tfid,
-                        gpstype=tp['gpstype'])
+                        gpstype=tp['gpstype']))
                 elif tc=='Assignment':
-                    self.addLineAssignment(list(r.coords),
+                    letter=tp['letter']
+                    if useResultNameSuffix:
+                        letter=letter+':'+str(suffix)
+                    rids.append(self.addLineAssignment(list(r.coords),
                         number=tp['number'],
-                        letter=tp['letter']+':'+str(suffix),
+                        letter=letter,
                         opId=tp.get('operationalPeriodId',''),
                         folderId=tp.get('folderId',None), # empty string will create an unnamed folder!
                         resourceType=tp.get('resourceType',''),
@@ -1474,12 +1493,14 @@ class SartopoSession():
                         secondaryFrequency=tp.get('secondaryFrequency',''),
                         preparedBy=tp.get('preparedBy',''),
                         gpstype=tp.get('gpstype',''),
-                        status=tp.get('status',''))
+                        status=tp.get('status','')))
                 else:
                     logging.error('cut: target feature class was neither Shape nor Assigment; operation aborted.')
                     return False
         if deleteCutter:
             self.delFeature(cutterShape['properties']['class'],cutterShape['id'])
+
+        return rids # resulting feature IDs
 
     # expand - expand target polygon to include the area of p2 polygon
 
@@ -1551,6 +1572,8 @@ class SartopoSession():
 
         if deleteP2:
             self.delFeature(p2Shape['properties']['class'],p2Shape['id'])
+
+        return True # success
 
     # intersection2(targetGeom,boundaryGeom)
     # we want a function that can take the place of shapely.ops.intersection
@@ -1750,16 +1773,23 @@ class SartopoSession():
         rids=[]
 
         if isinstance(result,GeometryCollection): # apparently this will only be the case for polygons
-            result=MultiPolygon(result)
+            try:
+                result=MultiPolygon(result)
+            except:
+                try:
+                    result=MultiLineString(result)
+                except:
+                    logging.error('crop: resulting GeometryCollection could not be converted to MultiPolygon or MultiLineString.  Operation aborted.')
+                    return False
         if isinstance(result,Polygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result.exterior.coords)]}))
             if rids==[]:
-                logging.error('cut: target shape not found; operation aborted.')
+                logging.error('crop: target shape not found; operation aborted.')
                 return False
         elif isinstance(result,MultiPolygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}))
             if rids==[]:
-                logging.error('cut: target shape not found; operation aborted.')
+                logging.error('crop: target shape not found; operation aborted.')
                 return False
             suffix=0
             for r in result[1:]:
