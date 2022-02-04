@@ -115,7 +115,7 @@ from sartopo_bg import *
 
 def genLpix(ldpi):
     lpix={}
-    for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
+    for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,22,24,36,48]:
         lpix[ptSize]=math.floor((ldpi*ptSize)/72)
     return lpix
 
@@ -280,15 +280,16 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         
 		# debrief dialog (in case it is opened):
         # make sure x/y/w/h from resource file will fit on the available display
-        if self.debriefX+self.debriefW > d.width():
-            self.debriefX=50
-        if self.debriefY+self.debriefH > d.height():
-            self.debriefY=50
-        # try to use specified w and h; shrink if needed
-        if self.debriefX+self.debriefW > d.width():
-            self.debriefW=d.availableGeometry(self).width()-100
-        if self.debriefY+self.debriefH > d.height():
-            self.debriefH=d.availableGeometry(self).height()-100
+        if self.debriefX and self.debriefY and self.debriefW and self.debriefH:
+            if self.debriefX+self.debriefW > d.width():
+                self.debriefX=50
+            if self.debriefY+self.debriefH > d.height():
+                self.debriefY=50
+            # try to use specified w and h; shrink if needed
+            if self.debriefX+self.debriefW > d.width():
+                self.debriefW=d.availableGeometry(self).width()-100
+            if self.debriefY+self.debriefH > d.height():
+                self.debriefH=d.availableGeometry(self).height()-100
 
         self.setGeometry(int(self.x),int(self.y),int(self.w),int(self.h))
 
@@ -697,7 +698,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.dmg=DebriefMapGenerator(self,self.sts,self.debriefURL)
             self.save_data()
             if self.dmg and self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
-                self.dmg.dd.setGeometry(int(self.debriefX),int(self.debriefY),int(self.debriefW),int(self.debriefH))
+                if self.debriefX and self.debriefY and self.debriefW and self.debriefH:
+                    self.dmg.dd.setGeometry(int(self.debriefX),int(self.debriefY),int(self.debriefW),int(self.debriefH))
                 self.dmg.dd.show()
                 self.dmg.dd.raise_()
             else:
@@ -1015,11 +1017,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # debrief geometry values are set during resizeEvent of that dialog
         if self.dmg:
             (self.debriefX,self.debriefY,self.debriefW,self.debriefH)=self.dmg.dd.geometry().getRect()
-        out << "[Debrief]\n"
-        out << "debriefX=" << self.debriefX << "\n"
-        out << "debriefY=" << self.debriefY << "\n"
-        out << "debriefW=" << self.debriefW << "\n"
-        out << "debriefH=" << self.debriefH << "\n"
+        # if values currently exist, write them to the file for future use - even if dmg was not opened during this session
+        if self.debriefX and self.debriefY and self.debriefW and self.debriefH:        
+            out << "[Debrief]\n"
+            out << "debriefX=" << self.debriefX << "\n"
+            out << "debriefY=" << self.debriefY << "\n"
+            out << "debriefW=" << self.debriefW << "\n"
+            out << "debriefH=" << self.debriefH << "\n"
         rcFile.close()
         
     def loadRcFile(self):
@@ -1118,6 +1122,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 }
                 QMessageBox,QDialogButtonBox{
                     icon-size:'''+str(pix[36])+'''px '''+str(pix[36])+'''px;
+                }
+                QCheckBox::indicator,QRadioButton::indicator{
+                    width:'''+str(pix[10])+'''px;
+                    height:'''+str(pix[10])+'''px;
+                }
+                QRadioButton{
+                    spacing:'''+str(pix[8])+'''px;
                 }
                 ''')
             # now set the sizes that don't respond to stylesheets for whatever reason
