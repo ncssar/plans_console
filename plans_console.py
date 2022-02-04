@@ -35,6 +35,8 @@
 # ############################################################################
 #
 
+
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -42,7 +44,6 @@ from PyQt5.QtWidgets import *
 
 from pygtail import Pygtail
 import math
-import sys
 import os
 import shutil
 import glob
@@ -54,10 +55,9 @@ import json
 import random
 import configparser
 import argparse
-import logging
 from datetime import datetime
 import winsound
-from specifyMap import SpecifyMapDialog
+
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -67,12 +67,11 @@ sartopo_python_min_version="1.1.2"
 #    print("ABORTING: installed sartopo_python version "+str(sartopo_python_installed_version)+ \
 #          " is less than minimum required version "+sartopo_python_min_version)
 #    exit()
-    
-from sartopo_python import SartopoSession
+from sartopo_python import SartopoSession # import before logging to avoid useless numpy-not-installed message
 
-BG_GREEN = "background-color:#00bb00"
-BG_RED = "background-color:#bb0000"
-BG_GRAY = "background-color:#aaaaaa"
+# start logging early, to catch any messages during import of modules
+import sys
+import logging
 
 # print by default; let the caller change this if needed
 # (note, caller would need to clear all handlers first,
@@ -90,13 +89,19 @@ logging.basicConfig(
     ]
 )
 
+from specifyMap import SpecifyMapDialog
+
+BG_GREEN = "background-color:#00bb00"
+BG_RED = "background-color:#bb0000"
+BG_GRAY = "background-color:#aaaaaa"
+
 # rebuild all _ui.py files from .ui files in the same directory as this script as needed
 #   NOTE - this will overwrite any edits in _ui.py files
 for ui in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*.ui')):
     uipy=ui.replace('.ui','_ui.py')
     if not (os.path.isfile(uipy) and os.path.getmtime(uipy) > os.path.getmtime(ui)):
         cmd='pyuic5 -o '+uipy+' '+ui
-        logging.info('Building GUI file from  '+os.path.basename(ui)+':')
+        logging.info('Building GUI file from '+os.path.basename(ui)+':')
         logging.info('  '+cmd)
         os.system(cmd)
 
@@ -106,7 +111,7 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
     rcpy=qrc.replace('.qrc','_rc.py')
     if not (os.path.isfile(rcpy) and os.path.getmtime(rcpy) > os.path.getmtime(qrc)):
         cmd='pyrcc5 -o '+rcpy+' '+qrc
-        logging.info('Building Qt Resource file from  '+os.path.basename(qrc)+':')
+        logging.info('Building Qt Resource file from '+os.path.basename(qrc)+':')
         logging.info('  '+cmd)
         os.system(cmd)
 

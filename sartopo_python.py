@@ -144,6 +144,8 @@ import threading
 from threading import Thread
 import copy
 
+# shapely.geometry improts will generate a logging message if numpy is not installed;
+#  numpy is not actually required
 from shapely.geometry import LineString,Point,Polygon,MultiLineString,MultiPolygon,GeometryCollection
 from shapely.ops import split
 
