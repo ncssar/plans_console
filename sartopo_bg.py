@@ -127,7 +127,7 @@ logging.root.addHandler(CustomHandler())
 
 def genLpix(ldpi):
     lpix={}
-    for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,24,36,48]:
+    for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,22,24,36,48]:
         lpix[ptSize]=math.floor((ldpi*ptSize)/72)
     return lpix
 

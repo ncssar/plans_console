@@ -1,4 +1,3 @@
-from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -6,6 +5,7 @@ from PyQt5.QtWidgets import *
 import logging
 import os
 import glob
+import math
 
 # rebuild all _ui.py files from .ui files in the same directory as this script as needed
 #   NOTE - this will overwrite any edits in _ui.py files
@@ -29,15 +29,25 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
 
 from specifyMapDialog_ui import Ui_SpecifyMapDialog
 
+def genLpix(ldpi):
+    lpix={}
+    for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,22,24,36,48]:
+        lpix[ptSize]=math.floor((ldpi*ptSize)/72)
+    return lpix
+
 class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
     def __init__(self,parent,name=None,headerText=None,defaultDomainAndPort=None):
         QDialog.__init__(self)
         self.parent=parent
+        self.ldpi=0
+        self.tmp='small'
         
         # properties that can be queried as effective return values (None if dialog is rejected)
         self.domainAndPort=None
         self.url=None
 
+        self.moveTimer=QTimer(self)
+        self.moveTimer.timeout.connect(self.moveTimeout)
         self.ui=Ui_SpecifyMapDialog()
         self.ui.setupUi(self)
         self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
@@ -60,6 +70,64 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
             self.ui.headerLabel.setText(str(headerText))
         elif name:
             self.ui.headerLabel.setText('Specify the '+str(name)+' map:')
+
+    def moveEvent(self,event):
+        self.setMinimumSize(0,0)
+        self.setMaximumSize(10000,10000)
+        self.moveTimer.start(100)
+        super(SpecifyMapDialog,self).moveEvent(event)
+
+    def moveTimeout(self,*args):
+        # logging.info('move ended')
+        self.moveTimer.stop()
+        [x,y,w,h]=self.geometry().getRect()
+        ldpi=self.screen().logicalDotsPerInch()
+        if ldpi!=self.ldpi:
+            self.ldpi=ldpi
+            # logging.info('ldpi changed')
+            pix=genLpix(ldpi)
+            self.setStyleSheet('''
+                *{
+                    font-size:'''+str(pix[12])+'''px;
+                }
+                QDialog{
+                    padding:'''+str(pix[6])+'''px;
+                }
+                QLineEdit{
+                    height:'''+str(pix[16])+'''px;
+                }
+                QLineEdit#mapIDField{
+                    height:'''+str(pix[24])+'''px;
+                    font-size:'''+str(pix[22])+'''px;
+                }
+                QGroupBox{
+                    border:'''+str(pix[1])+'''px solid darkgray;
+                    border-radius:'''+str(pix[4])+'''px;
+                    margin-top:'''+str(pix[10])+'''px;
+                    padding:'''+str(pix[3])+'''px;
+                    padding-top:'''+str(pix[6])+'''px;
+                    font-size:'''+str(pix[10])+'''px;
+                }
+                QGroupBox::title{
+                    padding-top:-'''+str(pix[14])+'''px;
+                    left:'''+str(pix[8])+'''px;
+                }
+                QCheckBox::indicator,QRadioButton::indicator{
+                    width:'''+str(pix[10])+'''px;
+                    height:'''+str(pix[10])+'''px;
+                }
+                QRadioButton{
+                    spacing:'''+str(pix[8])+'''px;
+                }
+            ''')
+            # this results in 'ratcheting': the resize happens by moving the right and bottom sides,
+            #  and leaving the top left where it is, relative to the mouse; so each size reduction
+            #  means the mouse is farther to the right within the banner, and eventually the mouse
+            #  is outisde (to the right of) the banner
+            initialSize=QSize(int(500*(self.ldpi/96)),int(395*(self.ldpi/96)))
+            self.setMinimumSize(initialSize)
+            self.setMaximumSize(initialSize)
+            # it would be good to resolve the ratchetings at some point, but this is good enough for now
 
     def domainAndPortClicked(self,*args,**kwargs):
         val=self.ui.domainAndPortButtonGroup.checkedButton().text()

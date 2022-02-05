@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_PlansConsole(object):
     def setupUi(self, PlansConsole):
         PlansConsole.setObjectName("PlansConsole")
-        PlansConsole.resize(900, 511)
+        PlansConsole.resize(900, 553)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         sizePolicy.setHorizontalStretch(1)
         sizePolicy.setVerticalStretch(0)
