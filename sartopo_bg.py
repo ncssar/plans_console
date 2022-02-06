@@ -74,9 +74,15 @@ sys.excepthook = handle_exception
 # in the last two cases, a new instance of SartopoSession will be created
 
 
+# log filename should be <top-level-module-name>.log
+# so if this is being called from plans console, use the already-opened
+#  logfile plans-console.log
+# but if this is being run directly, use dmg.log
+logfile=os.path.splitext(os.path.basename(sys.path[0]))[0]+'.log'
+
 # To redefine basicConfig, per stackoverflow.com/questions/12158048
 # Remove all handlers associated with the root logger object.
-logfile='dmg.log'
+
 errlogdepth=5
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)

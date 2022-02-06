@@ -73,6 +73,9 @@ from sartopo_python import SartopoSession # import before logging to avoid usele
 import sys
 import logging
 
+# log filename should be <top-level-module-name>.log
+logfile=os.path.splitext(os.path.basename(sys.path[0]))[0]+'.log'
+
 # print by default; let the caller change this if needed
 # (note, caller would need to clear all handlers first,
 #   per stackoverflow.com/questions/12158048)
@@ -84,7 +87,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s [%(module)s:%(lineno)d:%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler('plans_console.log','w'),
+        logging.FileHandler(logfile,'w'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -133,31 +136,32 @@ def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Ques
     # determine logical pixel equivalents: take from parent if possible, so that the messagebox uses the same DPI as the spawning window
     if parent and hasattr(parent,'ldpi') and parent.ldpi>1:
         ldpi=parent.ldpi
-        logging.info('using parent ldpi = '+str(ldpi))
+        # logging.info('using parent ldpi = '+str(ldpi))
     else:
-        testBox = QMessageBox(icon, title, question, buttons, parent, opts)
-        testBox.show()
-        ldpi=testBox.window().screen().logicalDotsPerInch()
-        testBox.close()
-        del testBox
-        logging.info('using lpdi of current screen = '+str(ldpi))
+        try:
+            ldpi=parent.window().screen().logicalDotsPerInch()
+            # logging.info('using lpdi of parent\'s screen = '+str(ldpi))
+        except:
+            testDialog=QDialog()
+            testDialog.show()
+            ldpi=testDialog.window().screen().logicalDotsPerInch()
+            testDialog.close()
+            del testDialog
+            # logging.info('using lpdi of current screen = '+str(ldpi))
     lpix=genLpix(ldpi)
     box = QMessageBox(icon, title, question, buttons, parent, opts)
     box.setDefaultButton(QMessageBox.No)
     spacer=QSpacerItem(int(300*(ldpi/96)),0,QSizePolicy.Minimum,QSizePolicy.Expanding)
     layout=box.layout()
     layout.addItem(spacer,layout.rowCount(),0,1,layout.columnCount())
-    # box.updateGeometry()
     box.setStyleSheet('''
     *{
         font-size:'''+str(lpix[12])+'''px;
         icon-size:'''+str(lpix[36])+'''px '''+str(lpix[36])+'''px;
     }''')
-    # QCoreApplication.processEvents()
-    # box.adjustSize()
-    # box.updateGeometry()
+    QCoreApplication.processEvents()
     box.show()
-    # box.raise_()
+    box.raise_()
     return box.exec_() == QMessageBox.Yes
 
 def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
@@ -169,14 +173,18 @@ def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.C
     # determine logical pixel equivalents: take from parent if possible, so that the messagebox uses the same DPI as the spawning window
     if parent and hasattr(parent,'ldpi') and parent.ldpi>1:
         ldpi=parent.ldpi
-        logging.info('using parent ldpi = '+str(ldpi))
+        # logging.info('using parent ldpi = '+str(ldpi))
     else:
-        testBox = QMessageBox(icon, title, message, buttons, parent, opts)
-        testBox.show()
-        ldpi=testBox.window().screen().logicalDotsPerInch()
-        testBox.close()
-        del testBox
-        logging.info('using lpdi of current screen = '+str(ldpi))
+        try:
+            ldpi=parent.window().screen().logicalDotsPerInch()
+            # logging.info('using lpdi of parent\'s screen = '+str(ldpi))
+        except:
+            testDialog=QDialog()
+            testDialog.show()
+            ldpi=testDialog.window().screen().logicalDotsPerInch()
+            testDialog.close()
+            del testDialog
+            # logging.info('using lpdi of current screen = '+str(ldpi))
     lpix=genLpix(ldpi)
     box = QMessageBox(icon, title, message, buttons, parent, opts)
     spacer=QSpacerItem(int(800*(ldpi/96)),0,QSizePolicy.Minimum,QSizePolicy.Expanding)
@@ -187,9 +195,7 @@ def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.C
         font-size:'''+str(lpix[12])+'''px;
         icon-size:'''+str(lpix[36])+'''px '''+str(lpix[36])+'''px;
     }''')
-    # QCoreApplication.processEvents()
-    # box.adjustSize()
-    # box.updateGeometry()
+    QCoreApplication.processEvents()
     box.show()
     box.raise_()
     if timeout:
