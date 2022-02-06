@@ -119,58 +119,82 @@ from plans_console_ui import Ui_PlansConsole
 from sartopo_bg import *
 
 def genLpix(ldpi):
+    if ldpi<10:
+        ldpi=96
     lpix={}
     for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,22,24,36,48]:
         lpix[ptSize]=math.floor((ldpi*ptSize)/72)
     return lpix
 
 def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
+    # don't bother taking the steps to handle moving from one screen to another of different ldpi
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
     buttons = QMessageBox.StandardButton(QMessageBox.Yes | QMessageBox.No)
-    box = QMessageBox(icon, title, question, buttons, parent, opts)
-    # determine logical pixel equivalents: take prom parent if possible, so that the messagebox uses the same DPI as the spawning window
-    if hasattr(parent,'lpix'):
-        lpix=parent.lpix
+    # determine logical pixel equivalents: take from parent if possible, so that the messagebox uses the same DPI as the spawning window
+    if parent and hasattr(parent,'ldpi') and parent.ldpi>1:
+        ldpi=parent.ldpi
+        logging.info('using parent ldpi = '+str(ldpi))
     else:
-        lpix=genLpix(96) # use 96dpi as a default when the parent doesn't have any lpix attribute
+        testBox = QMessageBox(icon, title, question, buttons, parent, opts)
+        testBox.show()
+        ldpi=testBox.window().screen().logicalDotsPerInch()
+        testBox.close()
+        del testBox
+        logging.info('using lpdi of current screen = '+str(ldpi))
+    lpix=genLpix(ldpi)
+    box = QMessageBox(icon, title, question, buttons, parent, opts)
     box.setDefaultButton(QMessageBox.No)
+    spacer=QSpacerItem(int(300*(ldpi/96)),0,QSizePolicy.Minimum,QSizePolicy.Expanding)
+    layout=box.layout()
+    layout.addItem(spacer,layout.rowCount(),0,1,layout.columnCount())
+    # box.updateGeometry()
     box.setStyleSheet('''
     *{
         font-size:'''+str(lpix[12])+'''px;
         icon-size:'''+str(lpix[36])+'''px '''+str(lpix[36])+'''px;
     }''')
+    # QCoreApplication.processEvents()
+    # box.adjustSize()
+    # box.updateGeometry()
     box.show()
-    QCoreApplication.processEvents()
-    box.raise_()
+    # box.raise_()
     return box.exec_() == QMessageBox.Yes
 
 def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
+    # don't bother taking the steps to handle moving from one screen to another of different ldpi
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
     if title == "":
         title = "Warning" if (icon == QMessageBox.Warning) else "Error"
     buttons = QMessageBox.StandardButton(QMessageBox.Ok)
-    box = QMessageBox(icon, title, message, buttons, parent, opts)
-    # determine logical pixel equivalents: take prom parent if possible, so that the messagebox uses the same DPI as the spawning window
-    if hasattr(parent,'lpix'):
-        lpix=parent.lpix
+    # determine logical pixel equivalents: take from parent if possible, so that the messagebox uses the same DPI as the spawning window
+    if parent and hasattr(parent,'ldpi') and parent.ldpi>1:
+        ldpi=parent.ldpi
+        logging.info('using parent ldpi = '+str(ldpi))
     else:
-        lpix=genLpix(96) # use 96dpi as a default when the parent doesn't have any lpix attribute
-    # attempt to set larger min width on hi res - none of these seem to work
-    # from https://www.qtcentre.org/threads/22298-QMessageBox-Controlling-the-width
-    # spacer=QSpacerItem(int(8000*(LDPI/96)),0,QSizePolicy.Minimum,QSizePolicy.Expanding)
-    # layout=box.layout()
-    # layout.addItem(spacer,layout.rowCount(),0,1,layout.columnCount())
-    # box.setMaximumWidth(int(800*(LDPI/96)))
-    # box.setFixedWidth(int(800*(LDPI/96)))
+        testBox = QMessageBox(icon, title, message, buttons, parent, opts)
+        testBox.show()
+        ldpi=testBox.window().screen().logicalDotsPerInch()
+        testBox.close()
+        del testBox
+        logging.info('using lpdi of current screen = '+str(ldpi))
+    lpix=genLpix(ldpi)
+    box = QMessageBox(icon, title, message, buttons, parent, opts)
+    spacer=QSpacerItem(int(800*(ldpi/96)),0,QSizePolicy.Minimum,QSizePolicy.Expanding)
+    layout=box.layout()
+    layout.addItem(spacer,layout.rowCount(),0,1,layout.columnCount())
     box.setStyleSheet('''
     *{
         font-size:'''+str(lpix[12])+'''px;
         icon-size:'''+str(lpix[36])+'''px '''+str(lpix[36])+'''px;
     }''')
+    # QCoreApplication.processEvents()
+    # box.adjustSize()
+    # box.updateGeometry()
     box.show()
-    QCoreApplication.processEvents()
     box.raise_()
     if timeout:
+        if timeout<100:
+            timeout=timeout*1000 # user probably specified integer seconds
         QTimer.singleShot(timeout,box.close)
     box.exec_()
 
@@ -227,7 +251,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logging.critical('Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback))
-    inform_user_about_issue('Uncaught exception:\n\n'+str(exc_type.__name__)+': '+str(exc_value)+'\n\nCheck log file for details including traceback.  The program will continue if possible when you close this message box.')
+    inform_user_about_issue('Uncaught exception:\n\n'+str(exc_type.__name__)+': '+str(exc_value)+'\n\nCheck log file for details including traceback.  The program will continue if possible when you close this message box.',parent=self)
 sys.excepthook = handle_exception
 
 def sortByTitle(item):
@@ -697,7 +721,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def debriefButtonClicked(self):
         if not self.sts or self.sts.apiVersion<0:
-            inform_user_about_issue('You must establish a link with the Incident Map first.')
+            inform_user_about_issue('You must establish a link with the Incident Map first.',parent=self)
         else:
             if not self.dmg:
                 self.dmg=DebriefMapGenerator(self,self.sts,self.debriefURL)
@@ -1086,7 +1110,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             pix=genLpix(ldpi)
             logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
             self.ldpi=ldpi
-            self.lpix=pix
 
             # # from https://doc.qt.io/qt-5/qmetaobject.html#propertyCount
             # metaobject=screen.metaObject()
