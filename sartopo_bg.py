@@ -8,7 +8,7 @@ import json
 import shutil
 from datetime import datetime
 import webbrowser
-import math
+from math import floor,cos,radians
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import *
@@ -134,7 +134,7 @@ logging.root.addHandler(CustomHandler())
 def genLpix(ldpi):
     lpix={}
     for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,22,24,36,48]:
-        lpix[ptSize]=math.floor((ldpi*ptSize)/72)
+        lpix[ptSize]=floor((ldpi*ptSize)/72)
     return lpix
 
 def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
@@ -367,7 +367,11 @@ class DebriefMapGenerator():
             'j':'#BC7D00',
             'k':'#0084DC',
             'l':'#8600D4'} # default specified in .get function
-            
+        
+        self.roamingThresholdMeters=50
+        self.cropDegrees=0.001  # about 100 meters - varies with latitude but this is not important for cropping
+        self.roamingCropDegrees=0.1 # about 10km - varies with latitude but this is not important for cropping
+
         self.dmd={} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
         self.dmd['outings']={}
         self.dmd['corr']={}
@@ -588,7 +592,7 @@ class DebriefMapGenerator():
 
         ids=ids+nonOutingFeatureIds
 
-        lonMult=math.cos(math.radians((bounds[3]+bounds[1])/2.0))
+        lonMult=cos(radians((bounds[3]+bounds[1])/2.0))
         # logging.info('longitude multiplier = '+str(lonMult))
 
         # determine orientation from initial aspect ratio, then snap the bounds to
@@ -1125,10 +1129,11 @@ class DebriefMapGenerator():
             g=a['geometry']
             gc=g['coordinates']
             gt=g['type']
-            logging.info('drawing boundary polygon for assignment '+t)
             if gt=='Polygon':
+                logging.info('drawing boundary for area assignment '+t)
                 bid=self.sts2.addPolygon(gc[0],title=t,folderId=fid,strokeWidth=8,strokeOpacity=0.4,fillOpacity=0.0)
             elif gt=='LineString':
+                logging.info('drawing boundary for line assignment '+t)
                 bid=self.sts2.addLine(gc,title=t,folderId=fid,width=8,opacity=0.4)
             else:
                 logging.error('newly detected assignment '+t+' has an unhandled geometry type '+gt)
@@ -1137,6 +1142,12 @@ class DebriefMapGenerator():
             self.addOutingLogEntry(t,'Added assignment boundary')
             # addCorrespondence(id,bid)
             logging.info('boundary created for assignment '+t+': '+self.dmd['outings'][t]['bid'])
+            # if the assignment is tiny, it's probably a roaming assignment
+            [lon1,lat1,lon2,lat2]=self.sts2.getBounds([bid])
+            logging.info('bounds:'+str([lon1,lat1,lon2,lat2]))
+            if abs(lon2-lon1)*111111*cos(radians(lat1))<self.roamingThresholdMeters or abs(lat2-lat1)*111111<self.roamingThresholdMeters:
+                logging.info('  assignment '+t+' is tiny; it looks like an assignment for a roaming team')
+                self.dmd['outings'][t]['crop']=self.roamingCropDegrees
         # since addLine adds the new feature to .mapData immediately, no new 'since' request is needed
         if self.dmd['outings'][t]['utids']!=[]:
             self.cropUncroppedTracks()
@@ -1187,7 +1198,9 @@ class DebriefMapGenerator():
                     # logging.info('  utids:'+str(assignments[ot]['utids']))
                 else:
                     logging.info('  outing bid='+bid)
-                    croppedTrackList=self.sts2.crop(uncroppedTrack,o['bid'],beyond=0.001) # about 100 meters
+                    # if cropDegrees is specified in dmd, use that value; otherwise use the default
+                    cropDegrees=self.dmd['outings'][ot].get('crop',self.cropDegrees)
+                    croppedTrackList=self.sts2.crop(uncroppedTrack,o['bid'],beyond=cropDegrees)
                     if croppedTrackList: # the crop worked
                         self.dmd['outings'][ot]['tids'].append(croppedTrackList)
                         self.addCorrespondence(sid,croppedTrackList)
@@ -1265,7 +1278,10 @@ class DebriefMapGenerator():
                     for utid in utids:
                         # since newly created features are immediately added to the local cache,
                         #  the boundary feature should be available by this time
-                        croppedTrackLines=self.sts2.crop(utid,bid,beyond=0.001) # about 100 meters
+                        # if crop is specified in dmd, use that value; otherwise use the default
+                        # TODO: allow selection of an existing shape to use as the crop boundary, rather than distance
+                        cropDegrees=self.dmd['outings'][outingName].get('crop',self.cropDegrees)
+                        croppedTrackLines=self.sts2.crop(utid,bid,beyond=cropDegrees)
                         logging.info('crop return value:'+str(croppedTrackLines))
                         self.dmd['outings'][outingName]['tids'].append(croppedTrackLines)
                         # cropped track line(s) should correspond to the source map line, 
