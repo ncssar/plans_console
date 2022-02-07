@@ -1049,15 +1049,15 @@ class DebriefMapGenerator():
         if isinstance(fti,dict):
             a=fti
             p=a['properties']
-            t=p.get('title','').upper()
+            t=p.get('title','').upper().rstrip() # assignments with letter but not number could end in space
             id=a['id']
         else: #string
             if len(fti)==36: # id
                 id=fti
                 a=self.sts1.getFeature(id=id)
-                t=a['properties'].get('title','').upper()
+                t=a['properties'].get('title','').upper().rstrip() # assignments with letter but not number could end in space
             else: # non-id string was specified: source map assignment feature doesn't exist yet
-                t=fti
+                t=fti.rstrip() # assignments with letter but not number could end in space
 
         # restart handling: only add a new outing if there is not already an outing
         #  that matches sid and title
@@ -1158,7 +1158,7 @@ class DebriefMapGenerator():
         g=f['geometry']
         gt=g['type']
         gc=g['coordinates']
-        t=p['title']
+        t=p['title'].rstrip() # assignments with letter but not number could end in space
         sid=f['id']
         if gt=='LineString':
             tparse=self.parseTrackName(t)
@@ -1325,7 +1325,7 @@ class DebriefMapGenerator():
         self.updateLinkLights(debriefLink=10)
         p=f['properties']
         c=p['class']
-        t=p.get('title','')
+        t=p.get('title','').rstrip() # assignments with letter but not number could end in space
         sid=f['id']
 
         logging.info('newFeatureCallback: class='+c+'  title='+t+'  id='+sid)
@@ -1470,7 +1470,7 @@ class DebriefMapGenerator():
         sid=f['id']
         sp=f['properties']
         sc=sp['class']
-        st=sp['title']
+        st=sp['title'].rstrip() # assignments with letter but not number could end in space
         sgt=self.sts1.getFeature(id=sid)['geometry']['type']
         logging.info('propertyUpdateCallback called for '+sc+':'+st)
         # determine which target-map feature, if any, corresponds to the edited source-map feature
@@ -1500,8 +1500,7 @@ class DebriefMapGenerator():
                 tp=tf['properties']
                 # map properties from source to target, based on source class; start with the existing target
                 #  map feature properties, and only copy the appropriate properties from the source feature
-                c=sp['class']
-                if c=='Clue':
+                if sc=='Clue':
                     logging.info('  mapping properties from Clue to Marker')
                     taid=tp['assignmentId']
                     said=tp['assignmentId']
@@ -1512,18 +1511,18 @@ class DebriefMapGenerator():
                         self.dmd['outings'][targetOutingName].remove(sid)
                         self.addOutingLogEntry(targetOutingName,'Moved clue '+st+' from this outing to '+sourceOutingName)
                         self.addClue(f)
-                    if tp['title']!=sp['title']:
-                        self.addOutingLogEntry(targetOutingName,'Clue title changed: '+tp['title']+' --> '+sp['title'])
-                    tp['title']=sp['title']
+                    if tp['title']!=st:
+                        self.addOutingLogEntry(targetOutingName,'Clue title changed: '+tp['title']+' --> '+st)
+                    tp['title']=st
                     tp['description']=sp['description']
-                elif c=='Assignment': # this may be dead code - if assignment, it should have two corr entries
-                    tp['title']=sp['title']
+                elif sc=='Assignment': # this may be dead code - if assignment, it should have two corr entries
+                    tp['title']=st
                 else:
                     tp=sp # for other feature types, copy all properties from source
                 self.sts2.editFeature(id=corrList[0],properties=tp)
             else:
                 logging.error('  property change: more than one target map feature correspond to the source map feature, which is not a line; no changes made to target map')
-        elif sp['class']=='Assignment': # assignment with folder and boundary already created
+        elif sc=='Assignment': # assignment with folder and boundary already created
             olist=[o for o in self.dmd['outings'] if self.dmd['outings'][o]['sid']==sid]
             if len(olist)==0:
                 logging.error('  source map assignment feature edited, but it has no corresponding target map feature')
@@ -1563,7 +1562,7 @@ class DebriefMapGenerator():
                     for tid in [o['bid'],o['fid']]:
                         tf=self.sts2.getFeature(id=tid)
                         tp=tf['properties']
-                        tp['title']=sp['title'].upper()
+                        tp['title']=st.upper()
                         self.sts2.editFeature(id=tid,properties=tp)
                     self.dmd['outings'][tp['title']]=self.dmd['outings'][oldTitle]
                     self.addOutingLogEntry(tp['title'],'Outing name changed: '+oldTitle+' --> '+tp['title'])
@@ -1603,7 +1602,8 @@ class DebriefMapGenerator():
         self.updateLinkLights(debriefLink=10)
         sid=f['id']
         sp=f['properties']
-        st=sp['title']
+        st=sp['title'].rstrip() # assignment with letter but no number could end with space
+        sc=sp['class']
         sg=f['geometry']
         osids=[self.dmd['outings'][x]['sid'] for x in self.dmd['outings'].keys()] # list of sid of all outings
         logging.info('osids:'+str(osids))
@@ -1617,11 +1617,11 @@ class DebriefMapGenerator():
         #     number, and there are additional outing(s) with numbers, edit the current one
         #     but not the previous ones)
 
-        logging.info('geometryUpdateCallback called for '+sp['class']+':'+sp['title'])
+        logging.info('geometryUpdateCallback called for '+sc+':'+st)
         if sid in self.dmd['corr'].keys():
-            tparse=self.parseTrackName(sp['title'])
+            tparse=self.parseTrackName(st)
             if sg['type']=='LineString' and sp['class']=='Shape' and tparse:
-                logging.info('  edited feature '+sp['title']+' appears to be a track; correspoding previous imported and cropped tracks will be deleted, and the new track will be re-imported (and re-cropped)')
+                logging.info('  edited feature '+st+' appears to be a track; correspoding previous imported and cropped tracks will be deleted, and the new track will be re-imported (and re-cropped)')
                 corrList=self.dmd['corr'][sid]
                 for ttid in corrList:
                     self.sts2.delFeature('Shape',ttid)
