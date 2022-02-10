@@ -300,7 +300,7 @@ class DebriefMapGenerator():
             box.close()
 
         if self.sts2 and self.sts2.apiVersion<0:
-            inform_user_about_issue('Link to specified debrief map '+self.debriefURL+' could not be established.  Please try again.')
+            inform_user_about_issue('Link to specified debrief map '+self.debriefURL+' could not be established.  Please try again.',parent=self)
             return
 
         if self.pc:
@@ -562,13 +562,13 @@ class DebriefMapGenerator():
         
     def PDFGenClicked(self,*args,**kwargs):
         if not self.sts2.id:
-            inform_user_about_issue("'id' is not defined for the debrief map session; cannot generarte PDF.'")
+            inform_user_about_issue("'id' is not defined for the debrief map session; cannot generarte PDF.'",parent=self)
             return
         if not self.sts2.key:
-            inform_user_about_issue("'key' is not defined for the debrief map session; cannot generarte PDF.'")
+            inform_user_about_issue("'key' is not defined for the debrief map session; cannot generarte PDF.'",parent=self)
             return
         if not self.sts2.accountId:
-            inform_user_about_issue("'accountId' is not defined for the debrief map session; cannot generarte PDF.'")
+            inform_user_about_issue("'accountId' is not defined for the debrief map session; cannot generarte PDF.'",parent=self)
             return
         row=self.dd.ui.tableWidget.currentRow()
         outingName=self.dd.ui.tableWidget.item(row,0).text()
@@ -848,7 +848,7 @@ class DebriefMapGenerator():
         self.writeDmdFile()
         progressBox.close()
         logging.info('rebuild complete')
-        inform_user_about_issue('Rebuild complete.',QMessageBox.Information,title='Success',timeout=2500)
+        inform_user_about_issue('Rebuild complete.',QMessageBox.Information,title='Success',timeout=2500,parent=self)
         if outingNameOrAll==':ALL:':
             for n in range(self.dd.ui.tableWidget.rowCount()):                
                 self.setPDFButton(n,'gen')
@@ -1936,6 +1936,15 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
             self.resizeTableColumns()
         if event:
             event.accept()
+
+    def closeEvent(self,event):
+        (self.parent.debriefX,self.parent.debriefY,self.parent.debriefW,self.parent.debriefH)=self.geometry().getRect()
+        if self.parent.pc:
+            self.parent.parent.debriefX=self.parent.debriefX
+            self.parent.parent.debriefY=self.parent.debriefY
+            self.parent.parent.debriefW=self.parent.debriefW
+            self.parent.parent.debriefH=self.parent.debriefH
+        super(DebriefDialog,self).closeEvent(event)
 
 
     # def showEvent(self,*args,**kwargs):
