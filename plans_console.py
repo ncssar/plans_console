@@ -257,7 +257,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logging.critical('Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback))
-    inform_user_about_issue('Uncaught exception:\n\n'+str(exc_type.__name__)+': '+str(exc_value)+'\n\nCheck log file for details including traceback.  The program will continue if possible when you close this message box.',parent=self)
+    inform_user_about_issue('Uncaught exception:\n\n'+str(exc_type.__name__)+': '+str(exc_value)+'\n\nCheck log file for details including traceback.  The program will continue if possible when you close this message box.')
 sys.excepthook = handle_exception
 
 def sortByTitle(item):
@@ -361,6 +361,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.ui.tableWidget.cellClicked.connect(self.tableCellClicked)        
         self.ui.OKbut.clicked.connect(self.assignTab_OK_clicked)
         self.ui.doOper.clicked.connect(self.doOperClicked)
+        self.ui.incidentButton.clicked.connect(self.incidentButtonClicked)
         self.ui.debriefButton.clicked.connect(self.debriefButtonClicked)
         # self.screen().logicalDotsPerInchChanged.connect(self.lldpiChanged)
         self.reloaded = False
@@ -509,15 +510,20 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if self.link>-1:
             logging.info('Successfully connected.')
             self.ui.incidentLinkLight.setStyleSheet(BG_GREEN)
+            self.tryAgain=False
         else:
             logging.info('Connection failed.')
             self.ui.incidentLinkLight.setStyleSheet(BG_RED)
             inform_user_about_issue('Link could not be established with\n\n'+self.incidentURL+'\n\nPlease specify a valid map, or hit Cancel from the map dialog to run Plans Console with no incident map.')
             self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.incidentDomainAndPort)
-            self.incidentMapDialog.exec() # force modal
-            self.incidentURL=self.incidentMapDialog.url
-            self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
-            if not self.incidentURL:
+            if self.incidentMapDialog.exec(): # force modal
+                self.ui.incidentMapField.setText(self.incidentMapDialog.url)
+                self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
+                self.incidentURL=self.incidentMapDialog.url
+                self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
+                if not self.incidentURL:
+                    self.tryAgain=False
+            else:
                 self.tryAgain=False
 
     def addMarker(self):
@@ -725,6 +731,23 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         for n in range(3):
             winsound.Beep(2500, 100)  ## BEEP, 2500Hz for 1 second
             time.sleep(0.25)
+
+    def incidentButtonClicked(self):
+        # if a map was already open, ask for confirmation first
+        if self.sts and self.sts.apiVersion>-1:
+            really=ask_user_to_confirm('An incident map is already open.  Do you really want to specify a different incident map?')
+            if not really:
+                return
+        self.tryAgain=True
+        self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.defaultDomainAndPort)
+        if self.incidentMapDialog.exec(): # force modal
+            self.ui.incidentMapField.setText(self.incidentMapDialog.url)
+            self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
+            self.incidentURL=self.incidentMapDialog.url
+            self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
+            self.createSTS()
+        else: # don't change the incident map if dialog is canceled
+            self.tryAgain=False
 
     def debriefButtonClicked(self):
         if not self.sts or self.sts.apiVersion<0:
