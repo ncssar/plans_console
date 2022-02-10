@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_DebriefOptionsDialog(object):
     def setupUi(self, DebriefOptionsDialog):
         DebriefOptionsDialog.setObjectName("DebriefOptionsDialog")
-        DebriefOptionsDialog.resize(415, 282)
+        DebriefOptionsDialog.resize(620, 484)
         self.topLayout = QtWidgets.QVBoxLayout(DebriefOptionsDialog)
         self.topLayout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
         self.topLayout.setObjectName("topLayout")
@@ -108,6 +108,6 @@ class Ui_DebriefOptionsDialog(object):
         self.contoursCheckbox.setText(_translate("DebriefOptionsDialog", "* Contours"))
         self.slopeShadingCheckbox.setText(_translate("DebriefOptionsDialog", "* Slope Angle Shading (fixed)"))
         self.utmGridCheckbox.setText(_translate("DebriefOptionsDialog", "Show UTM Grid (at auto-interval)"))
-        self.label_2.setText(_translate("DebriefOptionsDialog", "* These layers may cause slower PDF generation.  For fastest PDF generation, use static layers (USGS, USFS, NAIP, etc.)."))
+        self.label_2.setText(_translate("DebriefOptionsDialog", "* These layers may cause slower PDF generation.  For fastest PDF generation, use static layers (USGS, USFS, NAIP, etc.) with no overlays."))
         self.rebuildAllButton.setText(_translate("DebriefOptionsDialog", "  Rebuild Entire Debrief Map"))
 import plans_console_rc

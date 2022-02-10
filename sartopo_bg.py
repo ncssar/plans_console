@@ -260,19 +260,16 @@ class DebriefMapGenerator():
             if hasattr(self.parent,'defaultDomainAndPort'):
                 self.defaultDomainAndPort=self.parent.defaultDomainAndPort
             self.debriefMapDialog=SpecifyMapDialog(self,'Debrief','Some stuff',self.defaultDomainAndPort)
-            self.debriefMapDialog.exec() # force modal
-            self.debriefURL=self.debriefMapDialog.url
-            if self.debriefURL:
+            if self.debriefMapDialog.exec(): # force modal
+                self.debriefURL=self.debriefMapDialog.url
                 parse=self.debriefURL.replace("http://","").replace("https://","").split("/")
                 self.debriefDomainAndPort=parse[0]
                 self.debriefMapID=parse[-1]
                 self.dd.ui.debriefMapField.setText(self.debriefURL)
                 if self.pc:
                     self.parent.ui.debriefMapField.setText(self.debriefURL)
-        
-        if not self.debriefDomainAndPort:
-            # debrief map dialog was canceled
-            return
+            else:
+                return # debrief map selection dialog was canceled
 
         if not self.sts2:
             box=QMessageBox(
@@ -297,10 +294,13 @@ class DebriefMapGenerator():
                 configpath=configpath,
                 syncTimeout=10,
                 syncDumpFile='../../'+self.debriefMapID+'.txt')
-            box.close()
+            box.done(0)
 
         if self.sts2 and self.sts2.apiVersion<0:
-            inform_user_about_issue('Link to specified debrief map '+self.debriefURL+' could not be established.  Please try again.',parent=self)
+            p=self.dd
+            if self.pc:
+                p=self.parent
+            inform_user_about_issue('Link could not be established with specified debrief map\n\n'+self.debriefURL+'\n\nPlease specify a valid map.',parent=p)
             return
 
         if self.pc:
@@ -1750,6 +1750,8 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
         self.ui.rebuildAllButton.clicked.connect(self.rebuildAllButtonClicked)
         self.onLayerComboChange()
         self.ldpi=0
+        self.moveTimer=QTimer(self)
+        self.moveTimer.timeout.connect(self.moveTimeout)
 
     def onLayerComboChange(self,*args,**kwargs):
         text=self.ui.layerComboBox.currentText()
@@ -1781,18 +1783,26 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
             self.parent.rebuild(':ALL:')
 
     def moveEvent(self,event):
-        screen=self.screen()
+        self.setMinimumSize(0,0)
+        self.setMaximumSize(10000,10000)
+        self.moveTimer.start(100)
+        super(DebriefOptionsDialog,self).moveEvent(event)
+
+    def moveTimeout(self,*args):
+        # logging.info('move ended')
+        self.moveTimer.stop()
+        [x,y,w,h]=self.geometry().getRect()
         # logicalDotsPerInch seems to give a bit better match across differently scaled extended screen
         #  than physicalDotsPerInch - though not exactly perfect, probably due to testing on monitors
         #  with different physical sizes; but logicalDotsPerInch incorporates Windows display zoom,
         #  while physicalDotsPerInch does not
-        ldpi=screen.logicalDotsPerInch()
+        ldpi=self.screen().logicalDotsPerInch()
         if ldpi!=self.ldpi:
             pix=genLpix(ldpi)
-            logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
+            # logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
             self.ldpi=ldpi
-            self.parent.lpix=pix
-            self.lpix=pix
+            # self.parent.lpix=pix
+            # self.lpix=pix
 
             # # from https://doc.qt.io/qt-5/qmetaobject.html#propertyCount
             # metaobject=screen.metaObject()
@@ -1831,26 +1841,10 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
                 QMessageBox,QDialogButtonBox{
                     icon-size:'''+str(pix[36])+'''px '''+str(pix[36])+'''px;
                 }''')
-            # # now set the sizes that don't respond to stylesheets for whatever reason
-            # self.ui.incidentLinkLight.setFixedWidth(pix[18])
-            # self.ui.debriefLinkLight.setFixedWidth(pix[18])
-            # for n in range(self.ui.tableWidget.rowCount()):
-            #     self.ui.tableWidget.cellWidget(n,4).setIconSize(QtCore.QSize(pix[36],pix[14]))
-            #     self.ui.tableWidget.cellWidget(n,5).setIconSize(QtCore.QSize(pix[14],pix[14]))
-            # vh=self.ui.tableWidget.verticalHeader()
-            # for n in range(self.ui.tableWidget.columnCount()):
-            #     vh.resizeSection(n,pix[16])
-            self.ui.topLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
-            self.ui.pdfGroupBoxLayout.setSpacing(pix[6])
-            self.ui.pdfGroupBoxLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
-            self.ui.verticalLayout.setSpacing(pix[6])
-            self.ui.rebuildAllButton.setIconSize(QtCore.QSize(pix[18],pix[18]))
-            self.setMinimumSize(QtCore.QSize(int(500*(ldpi/96)),int(500*(ldpi/96))))
-            self.setMaximumSize(QtCore.QSize(int(800*(ldpi/96)),screen.size().height()-50))
-            # self.ui.verticalLayout.setSpacing(pix[6])
-            # self.resizeTableColumns()
-        if event:
-            event.accept()
+            # now set the sizes that don't respond to stylesheets for whatever reason
+            initialSize=QSize(int(500*(self.ldpi/96)),int(395*(self.ldpi/96)))
+            self.setMinimumSize(initialSize)
+            self.setMaximumSize(initialSize)
 
 
 class DebriefDialog(QDialog,Ui_DebriefDialog):

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>415</width>
-    <height>282</height>
+    <width>620</width>
+    <height>484</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -130,7 +130,7 @@
           <item>
            <widget class="QLabel" name="label_2">
             <property name="text">
-             <string>* These layers may cause slower PDF generation.  For fastest PDF generation, use static layers (USGS, USFS, NAIP, etc.).</string>
+             <string>* These layers may cause slower PDF generation.  For fastest PDF generation, use static layers (USGS, USFS, NAIP, etc.) with no overlays.</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>

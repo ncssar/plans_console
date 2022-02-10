@@ -514,7 +514,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         else:
             logging.info('Connection failed.')
             self.ui.incidentLinkLight.setStyleSheet(BG_RED)
-            inform_user_about_issue('Link could not be established with\n\n'+self.incidentURL+'\n\nPlease specify a valid map, or hit Cancel from the map dialog to run Plans Console with no incident map.')
+            inform_user_about_issue('Link could not be established with specified incident map\n\n'+self.incidentURL+'\n\nPlease specify a valid map, or hit Cancel from the map dialog to run Plans Console with no incident map.',parent=self)
             self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.incidentDomainAndPort)
             if self.incidentMapDialog.exec(): # force modal
                 self.ui.incidentMapField.setText(self.incidentMapDialog.url)
