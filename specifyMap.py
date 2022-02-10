@@ -142,6 +142,8 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
         if '.com' in self.dap:
             prefix='https://'
         mapID=self.ui.mapIDField.text()
+        # form validation: disable Ok button when mapID is blank
+        self.ui.buttonBox.button(QDialogButtonBox.Ok).setEnabled(mapID!='')
         url=prefix+self.dap+'/m/'+mapID
         self.ui.urlField.setText(url)
 
