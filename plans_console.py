@@ -449,7 +449,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
         if self.incidentURL:
             self.ui.incidentMapField.setText(self.incidentURL)
-            self.createSTS()
+            self.tryAgain=True
+            while self.tryAgain:
+                self.createSTS()
 
         self.save_data()
 
@@ -499,25 +501,24 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             else:
                 self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False)
             self.link=self.sts.apiVersion
-            if self.link == -1:
-                self.ui.incidentLinkLight.setStyleSheet(BG_RED)
-                logging.error('Link could not be established with '+self.incidentURL)
-                self.incidentURLErrMsgBox=QMessageBox(QMessageBox.Warning,"Error","Link could not be established with "+self.incidentURL,
-                                QMessageBox.Ok,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
-                self.incidentURLErrMsgBox.exec_()
-                # exit(-1)
-            elif self.link>=0:
-                self.ui.incidentLinkLight.setStyleSheet(BG_GREEN)
-            logging.info("link status:"+str(self.link))
-            # self.sts.stop()   # added for new version of sartopo_python to stop syncing
         except Exception as e:
             logging.warning('Exception during createSTS:\n'+str(e))
-            self.ui.incidentLinkLight.setStyleSheet(BG_RED)
-        box.close()
+            self.link=-1
+        finally:
+            box.done(0)
         if self.link>-1:
             logging.info('Successfully connected.')
+            self.ui.incidentLinkLight.setStyleSheet(BG_GREEN)
         else:
             logging.info('Connection failed.')
+            self.ui.incidentLinkLight.setStyleSheet(BG_RED)
+            inform_user_about_issue('Link could not be established with\n\n'+self.incidentURL+'\n\nPlease specify a valid map, or hit Cancel from the map dialog to run Plans Console with no incident map.')
+            self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.incidentDomainAndPort)
+            self.incidentMapDialog.exec() # force modal
+            self.incidentURL=self.incidentMapDialog.url
+            self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
+            if not self.incidentURL:
+                self.tryAgain=False
 
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
