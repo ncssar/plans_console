@@ -476,6 +476,20 @@ class DebriefMapGenerator():
                 self.dd.ui.tableWidget.setItem(row,0,QTableWidgetItem(outingName))
                 self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(str(len(o['tids']))))
                 self.dd.ui.tableWidget.setItem(row,2,QTableWidgetItem(str(len(o['cids']))))
+                editNoteButton=QPushButton(self.dd.ui.editNoteIcon,'')
+                editNoteButton.setIconSize(QSize(self.lpix[16],self.lpix[16]))
+                editNoteButton.clicked.connect(self.editNoteClicked)
+                self.dd.ui.tableWidget.setCellWidget(row,3,editNoteButton)
+                notes=o.get('notes',None)
+                if notes:
+                    s='\n'.join(list(reversed(notes)))
+                    i=QTableWidgetItem(s)
+                    tt='<table border="1" cellpadding="3">'
+                    for note in [x for x in notes if x!='']:
+                        tt+='<tr><td>'+note+'</td></tr>'
+                    tt+='</table>'
+                    i.setToolTip(tt)
+                    self.dd.ui.tableWidget.setItem(row,4,i)
                 pdf=o.get('PDF',None)
                 if pdf:
                     pdfts=o['PDF'][1]
@@ -490,7 +504,7 @@ class DebriefMapGenerator():
                 rebuildButton=QPushButton(self.dd.ui.rebuildIcon,'')
                 rebuildButton.setIconSize(QSize(self.lpix[16],self.lpix[16]))
                 rebuildButton.clicked.connect(self.rebuildClicked)
-                self.dd.ui.tableWidget.setCellWidget(row,5,rebuildButton)
+                self.dd.ui.tableWidget.setCellWidget(row,6,rebuildButton)
                 row+=1
             vh=self.dd.ui.tableWidget.verticalHeader()
             for n in range(self.dd.ui.tableWidget.columnCount()):
@@ -549,7 +563,7 @@ class DebriefMapGenerator():
         button.setIconSize(QSize(self.lpix[36],self.lpix[14]))
         # genPDFButton.icon().setSizePolicy(QSizePolicy.Expanding,QSizePolicy.Preferred)
         button.clicked.connect(slot)
-        self.dd.ui.tableWidget.setCellWidget(row,4,button)
+        self.dd.ui.tableWidget.setCellWidget(row,5,button)
 
     def syncCallback(self):
         # this function is probably called from a sync thread:
@@ -559,7 +573,21 @@ class DebriefMapGenerator():
     def debriefOptionsButtonClicked(self,*args,**kwargs):
         self.debriefOptionsDialog.show()
         self.debriefOptionsDialog.raise_()
-        
+    
+    def editNoteClicked(self,*args,**kwargs):
+        row=self.dd.ui.tableWidget.currentRow()
+        outingName=self.dd.ui.tableWidget.item(row,0).text()
+        logging.info('edit note clicked for outing '+outingName)
+        rval=QInputDialog.getMultiLineText(self.dd,'Add Note','Add note for '+outingName+':')
+        if rval[1]:
+            text=rval[0]
+            notes=self.dmd['outings'][outingName].get('notes',[])
+            notes.append(text)
+            self.dmd['outings'][outingName]['notes']=notes
+            self.redrawFlag=True
+            self.writeDmdFile()
+        # logging.info('entered: '+str(text))
+
     def PDFGenClicked(self,*args,**kwargs):
         if not self.sts2.id:
             inform_user_about_issue("'id' is not defined for the debrief map session; cannot generarte PDF.'",parent=self)
@@ -1855,13 +1883,14 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
         self.ui.setupUi(self)
         self.ldpi=0
         
+        self.ui.editNoteIcon=QtGui.QIcon()
+        self.ui.editNoteIcon.addPixmap(QtGui.QPixmap(":/plans_console/edit_icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
         self.ui.generatePDFIcon=QtGui.QIcon()
         self.ui.generatePDFIcon.addPixmap(QtGui.QPixmap(":/plans_console/generate_pdf_gen.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
         self.ui.generatePDFDoneIcon=QtGui.QIcon()
         self.ui.generatePDFDoneIcon.addPixmap(QtGui.QPixmap(":/plans_console/generate_pdf_done.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
         self.ui.generatePDFRegenIcon=QtGui.QIcon()
         self.ui.generatePDFRegenIcon.addPixmap(QtGui.QPixmap(":/plans_console/generate_pdf_regen.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
-
         self.ui.rebuildIcon=QtGui.QIcon()
         self.ui.rebuildIcon.addPixmap(QtGui.QPixmap(":/plans_console/reload-icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
 
@@ -1873,9 +1902,10 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
         self.ui.tableWidget.setColumnWidth(0,int(80*(self.ldpi/96)))
         self.ui.tableWidget.setColumnWidth(1,int(60*(self.ldpi/96)))
         self.ui.tableWidget.setColumnWidth(2,int(60*(self.ldpi/96)))
-        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(3,1)
-        self.ui.tableWidget.setColumnWidth(4,int(70*(self.ldpi/96)))
+        self.ui.tableWidget.setColumnWidth(3,int(20*(self.ldpi/96)))
+        self.ui.tableWidget.horizontalHeader().setSectionResizeMode(4,1)
         self.ui.tableWidget.setColumnWidth(5,int(70*(self.ldpi/96)))
+        self.ui.tableWidget.setColumnWidth(6,int(70*(self.ldpi/96)))
 
     def moveEvent(self,event):
         screen=self.screen()
@@ -1917,8 +1947,9 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
             self.ui.incidentLinkLight.setFixedWidth(pix[18])
             self.ui.debriefLinkLight.setFixedWidth(pix[18])
             for n in range(self.ui.tableWidget.rowCount()):
-                self.ui.tableWidget.cellWidget(n,4).setIconSize(QtCore.QSize(pix[36],pix[14]))
-                self.ui.tableWidget.cellWidget(n,5).setIconSize(QtCore.QSize(pix[14],pix[14]))
+                self.ui.tableWidget.cellWidget(n,3).setIconSize(QtCore.QSize(pix[14],pix[14]))
+                self.ui.tableWidget.cellWidget(n,5).setIconSize(QtCore.QSize(pix[36],pix[14]))
+                self.ui.tableWidget.cellWidget(n,6).setIconSize(QtCore.QSize(pix[14],pix[14]))
             vh=self.ui.tableWidget.verticalHeader()
             for n in range(self.ui.tableWidget.columnCount()):
                 vh.resizeSection(n,pix[16])

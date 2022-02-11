@@ -151,8 +151,14 @@ QHeaderView::section:vertical
        <property name="selectionMode">
         <enum>QAbstractItemView::NoSelection</enum>
        </property>
+       <attribute name="horizontalHeaderMinimumSectionSize">
+        <number>20</number>
+       </attribute>
        <attribute name="verticalHeaderVisible">
         <bool>false</bool>
+       </attribute>
+       <attribute name="verticalHeaderDefaultSectionSize">
+        <number>30</number>
        </attribute>
        <attribute name="verticalHeaderHighlightSections">
         <bool>false</bool>
@@ -174,7 +180,12 @@ QHeaderView::section:vertical
        </column>
        <column>
         <property name="text">
-         <string>Latest</string>
+         <string/>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>Notes</string>
         </property>
        </column>
        <column>
