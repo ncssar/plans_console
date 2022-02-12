@@ -207,7 +207,7 @@ class SartopoSession():
         # set a flag: is this an internet session?
         #  if so, id and key are strictly required, and accountId is needed to print
         #  if not, all three are only needed in order to print
-        internet=self.domainAndPort.lower() in ['sartopo.com','caltopo.com']
+        internet=self.domainAndPort and self.domainAndPort.lower() in ['sartopo.com','caltopo.com']
         id=None
         key=None
         accountId=None
@@ -328,6 +328,41 @@ class SartopoSession():
         # try these hardcodes, instead of the above dummy-request, to see if it avoids the NPE's
         self.apiVersion=1
         self.apiUrlMid="/api/v1/map/[MAPID]/"
+
+        # to enable fiddler support, add 'proxies=self.proxyDict' argument to request calls;
+        #  note that if fiddler is NOT running, but the proxies are set, this would throw
+        #  an exception each time.  Maybe find a smarter way to see if fiddler is running
+        #  and enable or disable the proxies as needed.
+        # set a localhost proxy so fiddler can see requests generated here
+        #  (fiddler listens on port 8888 by default - configurable in fiddler options connections)
+        self.proxyDict={
+            'http':'http://127.0.0.1:8888',
+            'https':'https://127.0.0.1:8888',
+            'ftp':'ftp://127.0.0.1:8888'
+        }
+        
+        # new map requested
+        # 1. send a POST request to /map - payload = 
+        if self.mapID=='[NEW]':
+            j={}
+            j['accountId']=accountId
+            j['lockMapCfg']='true'
+            j['name']='dmg'
+            j['lat']=39
+            j['lon']=-120
+            j['state']=json.dumps({'type':'FeatureCollection','features':[]})
+            j['config']=json.dumps({'activeLayers':[['mbt',1]]})
+            logging.info('dap='+str(self.domainAndPort))
+            logging.info('payload='+str(json.dumps(j,indent=3)))
+            r=self.sendRequest('post','[NEW]',j,domainAndPort=self.domainAndPort)
+            if r:
+                logging.info('return='+str(r))
+                self.mapID=r.rstrip('/').split('/')[-1]
+                self.s=requests.session()
+                time.sleep(1) # to avoid a 401 on the subsequent get request
+            else:
+                return False
+
 
         # logging.info("API version:"+str(self.apiVersion))
         # sync needs to be done here instead of in the caller, so that
@@ -536,6 +571,7 @@ class SartopoSession():
 
     def sendRequest(self,type,apiUrlEnd,j,id="",returnJson=None,timeout=None,domainAndPort=None):
         timeout=timeout or self.syncTimeout
+        newMap='[NEW]' in apiUrlEnd  # specific mapID that indicates a new map should be created
         if self.apiVersion<0:
             logging.error("sendRequest: sartopo session is invalid; request aborted: type="+str(type)+" apiUrlEnd="+str(apiUrlEnd))
             return False
@@ -555,6 +591,9 @@ class SartopoSession():
         mid=mid.replace("[MAPID]",self.mapID)
         apiUrlEnd=apiUrlEnd.replace("[MAPID]",self.mapID)
         domainAndPort=domainAndPort or self.domainAndPort # use arg value if specified
+        if not domainAndPort:
+            logging.error("sendRequest was attempted but no valid domainAndPort was specified.")
+            return False
         prefix='http://'
         # set a flag: is this an internet request?
         internet=domainAndPort.lower() in ['sartopo.com','caltopo.com']
@@ -564,12 +603,19 @@ class SartopoSession():
                 logging.error("There was an attempt to send an internet request, but 'id' and/or 'key' was not specified for this session.  The request will not be sent.")
                 return False
         url=prefix+domainAndPort+mid+apiUrlEnd
+        wrapInJsonKey=True
+        if newMap:
+            url=prefix+domainAndPort+'/map'
+            wrapInJsonKey=False
         if '/since/' not in url:
             logging.info("sending "+str(type)+" to "+url)
         self.syncPause=True
         if type=="post":
-            params={}
-            params["json"]=json.dumps(j)
+            if wrapInJsonKey:
+                params={}
+                params["json"]=json.dumps(j)
+            else:
+                params=j
             if internet:
                 expires=int(time.time()*1000)+120000 # 2 minutes from current time, in milliseconds
                 data="POST "+mid+apiUrlEnd+"\n"+str(expires)+"\n"+json.dumps(j)
@@ -587,9 +633,9 @@ class SartopoSession():
                 paramsPrint=params
             # logging.info("SENDING POST to '"+url+"':")
             logging.info(json.dumps(paramsPrint,indent=3))
-            r=self.s.post(url,data=params,timeout=timeout)
+            r=self.s.post(url,data=params,timeout=timeout,allow_redirects=False)
         elif type=="get": # no need for json in GET; sending null JSON causes downstream error
-#             logging.info("SENDING GET to '"+url+"':")
+            # logging.info("SENDING GET to '"+url+"':")
             r=self.s.get(url,timeout=timeout)
         elif type=="delete":
             params={}
@@ -619,12 +665,21 @@ class SartopoSession():
             logging.error("sendRequest: Unrecognized request type:"+str(type))
             self.syncPause=False
             return False
-#         logging.info("response code = "+str(r.status_code))
-#         logging.info("response:")
-#         try:
-#             logging.info(json.dumps(r.json(),indent=3))
-#         except:
-#             logging.info(r.text)
+
+        if r.status_code!=200:
+            logging.info("response code = "+str(r.status_code))
+            # new map request should return 3xx response (redirect); if allow_redirects=False is
+            #  in the response, the redirect target will appear as the 'Location' response header.
+            if newMap and 300<=r.status_code<=399:
+                logging.info("response headers:"+str(json.dumps(dict(r.headers),indent=3)))
+                newUrl=r.headers.get('Location',None)
+                if newUrl:
+                    logging.info('New map URL:'+newUrl)
+                    return newUrl
+                else:
+                    logging.info('No new map URL was returned in the response header.')
+                    return False
+
         if returnJson:
             # logging.info('response:'+str(r))
             try:

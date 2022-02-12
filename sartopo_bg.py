@@ -204,6 +204,7 @@ class DebriefMapGenerator():
         # is this being spawned from Plans Console?
         self.pc=self.parent.__class__.__name__=='PlansConsole'
         self.debriefURL=''
+        self.startupBox=None
 
         # do not register the callbacks until after the initial processing; that way we
         #  can be sure to process existing assignments first
@@ -255,16 +256,41 @@ class DebriefMapGenerator():
                 self.debriefURL=targetMap
                 self.debriefDomainAndPort=targetParse[2]
         else:
-            logging.info('No debrief map; raising DebriefMapDialog')
+            logging.info('No debrief map; raising SpecifyMapDialog')
             self.defaultDomainAndPort=None
             if hasattr(self.parent,'defaultDomainAndPort'):
                 self.defaultDomainAndPort=self.parent.defaultDomainAndPort
-            self.debriefMapDialog=SpecifyMapDialog(self,'Debrief','Some stuff',self.defaultDomainAndPort)
+            self.debriefMapDialog=SpecifyMapDialog(self,'Debrief','Create New Map, or Use Existing Map?',self.defaultDomainAndPort,enableNewMap=True)
             if self.debriefMapDialog.exec(): # force modal
-                self.debriefURL=self.debriefMapDialog.url
-                parse=self.debriefURL.replace("http://","").replace("https://","").split("/")
-                self.debriefDomainAndPort=parse[0]
-                self.debriefMapID=parse[-1]
+                if self.debriefMapDialog.newMap:
+                    logging.info('new map requested')
+                    configpath='../sts.ini'
+                    account=None
+                    self.debriefDomainAndPort=self.debriefMapDialog.dap
+                    if self.pc:
+                        configpath=self.parent.stsconfigpath
+                        account=self.parent.accountName
+                    self.startupBox=QMessageBox(
+                        QMessageBox.NoIcon, # other vaues cause the chime sound to play
+                        'New debrief map...',
+                        'Debrief Map:\n\nCreating new map...')
+                    self.startupBox.setStandardButtons(QMessageBox.NoButton)
+                    self.startupBox.show()
+                    QCoreApplication.processEvents()
+                    self.sts2=SartopoSession(self.debriefDomainAndPort,'[NEW]',
+                        sync=False,
+                        account=account,
+                        configpath=configpath,
+                        syncTimeout=10)
+                    self.debriefMapID=self.sts2.mapID
+                    self.debriefURL=self.debriefMapDialog.url.replace('<Pending>',self.sts2.mapID)
+                    self.startupBox.setText('New map created:\n\n'+self.debriefURL+'\n\nPopulating new map...')
+                    QCoreApplication.processEvents()
+                else:
+                    self.debriefURL=self.debriefMapDialog.url
+                    parse=self.debriefURL.replace("http://","").replace("https://","").split("/")
+                    self.debriefDomainAndPort=parse[0]
+                    self.debriefMapID=parse[-1]
                 self.dd.ui.debriefMapField.setText(self.debriefURL)
                 if self.pc:
                     self.parent.ui.debriefMapField.setText(self.debriefURL)
@@ -431,6 +457,9 @@ class DebriefMapGenerator():
         
             if not self.sts1.sync:
                 self.sts1.start()
+
+        if self.startupBox:
+            self.startupBox.done(0)
 
         self.updateLinkLights()
   

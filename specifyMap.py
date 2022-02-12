@@ -36,9 +36,11 @@ def genLpix(ldpi):
     return lpix
 
 class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
-    def __init__(self,parent,name=None,headerText=None,defaultDomainAndPort=None):
+    def __init__(self,parent,name=None,headerText=None,defaultDomainAndPort=None,enableNewMap=False):
         QDialog.__init__(self)
         self.parent=parent
+        self.enableNewMap=enableNewMap
+        self.newMap=False
         self.ldpi=0
         self.tmp='small'
         
@@ -50,7 +52,11 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
         self.moveTimer.timeout.connect(self.moveTimeout)
         self.ui=Ui_SpecifyMapDialog()
         self.ui.setupUi(self)
+        self.ui.newMapRadioButton.setVisible(enableNewMap)
+        self.ui.existingMapRadioButton.setVisible(enableNewMap)
+        self.ui.mapSourceButtonGroup.buttonClicked.connect(self.mapSourceClicked)
         self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
+        self.ui.existingMapRadioButton.setChecked(True)
         self.urlChanged()
         self.ui.mapIDField.setFocus()
         if defaultDomainAndPort:
@@ -63,7 +69,7 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
                 self.ui.otherButton.click()
                 self.ui.domainAndPortOtherField.setText(defaultDomainAndPort)
         if name:
-            self.ui.mapIdLabel.setText(str(name)+' Map ID:')
+            self.ui.mapIDGroupBox.setTitle(str(name)+' Map ID')
             self.ui.mapURLLabel.setText(str(name)+' Map URL:')
             self.setWindowTitle('Specify '+name+' Map')
         if headerText:
@@ -129,6 +135,17 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
             self.setMaximumSize(initialSize)
             # it would be good to resolve the ratchetings at some point, but this is good enough for now
 
+    def mapSourceClicked(self,*args,**kwargs):
+        val=self.ui.mapSourceButtonGroup.checkedButton().text()
+        if val=='New Map':
+            self.ui.mapIDGroupBox.setEnabled(False)
+            self.newMap=True
+        else:
+            self.ui.mapIDGroupBox.setEnabled(True)
+            self.newMap=False
+            self.ui.mapIDField.setFocus()
+        self.urlChanged()
+
     def domainAndPortClicked(self,*args,**kwargs):
         val=self.ui.domainAndPortButtonGroup.checkedButton().text()
         self.ui.domainAndPortOtherField.setEnabled(val=='Other')
@@ -141,7 +158,10 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
         prefix='http://'
         if '.com' in self.dap:
             prefix='https://'
-        mapID=self.ui.mapIDField.text()
+        if self.enableNewMap and self.ui.mapSourceButtonGroup.checkedButton().text()=='New Map':
+            mapID='<Pending>'
+        else:
+            mapID=self.ui.mapIDField.text()
         # form validation: disable Ok button when mapID is blank
         self.ui.buttonBox.button(QDialogButtonBox.Ok).setEnabled(mapID!='')
         url=prefix+self.dap+'/m/'+mapID
