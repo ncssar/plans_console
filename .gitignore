@@ -141,3 +141,4 @@ plans_console.rc
 *.json.pp
 *.swp
 *.code-workspace
+scratch/

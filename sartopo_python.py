@@ -171,7 +171,8 @@ class SartopoSession():
             geometryUpdateCallback=None,
             newFeatureCallback=None,
             deletedFeatureCallback=None,
-            syncCallback=None):
+            syncCallback=None,
+            useFiddlerProxy=False):
         self.s=requests.session()
         self.apiVersion=-1
         if not mapID or not isinstance(mapID,str) or len(mapID)<3:
@@ -200,6 +201,7 @@ class SartopoSession():
         self.lastSuccessfulSyncTimestamp=0 # the server's integer milliseconds 'sincce' request completion time
         self.lastSuccessfulSyncTSLocal=0 # this object's integer milliseconds sync completion time
         self.syncDumpFile=syncDumpFile
+        self.useFiddlerProxy=useFiddlerProxy
         if not self.setupSession():
             raise STSException
         
@@ -329,18 +331,28 @@ class SartopoSession():
         self.apiVersion=1
         self.apiUrlMid="/api/v1/map/[MAPID]/"
 
-        # to enable fiddler support, add 'proxies=self.proxyDict' argument to request calls;
-        #  note that if fiddler is NOT running, but the proxies are set, this would throw
-        #  an exception each time.  Maybe find a smarter way to see if fiddler is running
-        #  and enable or disable the proxies as needed.
-        # set a localhost proxy so fiddler can see requests generated here
-        #  (fiddler listens on port 8888 by default - configurable in fiddler options connections)
-        self.proxyDict={
-            'http':'http://127.0.0.1:8888',
-            'https':'https://127.0.0.1:8888',
-            'ftp':'ftp://127.0.0.1:8888'
-        }
-        
+        # To enable fiddler support, so fiddler can see outgoing requests sent from this code,
+        #  add 'proxies=self.proxyDict' argument to request calls and use locahost port 8888
+        #  (the default fiddler proxy port number - configurable in fiddler connection settings).
+        #  Note that if fiddler is NOT running, but the proxies are set, this would throw
+        #  an exception each time.  So, if Fiddler proxies are requested, confirm here first.
+        self.proxyDict=None
+        if self.useFiddlerProxy:
+            logging.info('This session was requested to use the Fiddler proxy.  Verifying that the proxy host is running...')
+            try:
+                r=requests.get('http://127.0.0.1:8888')
+            except:
+                logging.error('Fiddler proxy host does not appear to be responding correctly; this session will not use Fiddler proxies.')
+            else:
+                logging.info('  fiddler ping response appears valid; setting the proxies: r='+str(r))
+                self.proxyDict={
+                    'http':'http://127.0.0.1:8888',
+                    'https':'https://127.0.0.1:8888',
+                    'ftp':'ftp://127.0.0.1:8888'
+                }
+
+        self.sendUserdata() # to get session cookies, in case this client has not connected in a long time
+
         # new map requested
         # 1. send a POST request to /map - payload = 
         if self.mapID=='[NEW]':
@@ -351,7 +363,7 @@ class SartopoSession():
             j['lat']=39
             j['lon']=-120
             j['state']=json.dumps({'type':'FeatureCollection','features':[]})
-            j['config']=json.dumps({'activeLayers':[['mbt',1]]})
+            # j['config']=json.dumps({'activeLayers':[['mbt',1]]})
             logging.info('dap='+str(self.domainAndPort))
             logging.info('payload='+str(json.dumps(j,indent=3)))
             r=self.sendRequest('post','[NEW]',j,domainAndPort=self.domainAndPort)
@@ -359,6 +371,7 @@ class SartopoSession():
                 logging.info('return='+str(r))
                 self.mapID=r.rstrip('/').split('/')[-1]
                 self.s=requests.session()
+                self.sendUserdata() # to get session cookies for new session
                 time.sleep(1) # to avoid a 401 on the subsequent get request
             else:
                 return False
@@ -372,7 +385,21 @@ class SartopoSession():
         else: # do an initial since(0) even if sync is false
             self.doSync()
         return True
-            
+
+    def sendUserdata(self,activeLayers=[['mbt',1]],center=[-120,39],zoom=13):
+        j={
+            'map':{
+                # 'config':{
+                #     'activeLayers':activeLayers
+                # },
+                'center':center,
+                'zoom':zoom
+            }
+        }
+        logging.info('dap='+str(self.domainAndPort))
+        logging.info('payload='+str(json.dumps(j,indent=3)))
+        self.sendRequest('post','api/v0/userdata',j,domainAndPort=self.domainAndPort)
+
     def doSync(self):
         self.syncing=True
 
@@ -633,7 +660,7 @@ class SartopoSession():
                 paramsPrint=params
             # logging.info("SENDING POST to '"+url+"':")
             logging.info(json.dumps(paramsPrint,indent=3))
-            r=self.s.post(url,data=params,timeout=timeout,allow_redirects=False)
+            r=self.s.post(url,data=params,timeout=timeout,proxies=self.proxyDict,allow_redirects=False)
         elif type=="get": # no need for json in GET; sending null JSON causes downstream error
             # logging.info("SENDING GET to '"+url+"':")
             r=self.s.get(url,timeout=timeout)
