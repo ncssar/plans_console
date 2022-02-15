@@ -176,7 +176,7 @@ class SartopoSession():
         self.s=requests.session()
         self.apiVersion=-1
         if not mapID or not isinstance(mapID,str) or len(mapID)<3:
-            logging.error('ERROR: you must specify a three-or-more-character sartopo map ID string (end of the URL) when opening a SartopoSession object.')
+            logging.warning('WARNING: you must specify a three-or-more-character sartopo map ID string (end of the URL) when opening a SartopoSession object.')
             raise STSException
         self.mapID=mapID
         self.domainAndPort=domainAndPort
@@ -331,10 +331,10 @@ class SartopoSession():
         self.apiVersion=1
         self.apiUrlMid="/api/v1/map/[MAPID]/"
 
-        # To enable fiddler support, so fiddler can see outgoing requests sent from this code,
+        # To enable Fiddler support, so Fiddler can see outgoing requests sent from this code,
         #  add 'proxies=self.proxyDict' argument to request calls and use locahost port 8888
-        #  (the default fiddler proxy port number - configurable in fiddler connection settings).
-        #  Note that if fiddler is NOT running, but the proxies are set, this would throw
+        #  (the default Fiddler proxy port number - configurable in Fiddler connection settings).
+        #  Note that if Fiddler is NOT running, but the proxies are set, this would throw
         #  an exception each time.  So, if Fiddler proxies are requested, confirm here first.
         self.proxyDict=None
         if self.useFiddlerProxy:
@@ -342,9 +342,9 @@ class SartopoSession():
             try:
                 r=requests.get('http://127.0.0.1:8888')
             except:
-                logging.error('Fiddler proxy host does not appear to be responding correctly; this session will not use Fiddler proxies.')
+                logging.warning('Fiddler proxy host does not appear to be responding correctly; this session will not use Fiddler proxies.')
             else:
-                logging.info('  fiddler ping response appears valid; setting the proxies: r='+str(r))
+                logging.info('  Fiddler ping response appears valid; setting the proxies: r='+str(r))
                 self.proxyDict={
                     'http':'http://127.0.0.1:8888',
                     'https':'https://127.0.0.1:8888',
@@ -363,12 +363,12 @@ class SartopoSession():
             j['lat']=39
             j['lon']=-120
             j['state']=json.dumps({'type':'FeatureCollection','features':[]})
-            # j['config']=json.dumps({'activeLayers':[['mbt',1]]})
-            logging.info('dap='+str(self.domainAndPort))
-            logging.info('payload='+str(json.dumps(j,indent=3)))
+            # # j['config']=json.dumps({'activeLayers':[['mbt',1]]})
+            # logging.info('dap='+str(self.domainAndPort))
+            # logging.info('payload='+str(json.dumps(j,indent=3)))
             r=self.sendRequest('post','[NEW]',j,domainAndPort=self.domainAndPort)
             if r:
-                logging.info('return='+str(r))
+                # logging.info('return='+str(r))
                 self.mapID=r.rstrip('/').split('/')[-1]
                 self.s=requests.session()
                 self.sendUserdata() # to get session cookies for new session
@@ -396,8 +396,8 @@ class SartopoSession():
                 'zoom':zoom
             }
         }
-        logging.info('dap='+str(self.domainAndPort))
-        logging.info('payload='+str(json.dumps(j,indent=3)))
+        # logging.info('dap='+str(self.domainAndPort))
+        # logging.info('payload='+str(json.dumps(j,indent=3)))
         self.sendRequest('post','api/v0/userdata',j,domainAndPort=self.domainAndPort)
 
     def doSync(self):
@@ -474,7 +474,7 @@ class SartopoSession():
                             break
                     # 2b - otherwise, create it - and add to ids so it doesn't get cleaned
                     if not processed:
-                        logging.info('  Adding '+featureClass+':'+title)
+                        logging.debug('Adding to cache:'+featureClass+':'+title)
                         self.mapData['state']['features'].append(f)
                         if f['id'] not in self.mapData['ids'][prop['class']]:
                             self.mapData['ids'][prop['class']].append(f['id'])
@@ -545,17 +545,20 @@ class SartopoSession():
     #  since doSync() would be called from this thread, it is always blocking
     def refresh(self,blocking=False,forceImmediate=False):
         d=int(time.time()*1000)-self.lastSuccessfulSyncTSLocal # integer ms since last completed sync
-        logging.info('  refresh requested: '+str(d)+'ms since last completed sync')
+        msg='refresh requested: '+str(d)+'ms since last completed sync; '
         if d>(self.syncInterval*1000):
-            logging.info('    this is longer than the syncInterval: syncing now')
+            msg+='longer than syncInterval: syncing now'
+            logging.info(msg)
             self.doSync()
         else:
-            logging.info('    this is shorter than the syncInterval')
+            msg+='shorter than syncInterval; '
             if forceImmediate:
-                logging.info('    but forceImmedate is specified: syncing now')
+                msg='forceImmediate specified: syncing now'
+                logging.info(msg)
                 self.doSync()
             else:
-                logging.info('    and forceImmediate is not specified: not syncing now')
+                msg='forceImmediate not specified: not syncing now'
+                logging.info(msg)
 
     def stop(self):
         logging.info('Sartopo syncing terminated.')
@@ -659,7 +662,8 @@ class SartopoSession():
             else:
                 paramsPrint=params
             # logging.info("SENDING POST to '"+url+"':")
-            logging.info(json.dumps(paramsPrint,indent=3))
+            # logging.info(json.dumps(paramsPrint,indent=3))
+            logging.info(jsonForLog(paramsPrint))
             r=self.s.post(url,data=params,timeout=timeout,proxies=self.proxyDict,allow_redirects=False)
         elif type=="get": # no need for json in GET; sending null JSON causes downstream error
             # logging.info("SENDING GET to '"+url+"':")
@@ -698,7 +702,7 @@ class SartopoSession():
             # new map request should return 3xx response (redirect); if allow_redirects=False is
             #  in the response, the redirect target will appear as the 'Location' response header.
             if newMap and 300<=r.status_code<=399:
-                logging.info("response headers:"+str(json.dumps(dict(r.headers),indent=3)))
+                # logging.info("response headers:"+str(json.dumps(dict(r.headers),indent=3)))
                 newUrl=r.headers.get('Location',None)
                 if newUrl:
                     logging.info('New map URL:'+newUrl)
@@ -717,7 +721,7 @@ class SartopoSession():
                 return False
             else:
                 if 'status' in rj and rj['status'].lower()!='ok':
-                    logging.error('response status other than "ok":  '+str(rj))
+                    logging.warning('response status other than "ok":  '+str(rj))
                     return rj
                 if returnJson=="ID":
                     id=None
@@ -1846,7 +1850,7 @@ class SartopoSession():
             result=self.intersection2(targetGeom,boundaryGeom)
         else:
             result=targetGeom&boundaryGeom # could be MultiPolygon or MultiLinestring or GeometryCollection
-        logging.info('crop result:'+str(result))
+        # logging.info('crop result:'+str(result))
 
         # preserve target properties when adding new features
         tp=targetShape['properties']
@@ -1994,11 +1998,13 @@ class SartopoSession():
                 pass
         return fn+ins
 
+
 # print by default; let the caller change this if needed
 # (note, caller would need to clear all handlers first,
 #   per stackoverflow.com/questions/12158048)
 logging.basicConfig(
     level=logging.INFO,
+    datefmt='%H:%M:%S',
     format='%(asctime)s [%(module)s:%(lineno)d:%(levelname)s] %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout)
@@ -2027,3 +2033,35 @@ def handle_exception(*args):
     logging.critical(prefix, exc_info=(exc_type, exc_value, exc_traceback))
 sys.excepthook = handle_exception
 threading.excepthook = handle_exception
+
+# pare down json for logging messages to reduce log size and clutter
+def jsonForLog(orig):
+    rval=copy.deepcopy(orig)
+    try:
+        ok=orig.keys()
+        wrapped=False
+        if len(ok)==1 and 'json' in ok:
+            wrapped=True
+            rval=json.loads(rval['json'])
+        gc=rval['geometry']['coordinates']
+        if isinstance(gc[0][0],list): # list of segments
+            segCount=len(gc)
+            suffix=''
+            if segCount>1:
+                suffix='s'
+            countStr=str(segCount)+' segment'+suffix+' ('
+            for seg in gc:
+                countStr+=str(len(seg))+','
+            countStr=countStr.rstrip(',')
+            countStr+=' points)'
+            rval['geometry']['coordinates']=countStr
+        else:
+            suffix=''
+            if len(gc)>1:
+                suffix='s'
+            rval['geometry']['coordinates']=str(len(gc))+' point'+suffix
+        if wrapped:
+            rval={'json':json.dumps(rval)}
+    except:
+        pass
+    return str(rval)

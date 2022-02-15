@@ -90,6 +90,7 @@ if os.path.isfile(logfile):
     os.remove(logfile)
 logging.basicConfig(
     level=logging.INFO,
+    datefmt='%H:%M:%S',
     format='%(asctime)s [%(module)s:%(lineno)d:%(levelname)s] %(message)s',
     handlers=[
         # setting the filehandeler to write mode here causes the file
@@ -200,6 +201,7 @@ def dictHasAllKeys(d,klist):
 
 class DebriefMapGenerator():
     def __init__(self,parent,sourceMap,targetMap):
+        logging.info('Debrief Map Generator startup at '+datetime.now().strftime("%a %b %d %Y %H:%M:%S"))
         self.parent=parent
         # is this being spawned from Plans Console?
         self.pc=self.parent.__class__.__name__=='PlansConsole'
@@ -212,18 +214,18 @@ class DebriefMapGenerator():
         # assignments - dictionary of dictionaries of assignment data; each assignment sub-dictionary
         #   is created upon processing of the first feature that appears to be related to the assigment,
         #   based on title ('AA101' for assignment features, or 'AA101a' for lines, possibly including space(s))
-        # NOTE - we really want to be able to recreate the ID associations at runtime (what target map
+        # NOTE - we really want to be able to recreate the ID associations at runtime (what debrief map
         #   feature corresponds to what source map feature) rather than relying on a correspondence file,
-        #   but that would require a place for metadata on the target map features.  Maybe the target map
+        #   but that would require a place for metadata on the debrief map features.  Maybe the debrief map
         #   details / description field could be used for this?  Any new field added here just gets deleted
         #   by sartopo.  How important is it to keep this ID correspondence?  IS title sufficient?
         #  key = assignment title (name and number; i.e. we want one dict entry per pairing/'outing')
         #  val = dictionary
-        #     bid - id of boundary feature (in the target map)
-        #     fid - id of folder feature (in the target map)
+        #     bid - id of boundary feature (in the debrief map)
+        #     fid - id of folder feature (in the debrief map)
         #     sid - id of the assignment feature (in the SOURCE map)
-        #     cids - list of ids of associated clues (in the target map)
-        #     tids - list of ids of associated tracks (in the target map)
+        #     cids - list of ids of associated clues (in the debrief map)
+        #     tids - list of ids of associated tracks (in the debrief map)
         #     utids - list of uncropped track ids (since the track may be processed before the boundary)
 
         self.dd=DebriefDialog(self)
@@ -237,17 +239,17 @@ class DebriefMapGenerator():
         # determine / create SartopoSession objects
         #  process the target session first, since nocb definition checks for it
 
-        # determine / create sts2 (target map SartopoSession instance)
+        # determine / create sts2 (debrief map SartopoSession instance)
         self.sts2=None
         self.debriefDomainAndPort=None
         tcn=targetMap.__class__.__name__
         if tcn=='SartopoSession':
-            # logging.info('Target map argument = SartopoSession instance')
+            # logging.info('debrief map argument = SartopoSession instance')
             self.sts2=targetMap
             self.debriefDomainAndPort=self.sts2.domainAndPort
             self.debriefMapID=self.sts2.mapID
         elif tcn=='str':
-            # logging.info('Target map argument = string')
+            # logging.info('debrief map argument = string')
             self.debriefDomainAndPort='localhost:8080'
             targetParse=targetMap.split('/')
             self.debriefMapID=targetParse[-1]
@@ -411,7 +413,7 @@ class DebriefMapGenerator():
         #     with open(assignmentsFileName,'w') as assignmentsFile:
         #         assignmentsFile.write(json.dumps(assignments,indent=3))
 
-        # # open a session on the target map first, since nocb definition checks for it
+        # # open a session on the debrief map first, since nocb definition checks for it
         # if not self.sts2:
         #     try:
         #         self.sts2=SartopoSession(self.debriefDomainAndPort,self.debriefMapID,
@@ -449,7 +451,7 @@ class DebriefMapGenerator():
                 self.newFeatureCallback(f)
 
             # don't register the callbacks until after the initial refresh dmd file processing,
-            #  to prevent duplicate feature creation in the target map on restart
+            #  to prevent duplicate feature creation in the debrief map on restart
             self.sts1.newFeatureCallback=self.newFeatureCallback
             self.sts1.propertyUpdateCallback=self.propertyUpdateCallback
             self.sts1.geometryUpdateCallback=self.geometryUpdateCallback
@@ -495,7 +497,7 @@ class DebriefMapGenerator():
 
     def tick(self):
         if self.redrawFlag:
-            logging.info('Debrief redraw was requested; redrawing the debrief table...')
+            logging.debug('Debrief redraw was requested; redrawing the debrief table...')
             row=0
             self.dd.ui.tableWidget.setSortingEnabled(False)
             outings=self.dmd.get('outings',None)
@@ -619,13 +621,13 @@ class DebriefMapGenerator():
 
     def PDFGenClicked(self,*args,**kwargs):
         if not self.sts2.id:
-            inform_user_about_issue("'id' is not defined for the debrief map session; cannot generarte PDF.'",parent=self)
+            inform_user_about_issue("'id' is not defined for the debrief map session; cannot generarte PDF.'",parent=self.dd)
             return
         if not self.sts2.key:
-            inform_user_about_issue("'key' is not defined for the debrief map session; cannot generarte PDF.'",parent=self)
+            inform_user_about_issue("'key' is not defined for the debrief map session; cannot generarte PDF.'",parent=self.dd)
             return
         if not self.sts2.accountId:
-            inform_user_about_issue("'accountId' is not defined for the debrief map session; cannot generarte PDF.'",parent=self)
+            inform_user_about_issue("'accountId' is not defined for the debrief map session; cannot generarte PDF.'",parent=self.dd)
             return
         row=self.dd.ui.tableWidget.currentRow()
         outingName=self.dd.ui.tableWidget.item(row,0).text()
@@ -844,7 +846,7 @@ class DebriefMapGenerator():
             # pause sync until the entire rebuild is done
             logging.info('inside rebuild: about to rebuild outing "'+outingName+'"')
             o=self.dmd['outings'][outingName]
-            logging.info(json.dumps(o,indent=3))
+            # logging.info(json.dumps(o,indent=3))
             shapes=[o['bid']] # boundary / begin the delete list
             for tidlist in o['tids']:
                 if isinstance(tidlist,list):
@@ -905,7 +907,7 @@ class DebriefMapGenerator():
         self.writeDmdFile()
         progressBox.close()
         logging.info('rebuild complete')
-        inform_user_about_issue('Rebuild complete.',QMessageBox.Information,title='Success',timeout=2500,parent=self)
+        inform_user_about_issue('Rebuild complete.',QMessageBox.Information,title='Success',timeout=2500,parent=self.dd)
         if outingNameOrAll==':ALL:':
             for n in range(self.dd.ui.tableWidget.rowCount()):                
                 self.setPDFButton(n,'gen')
@@ -916,10 +918,10 @@ class DebriefMapGenerator():
 
     # correspondence dictionary (and json file) - serves two purposes:
     # 1. crash/restart recovery - on startup, the task is to import features from the source map
-    #      which don't have any correspondence in the target map; this avoids the need
-    #      to delete all features from the target map before startup
-    # 2. applying source map edits to the target map - when a source map feature is
-    #      edited or deleted, the correspondence dictionary will determine what target map
+    #      which don't have any correspondence in the debrief map; this avoids the need
+    #      to delete all features from the debrief map before startup
+    # 2. applying source map edits to the debrief map - when a source map feature is
+    #      edited or deleted, the correspondence dictionary will determine what debrief map
     #      feature(s) will receive the same edit/deletion
 
     # correspondence dict entries whose keys are source map assignment feature ids will
@@ -937,23 +939,23 @@ class DebriefMapGenerator():
         logging.info('initDmd called')
         if os.path.exists(self.dmdFileName):
             with open(self.dmdFileName,'r') as dmdFile:
-                logging.info('reading correlation file')
+                logging.info('reading correlation file '+self.dmdFileName)
                 dmd_init=json.load(dmdFile)
                 logging.info(json.dumps(dmd_init,indent=3))
 
             # build the real dmd dict, by only using the parts of dmd_init that still exist
             # (do not edit an object while iterating over it - that always gives bizarre results)
             sids=sum(self.sts1.mapData['ids'].values(),[])
-            logging.info('list of all sts1 ids:'+str(sids))
+            # logging.info('list of all sts1 ids:'+str(sids))
             tids=sum(self.sts2.mapData['ids'].values(),[])
-            logging.info('list of all sts2 ids:'+str(tids))
+            # logging.info('list of all sts2 ids:'+str(tids))
         # # sidsToRemove=[]
         # # for sid in corr.keys():
         # #     logging.info('checking sid '+sid+':'+str(corr[sid]))
         # #     for tid in corr[sid]:
         # #         logging.info(' checking tid '+tid)
         # #         if tid in tids:
-        # #             logging.info('  not in target map; removing')
+        # #             logging.info('  not in debrief map; removing')
         # #             corr[sid].remove(tid)
         # #     if corr[sid]==[]:
         # #         logging.info(' sid '+sid+' no longer has any correspondence; will be removed from correlation dictionary')
@@ -970,16 +972,16 @@ class DebriefMapGenerator():
                 o=outings_init[ot]
                 logging.info(' checking for sid='+str(o['sid'])+'  bid='+str(o['bid'])+'  fid='+str(o['fid']))
                 if o['sid'] in sids and (o['bid'] and o['bid'] in tids) and (o['fid'] and o['fid'] in tids):
-                    logging.info('initial outing preserved: '+ot)
+                    logging.info('  initial outing preserved: '+ot)
                     self.dmd['outings'][ot]=o
                 else:
-                    logging.info('initial outing discarded: '+ot)
+                    logging.info('  initial outing discarded: '+ot)
             # for sidToRemove in sidsToRemove:
             #     del corr[sidToRemove]
         # write the correspondence file
         self.writeDmdFile()
-        logging.info('dmd after filtering:')
-        logging.info(json.dumps(self.dmd,indent=3))
+        # logging.info('dmd after filtering:')
+        # logging.info(json.dumps(self.dmd,indent=3))
 
     # restart handling: read the assignments file (if any)
     # if path.exists(assignmentsFileName):
@@ -988,7 +990,7 @@ class DebriefMapGenerator():
     #         assignments_init=json.load(assignmentsFile)
     #         logging.info(json.dumps(assignments_init,indent=3))
 
-    # then get rid of id's that don't exist in the target map
+    # then get rid of id's that don't exist in the debrief map
     # for a in assignments_init:
     #     # create the assigmment entry even if the corresponding source id
     #     #  does not exist; that can't be checked until much later when 
@@ -1046,7 +1048,7 @@ class DebriefMapGenerator():
 
 
 
-    # efids=sts2.mapData['ids']['Folder'] # existing (target map) folder IDs
+    # efids=sts2.mapData['ids']['Folder'] # existing (debrief map) folder IDs
     # logging.info('Existing folder ids:'+str(efids))
     # for fid in efids:
     #     f=sts2.getFeatures(id=fid)[0]
@@ -1124,27 +1126,27 @@ class DebriefMapGenerator():
         for ot in self.dmd['outings'].keys():
             o=self.dmd['outings'][ot]
             osid=o.get('sid',None)
-            logging.info('  checking: outing title = '+str(ot)+', sid='+str(osid)+', id='+str(id))
+            # logging.info('  checking: outing title = '+str(ot)+', sid='+str(osid)+', id='+str(id))
             # if the outing was created in passing, i.e. during track or marker creation before assignment was processed,
             #  then sid will be null.  So how do we determine whether we should make a new outing?  For now, if sid is
             #  null, go ahead and make a new outing.  If there are actually multiple outings with the same name, then
             #  we have other issues to solve, i.e. which 'AA 101' outing does 'AA101a' belong to?  May be best to just
             #  prohibit identically named outings.
             if osid==id:
-                logging.info('  an outing with the same sid was found...')
+                logging.info('  outing "'+ot+'" with the same sid was found...')
                 if t==ot or 'NOTITLE' in ot:
                     logging.info('    and the title is a match or contains NOTITLE')
                     alreadyExists=True
                     break
                 else:
-                    logging.info('    but the title is not a match, so it must be an old outing')
+                    logging.info('    but the title is not a match, so it must be a previous outing')
             elif ot==t and not osid:
                 logging.info('  an outing with the same name but null sid was found; assuming it is a match and setting its sid')
                 alreadyExists=True
                 self.dmd['outings'][ot]['sid']=id
                 break
         if alreadyExists:
-            logging.info('yes, a correpsonding outing already exists on the target map')
+            logging.info(' yes, a correpsonding outing already exists on the debrief map')
             obid=o.get('bid',None)
             fid=o['fid']
             if obid:
@@ -1153,7 +1155,7 @@ class DebriefMapGenerator():
             else:
                 logging.info('  but the existing outing has no boundary; adding boundary now')
         else:
-            logging.info('no, the outing does not already exist; adding it now')
+            logging.info(' no, the outing does not already exist; adding it now')
 
             # if t is currently blank, set it to 'NOTITLE' for clarity;
             # dict key must be unique; if an entry by the same name already exists,
@@ -1249,12 +1251,12 @@ class DebriefMapGenerator():
                 uncroppedTrack=self.sts2.addLine(gc,title=title,color=color,folderId=o['fid'])
                 logging.info(' generated uncropped track '+uncroppedTrack)
                 if bid==None:
-                    logging.info('   assignment boundary has not been processed yet; saving the uncropped track in utids')
+                    logging.info('  assignment boundary has not been processed yet; saving the uncropped track in utids')
                     self.dmd['outings'][ot]['utids'].append(uncroppedTrack)
                     self.addCorrespondence(sid,uncroppedTrack)
                     # logging.info('  utids:'+str(assignments[ot]['utids']))
                 else:
-                    logging.info('  outing bid='+bid)
+                    # logging.info('  outing bid='+bid)
                     # if cropDegrees is specified in dmd, use that value; otherwise use the default
                     cropDegrees=self.dmd['outings'][ot].get('crop',self.cropDegrees)
                     croppedTrackList=self.sts2.crop(uncroppedTrack,o['bid'],beyond=cropDegrees)
@@ -1364,15 +1366,15 @@ class DebriefMapGenerator():
 
     # initialNewFeatureCallback: since dmd must be generated before the add<Type> functions
     #  are called (since those functions check to see if the feature already exists on the
-    #  target map, to prevent duplicates), the actual new feature actions must not be called
+    #  debrief map, to prevent duplicates), the actual new feature actions must not be called
     #  until after dmd is generated (by initDmd).  But, the list of actions to take must be
     #  generated 
     # def initialNewFeatureCallback(self,f):
 
-    # criteria for a 'match': if a feature exists on the target map meeting these criteria,
+    # criteria for a 'match': if a feature exists on the debrief map meeting these criteria,
     #   then it corresponds to the newly read source map feature: don't create a new feature
-    #   on the target map; instead, make an entry in corr{} and update the target map feature
-    #   if needed; we should be pretty strict here, since any non-matching target map features
+    #   on the debrief map; instead, make an entry in corr{} and update the debrief map feature
+    #   if needed; we should be pretty strict here, since any non-matching debrief map features
     #   can be deleted, and the newly imported feature can be used instead
     #  folder: target title is identical to source title
     #  marker: 
@@ -1392,7 +1394,7 @@ class DebriefMapGenerator():
         if sid in self.dmd['corr'].keys():
             logging.info(' source feature exists in correspondence dictionary')
             if all(i in tids for i in self.dmd['corr'][sid]):
-                logging.info('  all corresponding features exist in the target map; skipping')
+                logging.info('  all corresponding features exist in the debrief map; skipping')
                 # crop uncropped tracks even if the assignment already exists in the target;
                 #  this will crop any tracks that were imported anew on restart
                 if c=='Assignment':
@@ -1400,9 +1402,9 @@ class DebriefMapGenerator():
                 self.updateLinkLights()
                 return
             else:
-                logging.info('  but target map does not contain all of the specified features; adding the feature to the target map')
-        else:
-            logging.info(' no correspondence entry found; adding the feature to the target map')
+                logging.info('  but debrief map does not contain all of the specified features; adding the feature to the debrief map')
+        elif c!='Assignment': # don't show a message for assignments, since addOuting will determine if it needs to be added
+            logging.info(' no correspondence entry found; adding the feature to the debrief map')
 
         if c=='Assignment':
             self.addOuting(f)
@@ -1513,17 +1515,17 @@ class DebriefMapGenerator():
     #  5 - assignment name change rules: by the time tracks are obtained, the assignment feature on the
     #        source map will likely have had the number removed from its title (since the team is
     #        no longer working in that assignment).  How to deal with this?  If each 'assignment' on
-    #        the target map is actually thought of as a past-or-present 'pairing' or 'outing', it
+    #        the debrief map is actually thought of as a past-or-present 'pairing' or 'outing', it
     #        makes more sense: once an assignment feature is imported with a 'full' title
-    #        (letter and number), don't change it on the target map even when that assignment's
+    #        (letter and number), don't change it on the debrief map even when that assignment's
     #        number changes on the source map.  If the number changes to blank on the source map,
-    #        make no change on the target map.  If the number changes to another number on the source
-    #        map, re-import and create a new pairing (folder and boundary) on the target map. 
+    #        make no change on the debrief map.  If the number changes to another number on the source
+    #        map, re-import and create a new pairing (folder and boundary) on the debrief map. 
     def propertyUpdateCallback(self,f):
         # this function is probably called from a sync thread:
         #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
-        logging.info('propertyUpdateCallback:'+str(json.dumps(f,indent=3)))
+        # logging.info('propertyUpdateCallback:'+str(json.dumps(f,indent=3)))
         sid=f['id']
         sp=f['properties']
         sc=sp['class']
@@ -1552,7 +1554,7 @@ class DebriefMapGenerator():
                 del self.dmd['corr'][sid]
                 self.newFeatureCallback(f,outingLogMessageOverride='Reimported track due to property changes:') # this will crop the track automatically
             elif len(corrList)==1: # exactly one correlating feature exists
-                logging.info('  exactly one target map feature corresponds to the source map feature; updating the target map feature properties')
+                logging.info('  exactly one debrief map feature corresponds to the source map feature; updating the debrief map feature properties')
                 tf=self.sts2.getFeature(id=corrList[0])
                 tp=tf['properties']
                 # map properties from source to target, based on source class; start with the existing target
@@ -1578,11 +1580,11 @@ class DebriefMapGenerator():
                     tp=sp # for other feature types, copy all properties from source
                 self.sts2.editFeature(id=corrList[0],properties=tp)
             else:
-                logging.error('  property change: more than one target map feature correspond to the source map feature, which is not a line; no changes made to target map')
+                logging.error('  property change: more than one debrief map feature correspond to the source map feature, which is not a line; no changes made to debrief map')
         elif sc=='Assignment': # assignment with folder and boundary already created
             olist=[o for o in self.dmd['outings'] if self.dmd['outings'][o]['sid']==sid]
             if len(olist)==0:
-                logging.error('  source map assignment feature edited, but it has no corresponding target map feature')
+                logging.error('  source map assignment feature edited, but it has no corresponding debrief map feature')
                 self.updateLinkLights() # set back to previous colors
                 return
             elif len(olist)==1:
@@ -1591,22 +1593,22 @@ class DebriefMapGenerator():
                 # 1. blank --> letter only
                 #    blank --> letter and number
                 #    letter only --> letter and number
-                #     --> change title of corresponding target map features (folder and boundary);
+                #     --> change title of corresponding debrief map features (folder and boundary);
                 #           change key name for assigments dict entry and fids dict entry
                 # 2. letter and number --> same letter, different number
-                #     --> do NOT change existing target map assignment; create a new target map
+                #     --> do NOT change existing debrief map assignment; create a new debrief map
                 #          assignment (folder, boundary, assignments dict, fids dict) with new title
                 # 3. letter and number --> same letter, no number
                 #    all other cases
-                #     --> no change to target map or assignments/fids dicts
+                #     --> no change to debrief map or assignments/fids dicts
 
                 # oldf=sts2.getFeature(id=corrList[0])
                 # oldTitle=oldf['properties']['title']
                 oldTitle=olist[0]
                 oldTitleHasNumber=any(char.isdigit() for char in oldTitle)
                 newTitleHasNumber=any(char.isdigit() for char in st)
-                logging.info('assignment name change: "'+oldTitle+'" --> "'+st+'"')
-                logging.info(json.dumps(self.dmd['outings'],indent=3))
+                logging.info(' assignment name change: "'+oldTitle+'" --> "'+st+'"')
+                # logging.info(json.dumps(self.dmd['outings'],indent=3))
 
                 # case 1:
                 if (oldTitle=='' or 'NOTITLE' in oldTitle) or (not oldTitleHasNumber and newTitleHasNumber):
@@ -1614,7 +1616,7 @@ class DebriefMapGenerator():
                 #     if oldTitleHasNumber: # case 2
                 #         newFeatureCallback(f)
                 #     else: # case 1
-                    logging.info('  existing target map assignment title will be updated...')
+                    logging.info('  existing debrief map assignment title will be updated...')
                     o=self.dmd['outings'][oldTitle]
                     for tid in [o['bid'],o['fid']]:
                         tf=self.sts2.getFeature(id=tid)
@@ -1629,20 +1631,20 @@ class DebriefMapGenerator():
 
                 # case 2:
                 elif (oldTitleHasNumber and newTitleHasNumber):
-                    logging.info('  existing target map assignment will not be changed; importing the new assignment from scratch...')
+                    logging.info('  existing debrief map assignment will not be changed; importing to a new assignment...')
                     self.newFeatureCallback(f)
 
                 # case 3 / all other cases:
                 else:
-                    logging.info('  no change needed to existing target map assignments')
+                    logging.info('  no change needed to existing debrief map assignments')
 
                 # logging.info('new assignments dict:')
                 # logging.info(json.dumps(dmd['outings'],indent=3))
                 self.writeDmdFile()
             else:
-                logging.info('  more than one existing target map outing corresponds to the source map assignment; nothing edited due to ambuguity')
+                logging.info('  more than one existing debrief map outing corresponds to the source map assignment; nothing edited due to ambuguity')
         else:
-            logging.info('  source map feature does not have any corresponding feature in target map; nothing edited')
+            logging.info('  source map feature does not have any corresponding feature in debrief map; nothing edited')
         self.updateLinkLights() # set back to previous colors
 
     # parseTrackName: return False if not a track, or [assignment,team,suffix] if a track
@@ -1665,7 +1667,7 @@ class DebriefMapGenerator():
         osids=[self.dmd['outings'][x]['sid'] for x in self.dmd['outings'].keys()] # list of sid of all outings
         logging.info('osids:'+str(osids))
         # if the edited source feature is a track (a linestring with appropriate name format),
-        #  delete all corresponding target map features (the crop operation could have resulted in
+        #  delete all corresponding debrief map features (the crop operation could have resulted in
         #  multiple lines) then re-import the feature from scratch, which will also re-crop it;
         # otherwise, edit the geometry of all corresponding features that have a geometry entry
         #  (i.e. when an assigment boundary is edited, the assignment folder has no geometry)
@@ -1695,19 +1697,19 @@ class DebriefMapGenerator():
             else:
                 for tid in self.dmd['corr'][sid]:
                     if 'geometry' in self.sts2.getFeature(id=tid).keys():
-                        logging.info('  corresponding target map feature '+tid+' has geometry; setting it equal to the edited source feature geometry')
+                        logging.info('  corresponding debrief map feature '+tid+' has geometry; setting it equal to the edited source feature geometry')
                         self.sts2.editFeature(id=tid,geometry=sg)
                         # Is it a clue?  If so, add an outing log entry
                         outingNames=[x for x in self.dmd['outings'].keys() if tid in self.dmd['outings'][x]['cids']]
                         if outingNames:
                             self.addOutingLogEntry(outingNames[0],'Geometry edited for '+st)
                     else:
-                        logging.info('  corresponding target map feature '+tid+' has no geometry; no edit performed')
+                        logging.info('  corresponding debrief map feature '+tid+' has no geometry; no edit performed')
         elif sid in osids:
             for ot in self.dmd['outings'].keys():
                 o=self.dmd['outings'][ot]
                 if o['sid']==sid and ot==st: # the title is current
-                    logging.info('  assignment geometry was edited: applying the same edit to corresponding target map boundary that has the same title "'+st+'" as the edited feature (to preserve previous outing boundaries)')
+                    logging.info('  assignment geometry was edited: applying the same edit to corresponding debrief map boundary that has the same title "'+st+'" as the edited feature (to preserve previous outing boundaries)')
                     self.sts2.editFeature(id=o['bid'],geometry=sg)
                     self.addOutingLogEntry(ot,'Geometry edited for assignment boundary')
         # # 1. determine which target-map feature, if any, corresponds to the edited source-map feature
@@ -1715,9 +1717,9 @@ class DebriefMapGenerator():
         #     cval=corr[sid]
         #     logging.info('cval:'+str(cval))
         #     if len(cval)==1: # exactly one corresponding feature exists
-        #         logging.info('exactly one target map feature corresponds to the source map feature; updating the target map feature geometry')
+        #         logging.info('exactly one debrief map feature corresponds to the source map feature; updating the debrief map feature geometry')
         #         sts2.editFeature(id=cval[0],geometry=sg)
-        #         # if it was a track, delete all corresponding target map features, then re-import (which will re-crop it)
+        #         # if it was a track, delete all corresponding debrief map features, then re-import (which will re-crop it)
         #         if sg['type']=='LineString':
         #             for a in assignments:
         #                 logging.info('  checking assignment: tids='+str(assignments[a]['tids']))
@@ -1725,9 +1727,9 @@ class DebriefMapGenerator():
         #                     logging.info('  the updated geometry is a track belonging to '+assignments[a]['title']+': will re-crop using the new geometry')
         #                     sts2.crop(cval[0],assignments[a]['bid'],beyond=0.001)
         #     else:
-        #         logging.info('more than one existing target map feature corresponds to the source map feature; nothing edited due to ambuguity')
+        #         logging.info('more than one existing debrief map feature corresponds to the source map feature; nothing edited due to ambuguity')
         else:
-            logging.info('source map feature does not have any corresponding feature in target map; nothing edited')
+            logging.info('source map feature does not have any corresponding feature in debrief map; nothing edited')
         self.updateLinkLights() # set back to previous colors
 
     def deletedFeatureCallback(self,f):
@@ -1744,7 +1746,7 @@ class DebriefMapGenerator():
         if sid in self.dmd['corr'].keys():
             cval=self.dmd['corr'][sid]
             for tid in cval:
-                logging.info('deleting corresponding target map feature '+tid)
+                logging.info('deleting corresponding debrief map feature '+tid)
                 self.sts2.delFeature(f['properties']['class'],tid)
             # # TODO: if the deleted feature belonged to any outings, add an outing log entry
             # for outingName in self.dmd['outings'].keys():
@@ -1755,7 +1757,7 @@ class DebriefMapGenerator():
             del self.dmd['corr'][sid] # not currently iterating, so, del should be fine
             self.writeDmdFile()
         else:
-            logging.info('source map feature does not have any corresponding feature in target map; nothing deleted')
+            logging.info('source map feature does not have any corresponding feature in debrief map; nothing deleted')
         self.updateLinkLights() # set back to previous colors
 
 
@@ -1765,13 +1767,13 @@ class DebriefMapGenerator():
     #    ...
     #
     # on the initial sync, pay attention to the sequence:
-    # 1. read assignments from source map: create folders and boundary shapes in target map
+    # 1. read assignments from source map: create folders and boundary shapes in debrief map
     # 2. read shapes from source map: for completed search tracks (based on name),
-    #      draw the line in the target map assignment folder
-    # 3. perform a fresh since request on target map, so that newly
+    #      draw the line in the debrief map assignment folder
+    # 3. perform a fresh since request on debrief map, so that newly
     #      drawn lines will appear in .mapData as needed by crop()
-    # 4. in target map, color the tracks in alphabetical order
-    # 5. in target map, crop tracks to assigment boundaries
+    # 4. in debrief map, color the tracks in alphabetical order
+    # 5. in debrief map, crop tracks to assigment boundaries
 
     # # 1. read assignments
     # for f in sts1.getFeatures(featureClass='Assignment'):
@@ -1787,7 +1789,7 @@ class DebriefMapGenerator():
     # for f in sts1.getFeatures('Clue'):
     #     addClue(f)
 
-    # # 3. do a new since request in the target map
+    # # 3. do a new since request in the debrief map
     # sts2.doSync(once=True)
 
     # 4. color the tracks in alphabetical order
@@ -1945,7 +1947,7 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
         ldpi=screen.logicalDotsPerInch()
         if ldpi!=self.ldpi:
             pix=genLpix(ldpi)
-            logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
+            logging.debug(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
             self.ldpi=ldpi
             self.parent.lpix=pix
             self.lpix=pix
