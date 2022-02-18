@@ -484,6 +484,8 @@ class SartopoSession():
 
             # 3 - cleanup - remove features from the cache whose ids are no longer in cached id list
             #  (ids will be part of the response whenever feature(s) were added or deleted)
+            # beforeStr='mapData before cleanup:'+json.dumps(self.mapData,indent=3)
+            #  at this point in the code, the deleted feature has been removed from ids but is still part of state-features
             self.mapIDs=sum(self.mapData['ids'].values(),[])
             mapSFIDsBefore=[f['id'] for f in self.mapData['state']['features']]
             # edit the cache directly: https://stackoverflow.com/a/1157174/3577105
@@ -494,6 +496,11 @@ class SartopoSession():
             if l2!=l1:
                 deletedIds=list(set(mapSFIDsBefore)-set(mapSFIDs))
                 logging.info('cleaned up '+str(l1-l2)+' feature(s) from the cache:'+str(deletedIds))
+                if self.deletedFeatureCallback:
+                    for did in deletedIds:
+                        self.deletedFeatureCallback(did)
+                # logging.info(beforeStr)
+                # logging.info('mapData after cleanup:'+json.dumps(self.mapData,indent=3))
 
             # logging.info('mapData:\n'+json.dumps(self.mapData,indent=3))
             # logging.info('\n'+self.mapID+':\n  mapIDs:'+str(self.mapIDs)+'\nmapSFIDs:'+str(mapSFIDs))
@@ -506,6 +513,7 @@ class SartopoSession():
             # #         if self.deletedFeatureCallback:
             # #             self.deletedFeatureCallback(self.mapData['state']['features'][i])
             # #         del self.mapData['state']['features'][i]
+            
 
             if self.syncDumpFile:
                 with open(self.insertBeforeExt(self.syncDumpFile,'.cache'+str(self.lastSuccessfulSyncTimestamp)),"w") as f:
@@ -553,11 +561,11 @@ class SartopoSession():
         else:
             msg+='shorter than syncInterval; '
             if forceImmediate:
-                msg='forceImmediate specified: syncing now'
+                msg+='forceImmediate specified: syncing now'
                 logging.info(msg)
                 self.doSync()
             else:
-                msg='forceImmediate not specified: not syncing now'
+                msg+='forceImmediate not specified: not syncing now'
                 logging.info(msg)
 
     def stop(self):
@@ -681,13 +689,13 @@ class SartopoSession():
                 params["id"]=self.id
                 params["expires"]=expires
                 params["signature"]=token
-                paramsPrint=copy.deepcopy(params)
-                paramsPrint['id']='.....'
-                paramsPrint['signature']='.....'
-            else:
-                paramsPrint=params
+            #     paramsPrint=copy.deepcopy(params)
+            #     paramsPrint['id']='.....'
+            #     paramsPrint['signature']='.....'
+            # else:
+            #     paramsPrint=params
             # logging.info("SENDING DELETE to '"+url+"':")
-            logging.info(json.dumps(paramsPrint,indent=3))
+            # logging.info(json.dumps(paramsPrint,indent=3))
             # logging.info("Key:"+str(self.key))
             r=self.s.delete(url,params=params,timeout=timeout)   ## use params for query vs data for body data
             # logging.info("URL:"+str(url))
@@ -1099,9 +1107,16 @@ class SartopoSession():
         #     return self.sendRequest("post","since/"+str(since),j,id=str(existingId),returnJson="ID")
 
     def delMarker(self,id=""):
-        self.delFeature("marker",id=id)
+        self.delFeature(id=id,fClass="marker")
 
-    def delFeature(self,fClass,id=""):
+    def delFeature(self,id="",fClass=None):
+        if not fClass:
+            f=self.getFeature(id=id)
+            if f:
+                fClass=f['properties']['class']
+            else:
+                logging.error('delFeature: requested id "'+id+'" does not exist in the cache')
+                return False
         return self.sendRequest("delete",fClass,None,id=str(id),returnJson="ALL")
 
     # getFeatures - attempts to get data from the local cache (self.madData); refreshes and tries again if necessary
@@ -1245,21 +1260,22 @@ class SartopoSession():
             properties=None,
             geometry=None):
 
+        logging.info('editFeature called')
         # PART 1: determine the exact id of the feature to be edited
         if id is None:
             # first, validate the arguments and adjust as needed
             if className is None:
-                logging.error('ClassName was not specified.')
+                logging.error(' ClassName was not specified.')
                 return False
             if letter is not None:
                 if className != 'Assignment':
-                    logging.warning('Letter was specified, but className was specified as other than Assignment.  ClassName Assignment will be used.')
+                    logging.warning(' Letter was specified, but className was specified as other than Assignment.  ClassName Assignment will be used.')
                 className='Assignment'
             if title is None and letter is None:
-                logging.error('Either Title or Letter must be specified.')
+                logging.error(' Either Title or Letter must be specified.')
                 return False
             if title is not None and letter is not None:
-                logging.warning('Both Title and Letter were specified.  Only one or the other can be used for the search.  Using Letter, in case the rest of the feature title has changed.')
+                logging.warning(' Both Title and Letter were specified.  Only one or the other can be used for the search.  Using Letter, in case the rest of the feature title has changed.')
                 title=None
             if title is not None:
                 ltKey='title'
@@ -1276,23 +1292,23 @@ class SartopoSession():
             features=[f for f in self.mapData['state']['features'] if f['properties'].get(ltKey,None)==ltVal and f['properties']['class'].lower()==className.lower()]
                 
             if len(features)==0:
-                logging.error('no feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
+                logging.error(' no feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
                 return False
             if len(features)>1:
-                logging.error('more than one feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
+                logging.error(' more than one feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
                 return False
             feature=features[0]
-            logging.info('feature found: '+str(feature))
+            logging.info(' feature found: '+str(feature))
 
         else:
-            logging.info('id specified: '+id)
+            logging.info(' id specified: '+id)
             features=[f for f in self.mapData['state']['features'] if f['id']==id]
             # logging.info(json.dumps(self.mapData,indent=3))
             if len(features)==1:
                 feature=features[0]
                 className=feature['properties']['class']
             else:
-                logging.info('no match!')
+                logging.info('  no match!')
                 return False
 
         # PART 2: merge the properties and/or geometry dictionaries, and send the request
@@ -1586,7 +1602,7 @@ class SartopoSession():
                     logging.error('cut: target feature class was neither Shape nor Assigment; operation aborted.')
                     return False
         if deleteCutter:
-            self.delFeature(cutterShape['properties']['class'],cutterShape['id'])
+            self.delFeature(id=cutterShape['id'],fClass=cutterShape['properties']['class'])
 
         return rids # resulting feature IDs
 
@@ -1659,7 +1675,7 @@ class SartopoSession():
             return False
 
         if deleteP2:
-            self.delFeature(p2Shape['properties']['class'],p2Shape['id'])
+            self.delFeature(id=p2Shape['id'],fClass=p2Shape['properties']['class'])
 
         return True # success
 
@@ -1977,7 +1993,7 @@ class SartopoSession():
                     return False
 
         if deleteBoundary:
-            self.delFeature(boundaryShape['properties']['class'],boundaryShape['id'])
+            self.delFeature(id=boundaryShape['id'],fClass=boundaryShape['properties']['class'])
 
         return rids # resulting feature IDs
 

@@ -404,9 +404,9 @@ class DebriefMapGenerator():
         self.dmd['outings']={}
         self.dmd['corr']={}
         self.writeDmdPause=False
-
         # self.pdfStatus={}
 
+        self.orphanTracksDict={}
         self.outingSuffixDict={} # index numbers for duplicate-named assignments
         # def writeAssignmentsFile():
         #     # write the correspondence file
@@ -857,15 +857,15 @@ class DebriefMapGenerator():
             deleteIds=shapes+markers+folders
             # logging.info('features that would be deleted:'+str(shapes+markers+folders))
             for shape in shapes:
-                self.sts2.delFeature('Shape',shape)
+                self.sts2.delFeature(id=shape,fClass='Shape')
                 progress+=1
                 progressBox.setValue(progress)
             for marker in markers: # clues
-                self.sts2.delFeature('Marker',marker)
+                self.sts2.delFeature(id=marker,fClass='Marker')
                 progress+=1
                 progressBox.setValue(progress)
             for folder in folders: # folder
-                self.sts2.delFeature('Folder',folder)
+                self.sts2.delFeature(id=folder,fClass='Folder')
                 progress+=1
                 progressBox.setValue(progress)
             # 2. remove entries for self.dmd['corr']
@@ -892,7 +892,7 @@ class DebriefMapGenerator():
                     f=self.sts2.getFeature(id=tid)
                     if f: # if f is False, the feature was probably deleted by hand from the debrief map
                         tc=f['properties']['class']
-                        self.sts2.delFeature(tc,tid)
+                        self.sts2.delFeature(id=tid,fClass=tc)
                     progress+=1
                     progressBox.setValue(progress)
             self.dmd['corr']={}
@@ -975,7 +975,7 @@ class DebriefMapGenerator():
                     logging.info('  initial outing preserved: '+ot)
                     self.dmd['outings'][ot]=o
                 else:
-                    logging.info('  initial outing discarded: '+ot)
+                    logging.info('  outing discarded for now since not all of its required components currently exist in the debrief map: '+ot)
             # for sidToRemove in sidsToRemove:
             #     del corr[sidToRemove]
         # write the correspondence file
@@ -1121,7 +1121,7 @@ class DebriefMapGenerator():
         # restart handling: only add a new outing if there is not already an outing
         #  that matches sid and title
 
-        logging.info('checking to see if this outing (title='+t+' id='+str(id)+') already exists...')
+        logging.info(' checking to see if this outing (title="'+t+'" id='+str(id)+') already exists...')
         alreadyExists=False
         for ot in self.dmd['outings'].keys():
             o=self.dmd['outings'][ot]
@@ -1146,7 +1146,7 @@ class DebriefMapGenerator():
                 self.dmd['outings'][ot]['sid']=id
                 break
         if alreadyExists:
-            logging.info(' yes, a correpsonding outing already exists on the debrief map')
+            logging.info('  yes, a correpsonding outing already exists on the debrief map')
             obid=o.get('bid',None)
             fid=o['fid']
             if obid:
@@ -1155,7 +1155,7 @@ class DebriefMapGenerator():
             else:
                 logging.info('  but the existing outing has no boundary; adding boundary now')
         else:
-            logging.info(' no, the outing does not already exist; adding it now')
+            logging.info('  no, the outing does not already exist; adding it now')
 
             # if t is currently blank, set it to 'NOTITLE' for clarity;
             # dict key must be unique; if an entry by the same name already exists,
@@ -1183,7 +1183,7 @@ class DebriefMapGenerator():
             # fid=dmd['outings'][t]['fid']
             self.dmd['outings'][t]['sid']=id # assignment feature id in source map
             # logging.info('fids.keys='+str(fids.keys()))
-
+            self.checkForOrphans(t)
         if a:
             g=a['geometry']
             gc=g['coordinates']
@@ -1203,14 +1203,33 @@ class DebriefMapGenerator():
             logging.info('boundary created for assignment '+t+': '+self.dmd['outings'][t]['bid'])
             # if the assignment is tiny, it's probably a roaming assignment
             [lon1,lat1,lon2,lat2]=self.sts2.getBounds([bid])
-            logging.info('bounds:'+str([lon1,lat1,lon2,lat2]))
+            # logging.info('bounds:'+str([lon1,lat1,lon2,lat2]))
             if abs(lon2-lon1)*111111*cos(radians(lat1))<self.roamingThresholdMeters or abs(lat2-lat1)*111111<self.roamingThresholdMeters:
                 logging.info('  assignment '+t+' is tiny; it looks like an assignment for a roaming team')
                 self.dmd['outings'][t]['crop']=self.roamingCropDegrees
+
         # since addLine adds the new feature to .mapData immediately, no new 'since' request is needed
-        if self.dmd['outings'][t]['utids']!=[]:
-            self.cropUncroppedTracks()
+        # if self.dmd['outings'][t]['utids']!=[]:
+        self.cropUncroppedTracks()
         self.writeDmdFile()
+
+    # check for orphan tracks (properly-named tracks that were processed before this outing was created)
+    #  and bring them into the specified outing as uncropped tracks
+    def checkForOrphans(self,outingTitle):
+        cleanedIDs=[]
+        for otid in self.orphanTracksDict.keys():
+            ott=self.orphanTracksDict[otid]
+            tparse=self.parseTrackName(ott)
+            if tparse:
+                if tparse[0]+' '+tparse[1]==outingTitle:
+                    logging.info('Previously imported track "'+ott+'" appears to belong to newly imported outing "'+outingTitle+'".  Importing the uncropped track to the outing.')
+                    self.sts2.editFeature(id=otid,className='Shape',properties={'folderId':self.dmd['outings'][outingTitle]['fid']})
+                    self.dmd['outings'][outingTitle]['utids'].append(otid)
+                    self.addOutingLogEntry(outingTitle,'Imported existing track: '+ott)
+                    # don't delete while iterating
+                    cleanedIDs.append(otid)
+        for cleanedID in cleanedIDs:
+            del self.orphanTracksDict[cleanedID]
 
     def addShape(self,f,outingLogMessageOverride=None):
         p=f['properties']
@@ -1220,59 +1239,85 @@ class DebriefMapGenerator():
         t=p['title'].rstrip() # assignments with letter but not number could end in space
         sid=f['id']
         if gt=='LineString':
+            # how should a new line be processed?
+            # Q1 - does it have a properly formatted track name (outing name followed by a letter suffix)?
+            #   Q1=YES:
+            #     Q2 - does the specified outing already exist?
+            #       Q2=YES: import it to the outing (folder, color, crop)
+            #       Q2=NO: import it as a non-owned line (to the default folder) and add to 'orphan track' list
+            #           (if the outing name was accurate and the outing has just not been imported yet,
+            #            this track should be brought into the outing folder, and cropped, when the
+            #            outing is created; if the outing name was not accurate, and the outing by that
+            #            name is never imported, the line will be left in the default folder, which is fine)
+            #   Q1=NO: import it as a non-owned line (to the default folder)
+            color=p['stroke']
+            saveAsOrphan=False
             tparse=self.parseTrackName(t)
-            # if len(tparse)<3 or tparse[2]=='': # it's not a track
-            if not tparse:
-                logging.info('newly detected line '+t+': name does not appear to indicate association with an assignment')
-                logging.info('creating line \''+t+'\' in default folder')
-                lineID=self.sts2.addLine(gc,title=t,
-                        color=p['stroke'],
-                        description=p['description'],
-                        opacity=p['stroke-opacity'],
-                        width=p['stroke-width'],
-                        pattern=p['pattern'])
-                self.addCorrespondence(sid,lineID)
-            else: # it's a track; crop it now if needed, since newFeatureCallback is called once per feature, not once per sync interval
+            if tparse: # Q1=YES
                 ot=tparse[0]+' '+tparse[1] # 'AA 101' - should match a folder name
-                # logging.info('entire assignments dict:')
-                # logging.info(json.dumps(self.dmd['outings'],indent=3))
                 o=self.dmd['outings'].get(ot,None)
-                if o==None: # assignment entry hasn't been created yet
-                    logging.info('Processing line \''+t+'\' which appears to belong to outing \''+ot+'\' which has not been processed yet.  Creating the outing dictionary and adding this track to the uncropped tracks list.')
-                    self.addOuting(ot)
-                    o=self.dmd['outings'][ot]
-                # add the line in the assignment folder, and crop to the assignment shape
-                logging.info('creating line \''+t+'\' in folder \''+ot+'\'')
-                logging.info('  outing fid='+o['fid'])
-                bid=o['bid']
-                # color=trackColorList[(len(o['tids'])+len(o['utids']))%len(trackColorList)]
                 color=self.trackColorDict.get(tparse[2].lower(),'#444444')
-                title=tparse[0].upper()+tparse[1]+tparse[2].lower()
-                uncroppedTrack=self.sts2.addLine(gc,title=title,color=color,folderId=o['fid'])
-                logging.info(' generated uncropped track '+uncroppedTrack)
-                if bid==None:
-                    logging.info('  assignment boundary has not been processed yet; saving the uncropped track in utids')
-                    self.dmd['outings'][ot]['utids'].append(uncroppedTrack)
-                    self.addCorrespondence(sid,uncroppedTrack)
-                    # logging.info('  utids:'+str(assignments[ot]['utids']))
-                else:
-                    # logging.info('  outing bid='+bid)
-                    # if cropDegrees is specified in dmd, use that value; otherwise use the default
-                    cropDegrees=self.dmd['outings'][ot].get('crop',self.cropDegrees)
-                    croppedTrackList=self.sts2.crop(uncroppedTrack,o['bid'],beyond=cropDegrees)
-                    if croppedTrackList: # the crop worked
-                        self.dmd['outings'][ot]['tids'].append(croppedTrackList)
-                        self.addCorrespondence(sid,croppedTrackList)
-                    else: # the crop did not work
-                        self.dmd['outings'][ot]['utids'].append(uncroppedTrack)
-                        self.addCorrespondence(sid,uncroppedTrack)
-                    # sts2.doSync(once=True)
-                    # sts2.crop(track,o['bid'],beyond=0.001) # about 100 meters
-                msg='Added track '+title
-                if outingLogMessageOverride:
-                    msg=outingLogMessageOverride+' '+title
-                self.addOutingLogEntry(ot,msg)
-                self.writeDmdFile()
+                t=tparse[0].upper()+tparse[1]+tparse[2].lower()
+                if o: # Q2=YES
+            # if len(tparse)<3 or tparse[2]=='': # it's not a track
+            # else: # it's a track; crop it now if needed, since newFeatureCallback is called once per feature, not once per sync interval
+            #     ot=tparse[0]+' '+tparse[1] # 'AA 101' - should match a folder name
+            #     # logging.info('entire assignments dict:')
+            #     # logging.info(json.dumps(self.dmd['outings'],indent=3))
+            #     o=self.dmd['outings'].get(ot,None)
+            #     # if o==None: # assignment entry hasn't been created yet
+            #     #     logging.info('Processing line \''+t+'\' which appears to belong to outing \''+ot+'\' which has not been processed yet.  Creating the outing dictionary and adding this track to the uncropped tracks list.')
+            #     #     self.addOuting(ot)
+            #     #     o=self.dmd['outings'][ot]
+            #     if o: # add the line in the assignment folder, and crop to the assignment shape
+                    logging.info('creating line \''+t+'\' in folder \''+ot+'\'')
+                    logging.info('  outing fid='+o['fid'])
+                    bid=o['bid']
+                    uncroppedTrack=self.sts2.addLine(gc,title=t,color=color,folderId=o['fid'])
+                    logging.info(' generated uncropped track '+uncroppedTrack)
+                    # if bid==None:
+                        # logging.info('  assignment boundary has not been processed yet; saving the uncropped track in utids')
+                        # self.dmd['outings'][ot]['utids'].append(uncroppedTrack)
+                        # self.addCorrespondence(sid,uncroppedTrack)
+                        # # logging.info('  utids:'+str(assignments[ot]['utids']))
+                    if bid:
+                        # logging.info('  outing bid='+bid)
+                        # if cropDegrees is specified in dmd, use that value; otherwise use the default
+                        cropDegrees=self.dmd['outings'][ot].get('crop',self.cropDegrees)
+                        croppedTrackList=self.sts2.crop(uncroppedTrack,o['bid'],beyond=cropDegrees)
+                        if croppedTrackList: # the crop worked
+                            self.dmd['outings'][ot]['tids'].append(croppedTrackList)
+                            self.addCorrespondence(sid,croppedTrackList)
+                        else: # the crop did not work
+                            self.dmd['outings'][ot]['utids'].append(uncroppedTrack)
+                            self.addCorrespondence(sid,uncroppedTrack)
+                        # sts2.doSync(once=True)
+                        # sts2.crop(track,o['bid'],beyond=0.001) # about 100 meters
+                    else:
+                        logging.error('  assignment boundary has not been processed yet!  How did we get here?')
+                    msg='Added track '+t
+                    if outingLogMessageOverride:
+                        msg=outingLogMessageOverride+' '+t
+                    self.addOutingLogEntry(ot,msg)
+                    self.writeDmdFile()
+                    return
+                else: # Q2=NO
+                    # orphanTrack=self.sts2.addLine(gc,title=title,color=color)
+                    logging.info('Newly detected line '+t+': name does appear to indicate association with outing '+ot+', but, that outing has not yet been processed.  Importing the line as an un-owned feature, which will automatically be processed for the outing later if/when an outing with matching name is imported.')
+                    saveAsOrphan=True
+            else: # Q1=NO
+                logging.info('Newly detected line '+t+': name does not appear to indicate association with an assignment')
+            # Q1=NO or Q2=NO
+            logging.info('creating line \''+t+'\' in default folder')
+            lineID=self.sts2.addLine(gc,title=t,
+                    color=color,
+                    description=p['description'],
+                    opacity=p['stroke-opacity'],
+                    width=p['stroke-width'],
+                    pattern=p['pattern'])
+            self.addCorrespondence(sid,lineID)
+            if saveAsOrphan:
+                self.orphanTracksDict[lineID]=t
         elif gt=='Polygon':
             logging.info('creating polygon \''+t+'\' in default folder')
             polygonID=self.sts2.addPolygon(gc[0],
@@ -1341,7 +1386,7 @@ class DebriefMapGenerator():
                         # TODO: allow selection of an existing shape to use as the crop boundary, rather than distance
                         cropDegrees=self.dmd['outings'][outingName].get('crop',self.cropDegrees)
                         croppedTrackLines=self.sts2.crop(utid,bid,beyond=cropDegrees)
-                        logging.info('crop return value:'+str(croppedTrackLines))
+                        # logging.info('crop return value:'+str(croppedTrackLines))
                         self.dmd['outings'][outingName]['tids'].append(croppedTrackLines)
                         # cropped track line(s) should correspond to the source map line, 
                         #  not the source map assignment; source map line id will be
@@ -1351,7 +1396,7 @@ class DebriefMapGenerator():
                         slidList=[list(i)[0] for i in self.dmd['corr'].items() if list(i)[1]==[utid]]
                         if len(slidList)==1:
                             slid=slidList[0]
-                            logging.info('    corresponding source line id:'+str(slid))
+                            # logging.info('    corresponding source line id:'+str(slid))
                             self.dmd['corr'][slid]=[]
                             self.addCorrespondence(slid,croppedTrackLines)
                         else:
@@ -1359,7 +1404,7 @@ class DebriefMapGenerator():
                             logging.error('    corresponding source line id list:'+str(slidList))
                         # assignments[a]['utids'].remove(utid)
                     self.dmd['outings'][outingName]['utids']=[] # don't modify the list during iteration over the list!
-                    self.writeDmdFile()
+                    # self.writeDmdFile()
                 else:
                     logging.info('  Outing '+outingName+' has '+str(len(self.dmd['outings'][outingName]['utids']))+' uncropped tracks, but the boundary has not been imported yet; skipping.')
 
@@ -1393,12 +1438,20 @@ class DebriefMapGenerator():
         tids=sum(self.sts2.mapData['ids'].values(),[])    
         if sid in self.dmd['corr'].keys():
             logging.info(' source feature exists in correspondence dictionary')
+            tparse=self.parseTrackName(t)
+            if tparse:
+                ot=tparse[0]+' '+tparse[1]
+                if ot not in self.dmd['outings'].keys():
+                    logging.info('  debrief map does not yet have an outing named "'+ot+'" - adding this line to the orphan list, hopefully to be picked up later')
+                    for tid in self.dmd['corr'][sid]:
+                        self.orphanTracksDict[tid]=t
             if all(i in tids for i in self.dmd['corr'][sid]):
                 logging.info('  all corresponding features exist in the debrief map; skipping')
                 # crop uncropped tracks even if the assignment already exists in the target;
                 #  this will crop any tracks that were imported anew on restart
                 if c=='Assignment':
                     self.cropUncroppedTracks()
+                    self.writeDmdFile()
                 self.updateLinkLights()
                 return
             else:
@@ -1537,7 +1590,7 @@ class DebriefMapGenerator():
             corrList=self.dmd['corr'][sid]
             if sc=='Shape' and sgt=='LineString':
                 for ttid in corrList:
-                    self.sts2.delFeature('Shape',ttid)
+                    self.sts2.delFeature(id=ttid,fClass='Shape')
                 # also delete from the assignments dict and correspondence dict, so that it will be added anew;
                 # we can't be sure here what assignment if any the line was previously a part of,
                 #  so scan all assignments for id(s)
@@ -1552,7 +1605,7 @@ class DebriefMapGenerator():
                             newTidList.append(tidList)
                     self.dmd['outings'][ot]['tids']=newTidList
                 del self.dmd['corr'][sid]
-                self.newFeatureCallback(f,outingLogMessageOverride='Reimported track due to property changes:') # this will crop the track automatically
+                self.newFeatureCallback(f,outingLogMessageOverride='Reimported track "'+st+'" due to property changes') # this will crop the track automatically
             elif len(corrList)==1: # exactly one correlating feature exists
                 logging.info('  exactly one debrief map feature corresponds to the source map feature; updating the debrief map feature properties')
                 tf=self.sts2.getFeature(id=corrList[0])
@@ -1583,6 +1636,7 @@ class DebriefMapGenerator():
                 logging.error('  property change: more than one debrief map feature correspond to the source map feature, which is not a line; no changes made to debrief map')
         elif sc=='Assignment': # assignment with folder and boundary already created
             olist=[o for o in self.dmd['outings'] if self.dmd['outings'][o]['sid']==sid]
+            st=st.upper()
             if len(olist)==0:
                 logging.error('  source map assignment feature edited, but it has no corresponding debrief map feature')
                 self.updateLinkLights() # set back to previous colors
@@ -1594,10 +1648,12 @@ class DebriefMapGenerator():
                 #    blank --> letter and number
                 #    letter only --> letter and number
                 #     --> change title of corresponding debrief map features (folder and boundary);
-                #           change key name for assigments dict entry and fids dict entry
+                #           change key name for assigments dict entry and fids dict entry; see if there are
+                #           any orphans to be brought in
                 # 2. letter and number --> same letter, different number
                 #     --> do NOT change existing debrief map assignment; create a new debrief map
-                #          assignment (folder, boundary, assignments dict, fids dict) with new title
+                #          assignment (folder, boundary, assignments dict, fids dict) with new title;
+                #          check for orphans
                 # 3. letter and number --> same letter, no number
                 #    all other cases
                 #     --> no change to debrief map or assignments/fids dicts
@@ -1621,18 +1677,20 @@ class DebriefMapGenerator():
                     for tid in [o['bid'],o['fid']]:
                         tf=self.sts2.getFeature(id=tid)
                         tp=tf['properties']
-                        tp['title']=st.upper()
+                        tp['title']=st
                         self.sts2.editFeature(id=tid,properties=tp)
-                    self.dmd['outings'][tp['title']]=self.dmd['outings'][oldTitle]
-                    self.addOutingLogEntry(tp['title'],'Outing name changed: '+oldTitle+' --> '+tp['title'])
+                    self.dmd['outings'][st]=self.dmd['outings'][oldTitle]
+                    self.addOutingLogEntry(tp['title'],'Outing name changed: '+oldTitle+' --> '+st)
                     # fids[tp['title']]=fids[oldTitle]
                     del self.dmd['outings'][oldTitle]
+                    self.checkForOrphans(st)
                     # del fids[oldTitle]
 
                 # case 2:
                 elif (oldTitleHasNumber and newTitleHasNumber):
                     logging.info('  existing debrief map assignment will not be changed; importing to a new assignment...')
                     self.newFeatureCallback(f)
+                    self.checkForOrphans(st)
 
                 # case 3 / all other cases:
                 else:
@@ -1640,6 +1698,7 @@ class DebriefMapGenerator():
 
                 # logging.info('new assignments dict:')
                 # logging.info(json.dumps(dmd['outings'],indent=3))
+                self.cropUncroppedTracks()
                 self.writeDmdFile()
             else:
                 logging.info('  more than one existing debrief map outing corresponds to the source map assignment; nothing edited due to ambuguity')
@@ -1683,7 +1742,7 @@ class DebriefMapGenerator():
                 logging.info('  edited feature '+st+' appears to be a track; correspoding previous imported and cropped tracks will be deleted, and the new track will be re-imported (and re-cropped)')
                 corrList=self.dmd['corr'][sid]
                 for ttid in corrList:
-                    self.sts2.delFeature('Shape',ttid)
+                    self.sts2.delFeature(id=ttid,fClass='Shape')
                 # also delete from the assignments dict and correspondence dict, so that it will be added anew
                 at=tparse[0]+' '+tparse[1]
                 # don't modify list while iterating!
@@ -1732,32 +1791,77 @@ class DebriefMapGenerator():
             logging.info('source map feature does not have any corresponding feature in debrief map; nothing edited')
         self.updateLinkLights() # set back to previous colors
 
-    def deletedFeatureCallback(self,f):
+    # note that the argument to deletedFeatureCallback is just the source map id
+    def deletedFeatureCallback(self,sid):
         # this function is probably called from a sync thread:
         #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
-        sid=f['id']
-        logging.info('deletedFeatureCallback called for feature '+str(sid)+' :')
-        logging.info(json.dumps(f,indent=3))
+        # sid=f['id']
+        logging.info('deletedFeatureCallback called for source map feature with id '+str(sid)+' :')
+        # logging.info(json.dumps(f,indent=3))
         # 1. determine which target-map feature, if any, corresponds to the edited source-map feature
         # logging.info('corr keys:')
         # logging.info(str(dmd['corr'].keys()))
         # logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
+        found=False
         if sid in self.dmd['corr'].keys():
             cval=self.dmd['corr'][sid]
             for tid in cval:
-                logging.info('deleting corresponding debrief map feature '+tid)
-                self.sts2.delFeature(f['properties']['class'],tid)
-            # # TODO: if the deleted feature belonged to any outings, add an outing log entry
-            # for outingName in self.dmd['outings'].keys():
-            #     found=False
-            #     o=self.dmd['outings'][outingName]
-            #     if sid==o['sid']:
-            #         pass # entire outing deleted
+                logging.info('deleting corresponding debrief map feature with id '+tid)
+                tidTitle=self.sts2.getFeature(id=tid)['properties']['title']
+                self.sts2.delFeature(id=tid)
+                # remove owned features from outings dict as needed
+                for outingName in self.dmd['outings'].keys():
+                    o=self.dmd['outings'][outingName]
+                    # owned clues
+                    if tid in o['cids']:
+                        o['cids'].remove(tid)
+                        self.addOutingLogEntry(outingName,'Clue deleted: '+tidTitle)
+                        found=True
+                    # owned uncropped tracks
+                    elif tid in o['utids']:
+                        o['utids'].remove(tid)
+                        self.addOutingLogEntry(outingName,'Track deleted: '+tidTitle)
+                        found=True
+                    # owned tracks (nested list of segments)
+                    else:
+                        for trackList in o['tids']:
+                            if tid in trackList:
+                                trackList.remove(tid)
+                                found=True
+                            # also remove any zero-length track lists
+                            if len(trackList)==0:
+                                o['tids'].remove(trackList)
+                                self.addOutingLogEntry(outingName,'Track deleted: '+tidTitle)
+                    # outing sid are not currently listed in corr
+                # remove from orphanTracksDict if needed
+                if tid in self.orphanTracksDict.keys():
+                    del self.orphanTracksDict[tid]
             del self.dmd['corr'][sid] # not currently iterating, so, del should be fine
-            self.writeDmdFile()
-        else:
+        if not found:
+            deleteOutingName=None
+            # delete the entire outing only if it has no clues or tracks
+            for outingName in self.dmd['outings'].keys():
+                o=self.dmd['outings'][outingName]
+                if o['sid']==sid:
+                    if o['tids']==[] and o['cids']==[] and o['utids']==[]:
+                        # don't delete while iterating
+                        deleteOutingName=outingName
+                    else:
+                        logging.info('debrief map outing "'+outingName+'" exists, but it has clues and/or tracks, so will not be deleted')
+                    found=True
+                    break
+            if deleteOutingName:
+                logging.info('debrief map outing "'+deleteOutingName+'" exists and has no clues or tracks; deleting boundary, folder, and outing database entry now')
+                bid=self.dmd['outings'][deleteOutingName]['bid']
+                self.sts2.delFeature(id=bid)
+                fid=self.dmd['outings'][deleteOutingName]['fid']
+                self.sts2.delFeature(id=fid,fClass='Folder')
+                del self.dmd['outings'][deleteOutingName]
+        if not found:
             logging.info('source map feature does not have any corresponding feature in debrief map; nothing deleted')
+        self.writeDmdFile()
+        self.redrawFlag=True
         self.updateLinkLights() # set back to previous colors
 
 

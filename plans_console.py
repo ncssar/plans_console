@@ -85,6 +85,7 @@ for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 logging.basicConfig(
     level=logging.DEBUG,
+    datefmt='%H:%M:%S',
     format='%(asctime)s [%(module)s:%(lineno)d:%(levelname)s] %(message)s',
     handlers=[
         logging.FileHandler(logfile,'w'),
@@ -266,6 +267,7 @@ def sortByTitle(item):
 class PlansConsole(QDialog,Ui_PlansConsole):
     def __init__(self,parent):
         QDialog.__init__(self)
+        logging.info('Plans Console startup at '+datetime.now().strftime("%a %b %d %Y %H:%M:%S"))
 
         self.ldpi=1 # font size calculations (see moveEvent)
         self.parent=parent
@@ -282,7 +284,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.yd=100
         self.wd=1600
         self.hd=1000
-        self.fontSize=12
+        # self.fontSize=12
         self.grid=[[0]]
         self.curTeam = ""
         self.curAssign = ""
@@ -399,9 +401,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.markerList=[] # list of all sartopo markers and their ids
         
 
-        self.scl = min(self.w/self.wd, self.h/self.hd)
-        self.fontSize = int(self.fontSize*self.scl)
-        logging.info("Scale:"+str(self.scl))
+        # self.scl = min(self.w/self.wd, self.h/self.hd)
+        # self.fontSize = int(self.fontSize*self.scl)
+        # logging.info("Scale:"+str(self.scl))
 
         self.updateClock()
 
@@ -498,9 +500,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,
                                         configpath=self.stsconfigpath,
                                         account=self.accountName,
-                                        sync=False)
+                                        sync=False,
+                                        useFidderProxy=True)
             else:
-                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False)
+                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,useFiddlerProxy=True)
             self.link=self.sts.apiVersion
         except Exception as e:
             logging.warning('Exception during createSTS:\n'+str(e))
@@ -820,7 +823,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.save_data()                
 
     def save_data(self):
-        logging.info("In savedata")
+        # logging.info("In savedata")
         data1 = {}
         rowx = {}
         rowy = {}
@@ -849,7 +852,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         fid.close()
 
     def load_data(self):
-        logging.info("In load data")
+        # logging.info("In load data")
         fid = open("save_plans_console.txt",'r')
         alld = fid.read()
         l = json.loads(alld)
@@ -1068,7 +1071,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             return
         out=QTextStream(rcFile)
         out << "[Plans_console]\n"
-        out << "font-size=" << self.fontSize << "pt\n"
+        # out << "font-size=" << self.fontSize << "pt\n"
         out << "x=" << self.x << "\n"
         out << "y=" << self.y << "\n"
         out << "w=" << self.w << "\n"
@@ -1116,8 +1119,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.w=int(tokens[1])
             elif tokens[0]=="h":
                 self.h=int(tokens[1])
-            elif tokens[0]=="font-size":
-                self.fontSize=int(tokens[1].replace('pt',''))
+            # elif tokens[0]=="font-size":
+            #     self.fontSize=int(tokens[1].replace('pt',''))
             elif tokens[0]=="debriefX":
                 self.debriefX=int(tokens[1])
             elif tokens[0]=="debriefY":
@@ -1138,7 +1141,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         ldpi=screen.logicalDotsPerInch()
         if ldpi!=self.ldpi:
             pix=genLpix(ldpi)
-            logging.info(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
+            logging.debug(self.__class__.__name__+' window moved: new logical dpi='+str(ldpi)+'  new 12pt equivalent='+str(pix[12])+'px')
             self.ldpi=ldpi
 
             # # from https://doc.qt.io/qt-5/qmetaobject.html#propertyCount
