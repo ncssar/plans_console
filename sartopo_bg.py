@@ -1135,11 +1135,25 @@ class DebriefMapGenerator():
             if osid==id:
                 logging.info('  outing "'+ot+'" with the same sid was found...')
                 if t==ot or 'NOTITLE' in ot:
-                    logging.info('    and the title is a match or contains NOTITLE')
+                    logging.info('   and the title is a match or contains NOTITLE')
                     alreadyExists=True
+                    # on restart:
+                    #  - if existing assignment title was changed before restart, it will be added as a new outing
+                    #  - if existing assignment geometry was changed before restart, update the geometry of
+                    #      only the CURRENT outing's boundary (with matching title): previous outing boundaries
+                    #      are part of the record and should not be changed; future outing boundaries will be imported anew
+                    #      using the new geometry anyway
+                    bid=o.get('bid',None)
+                    if bid:
+                        ag=a['geometry']
+                        b=self.sts2.getFeature(id=bid)
+                        bg=b['geometry']
+                        if ag!=bg:
+                            logging.info('    boundary geometry has changed; updating it now')
+                            self.sts2.editFeature(id=bid,geometry=ag)
                     break
                 else:
-                    logging.info('    but the title is not a match, so it must be a previous outing')
+                    logging.info('   but the title is not a match, so it must be a previous outing')
             elif ot==t and not osid:
                 logging.info('  an outing with the same name but null sid was found; assuming it is a match and setting its sid')
                 alreadyExists=True
@@ -1446,12 +1460,25 @@ class DebriefMapGenerator():
                     for tid in self.dmd['corr'][sid]:
                         self.orphanTracksDict[tid]=t
             if all(i in tids for i in self.dmd['corr'][sid]):
-                logging.info('  all corresponding features exist in the debrief map; skipping')
+                logging.info('  all corresponding features exist in the debrief map')
+                if len(self.dmd['corr'][sid])==1:
+                    tid=self.dmd['corr'][sid][0]
+                    tf=self.sts2.getFeature(id=tid)
+                    tfp=tf['properties']
+                    g=f.get('geometry',None)
+                    tfg=tf.get('geometry',None)
+                    if tfp==p and tfg==g:
+                        logging.info('   properties and geometry are unchanged; moving on...')
+                    else:
+                        logging.info('   properties and/or geometry have unchanged; updating debrief map feature')
+                        self.sts2.editFeature(id=tid,properties=p,geometry=g)
+                        # assignment boundary geometry change before restart is handled inside addOuting
+                # dead code since assignments don't exist in corr:
                 # crop uncropped tracks even if the assignment already exists in the target;
                 #  this will crop any tracks that were imported anew on restart
-                if c=='Assignment':
-                    self.cropUncroppedTracks()
-                    self.writeDmdFile()
+                # if c=='Assignment':
+                #     self.cropUncroppedTracks()
+                #     self.writeDmdFile()
                 self.updateLinkLights()
                 return
             else:
