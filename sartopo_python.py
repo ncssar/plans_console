@@ -1745,11 +1745,7 @@ class SartopoSession():
     #  A and B both inside boundary?  --> append A to output coord list
     #  A inside, B outside --> append A; append point at instersection of this segment with boundary; don't append B
     #  A outside, B inside --> append B; append point at intersection of this segment with boundary; don't append A
-    #  A outside, B outside --> don't append either
-
-    # known issue: straight segments that are 'clipped' by the boundary corner,
-    #  i.e. A and B are both outside, but a portion of the AB segment is inside,
-    #  will be omitted from the result, since only the drawn vertices are checked.
+    #  A outside, B outside --> don't append either point; instead, append the intersection as a new line segment
 
     def intersection2(self,targetGeom,boundaryGeom):
         outLines=[]
@@ -1785,6 +1781,16 @@ class SartopoSession():
                     nextInsidePointStartsNewLine=False
                 # the midpoint will be the first point of a new line
                 outLines[-1].append(list(mp.coords)[0])
+            else: # neither endpoint is inside the boundary
+                abl=LineString([ap,bp])
+                mp=abl.intersection(boundaryGeom.exterior)
+                # the result will be a single disjoint line segment inside the boundary,
+                #  with both vertices touching the boundary;
+                # the result is a multipoint, which has no .coords attribute
+                #  see https://stackoverflow.com/a/51060918
+                mpcoords=[(p.x,p.y) for p in mp]
+                nextInsidePointStartsNewLine=True
+                outLines.append(mpcoords)
 
         # don't forget to check the last vertex!
         fc=targetCoords[-1]
@@ -1922,6 +1928,8 @@ class SartopoSession():
             result=self.intersection2(targetGeom,boundaryGeom)
         else:
             result=targetGeom&boundaryGeom # could be MultiPolygon or MultiLinestring or GeometryCollection
+        # logging.info('crop targetGeom:'+str(targetGeom))
+        # logging.info('crop boundaryGeom:'+str(boundaryGeom))
         # logging.info('crop result:'+str(result))
 
         # preserve target properties when adding new features
