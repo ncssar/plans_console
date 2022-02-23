@@ -21,12 +21,12 @@ from debrief_ui import Ui_DebriefDialog
 from debriefOptionsDialog_ui import Ui_DebriefOptionsDialog
 
 LINK_LIGHT_STYLES={
-    -1:"background-color:#bb0000", # red - no link / link error
-    0:"background-color:#aaaaaa", # gray - no link attempted
-    1:"background-color:#009900", # medium green - good link
-    5:"background-color:#00dd00", # med-light green - sync heartbeat
-    10:"background-color:#00ff00", # light green - good link, sync in progress
-    100:"background-color:#00ffff" # cyan - data change in progress
+    -1:"background-color:#bb0000;", # red - no link / link error
+    0:"background-color:#aaaaaa;", # gray - no link attempted
+    1:"background-color:#009900;", # medium green - good link
+    5:"background-color:#00dd00;", # med-light green - sync heartbeat
+    10:"background-color:#00ff00;", # light green - good link, sync in progress
+    100:"background-color:#00ffff;" # cyan - data change in progress
 }
 
 BASEMAP_REGEX={
@@ -199,10 +199,12 @@ def dictHasAllKeys(d,klist):
         return False
     return all(key in d for key in klist)
 
-class DebriefMapGenerator():
+class DebriefMapGenerator(QObject):
+    updateLinkLightsSignal=pyqtSignal()
     def __init__(self,parent,sourceMap,targetMap):
         logging.info('Debrief Map Generator startup at '+datetime.now().strftime("%a %b %d %Y %H:%M:%S"))
         self.parent=parent
+        super(DebriefMapGenerator,self).__init__()
         # is this being spawned from Plans Console?
         self.pc=self.parent.__class__.__name__=='PlansConsole'
         self.debriefURL=''
@@ -320,8 +322,9 @@ class DebriefMapGenerator():
                 sync=False,
                 account=account,
                 configpath=configpath,
-                syncTimeout=10,
-                syncDumpFile='../../'+self.debriefMapID+'.txt')
+                syncTimeout=10)
+                # syncTimeout=10,
+                # syncDumpFile='../../'+self.debriefMapID+'.txt')
             box.done(0)
 
         if self.sts2 and self.sts2.apiVersion<0:
@@ -352,7 +355,7 @@ class DebriefMapGenerator():
                 self.incidentDomainAndPort=sourceParse[2]
             try:
                 self.sts1=SartopoSession(self.incidentDomainAndPort,self.sourceMapID,
-                    syncDumpFile='../../'+self.sourceMapID+'.txt',
+                    # syncDumpFile='../../'+self.sourceMapID+'.txt',
                     # newFeatureCallback=self.initialNewFeatureCallback,
                     # propertyUpdateCallback=self.propertyUpdateCallback,
                     # geometryUpdateCallback=self.geometryUpdateCallback,
@@ -463,6 +466,10 @@ class DebriefMapGenerator():
         if self.startupBox:
             self.startupBox.done(0)
 
+        # updateLinnkLightsSignal, emitted from thread-safe updateLinkLights function,
+        #  calls _updateLinkLights slot which always runs in the main thread
+        #  therefore will not cause crashes
+        self.updateLinkLightsSignal.connect(self._updateLinkLights)
         self.updateLinkLights()
   
         self.redrawFlag=True
@@ -478,16 +485,24 @@ class DebriefMapGenerator():
         #     logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
         # return # why would it need to run in a loop?  Maybe that was tru before it was QtIzed
 
+    # updateLinkLights - can safely be called from within the background thread:
+    #  sets instance variables, and sends the signal to update the link lights
     def updateLinkLights(self,incidentLink=None,debriefLink=None):
-        incidentLink=incidentLink or self.sts1.apiVersion
-        self.dd.ui.incidentLinkLight.setStyleSheet(LINK_LIGHT_STYLES[incidentLink])
-        if self.pc:
-            self.parent.ui.incidentLinkLight.setStyleSheet(LINK_LIGHT_STYLES[incidentLink])
-        if self.sts2:
-            debriefLink=debriefLink or self.sts2.apiVersion
-            self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[debriefLink])
+        self.incidentLightColor=incidentLink or self.sts1.apiVersion
+        self.debriefLightColor=debriefLink or self.sts2.apiVersion
+        self.updateLinkLightsSignal.emit()
+
+    # _udpateLinkLights - calling this from a background thread can cause hard-to-debug crashes!
+    #  so, it should only be called from the signal emitted by a call to updateLinkLights (no underscore)
+    def _updateLinkLights(self):
+        if self.incidentLightColor: # leave it unchanged if the variable is None
+            self.dd.ui.incidentLinkLight.setStyleSheet(LINK_LIGHT_STYLES[self.incidentLightColor])
             if self.pc:
-                self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[debriefLink])
+                self.parent.ui.incidentLinkLight.setStyleSheet(LINK_LIGHT_STYLES[self.incidentLightColor])
+        if self.sts2 and self.debriefLightColor: # leave it unchanged if the variable is None
+            self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[self.debriefLightColor])
+            if self.pc:
+                self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[self.debriefLightColor])
 
     def writeDmdFile(self):
         if not self.writeDmdPause:
@@ -544,10 +559,11 @@ class DebriefMapGenerator():
             self.dd.moveEvent(None) # initialize sizes
             self.dd.ui.tableWidget.setSortingEnabled(True)
             self.redrawFlag=False
-        if self.syncBlinkFlag:
+        if self.syncBlinkFlag: # set by syncCallback after each sync
             self.updateLinkLights(incidentLink=5)
             QTimer.singleShot(500,self.updateLinkLights)
             self.syncBlinkFlag=False
+
 
     def setPDFButton(self,outingNameOrRow,state):
         if isinstance(outingNameOrRow,int):
@@ -1101,22 +1117,31 @@ class DebriefMapGenerator():
     #     # if sid: # this function could be called before sid is known, but eventually it would be called again when sid is known
     #     #     addCorrespondence(sid,fid)
 
-    # addOuting - arg fti = feature(dict) or title(string) or id(36-char string)
-    def addOuting(self,fti):
+    # addOuting - arg fi = feature(dict) or id(36-char string)
+    def addOuting(self,fi):
         id=None # source assignment id
         a=None # source assignmet object
-        if isinstance(fti,dict):
-            a=fti
+        if isinstance(fi,dict):
+            a=fi
             p=a['properties']
             t=p.get('title','').upper().rstrip() # assignments with letter but not number could end in space
             id=a['id']
         else: #string
-            if len(fti)==36: # id
-                id=fti
+            if len(fi)==36: # id
+                id=fi
                 a=self.sts1.getFeature(id=id)
-                t=a['properties'].get('title','').upper().rstrip() # assignments with letter but not number could end in space
-            else: # non-id string was specified: source map assignment feature doesn't exist yet
-                t=fti.rstrip() # assignments with letter but not number could end in space
+                p=a['properties']
+                t=p.get('title','').upper().rstrip() # assignments with letter but not number could end in space
+            else: # non-id string was specified
+                logging.error('addOuting was called with a non-ID string; skipping')
+                return False
+        
+        # an assignment should not become an outing until it has both letter and number
+        # if not (p.get('letter',None) and p.get('number',None)):
+        # logging.info('properties:\n'+json.dumps(p,indent=3))
+        if not (p['letter'] and p['number']):
+            logging.info('addOuting called for assigment "'+t+'" that does not have both letter and number; skipping')
+            return False
 
         # restart handling: only add a new outing if there is not already an outing
         #  that matches sid and title
@@ -1438,6 +1463,11 @@ class DebriefMapGenerator():
     #  folder: target title is identical to source title
     #  marker: 
     def newFeatureCallback(self,f,outingLogMessageOverride=None):
+        # this function could be called from multiple places:
+        # - startup (__init__ just after initDmd)
+        # - doSync
+        # - propertyUpdateCallback
+        # - geometryUpdateCallback
         # this function is probably called from a sync thread:
         #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
@@ -1446,7 +1476,7 @@ class DebriefMapGenerator():
         t=p.get('title','').rstrip() # assignments with letter but not number could end in space
         sid=f['id']
 
-        logging.info('newFeatureCallback: class='+c+'  title='+t+'  id='+sid)
+        logging.info('newFeatureCallback: class='+c+'  title='+t+'  id='+sid+'  syncing='+str(self.sts1.syncing))
 
         # source id might have a corresponding target id; if all corresponding target ids still exist, skip    
         tids=sum(self.sts2.mapData['ids'].values(),[])    
@@ -1470,8 +1500,14 @@ class DebriefMapGenerator():
                     if tfp==p and tfg==g:
                         logging.info('   properties and geometry are unchanged; moving on...')
                     else:
-                        logging.info('   properties and/or geometry have unchanged; updating debrief map feature')
-                        self.sts2.editFeature(id=tid,properties=p,geometry=g)
+                        # update un-owned features, but leave owned features alone since they have already been colored and cropped
+                        allTidLists=[self.dmd['outings'][ot]['tids'] for ot in self.dmd['outings'].keys()]
+                        # flatten a two-level nested list with possible empty members
+                        #  https://stackoverflow.com/a/952952
+                        allTids=[a for b in [a for b in allTidLists for a in b] for a in b]
+                        if tid not in allTids: # only check the first corresponding feature; should be sufficient
+                            logging.info('   properties and/or geometry have changed; updating debrief map feature')
+                            self.sts2.editFeature(id=tid,properties=p,geometry=g)
                         # assignment boundary geometry change before restart is handled inside addOuting
                 # dead code since assignments don't exist in corr:
                 # crop uncropped tracks even if the assignment already exists in the target;
@@ -1529,7 +1565,7 @@ class DebriefMapGenerator():
     #     # 2. if polygon:
     #     #   a. create a new polygon with the same geometry in the default folder
 
-        if c=='Shape':
+        elif c=='Shape':
             self.addShape(f,outingLogMessageOverride)
             # g=f['geometry']
             # gc=g['coordinates']
@@ -1569,10 +1605,10 @@ class DebriefMapGenerator():
             # new marker:
             #  add the new marker in the default markers folder
 
-        if c=='Marker':
+        elif c=='Marker':
             self.addMarker(f)
 
-        if c=='Clue':
+        elif c=='Clue':
             self.addClue(f)
         
             # new clue:
@@ -1634,7 +1670,7 @@ class DebriefMapGenerator():
                 del self.dmd['corr'][sid]
                 self.newFeatureCallback(f,outingLogMessageOverride='Reimported track "'+st+'" due to property changes') # this will crop the track automatically
             elif len(corrList)==1: # exactly one correlating feature exists
-                logging.info('  exactly one debrief map feature corresponds to the source map feature; updating the debrief map feature properties')
+                logging.info(' exactly one debrief map feature corresponds to the source map feature; updating the debrief map feature properties')
                 tf=self.sts2.getFeature(id=corrList[0])
                 tp=tf['properties']
                 # map properties from source to target, based on source class; start with the existing target
@@ -1660,82 +1696,88 @@ class DebriefMapGenerator():
                     tp=sp # for other feature types, copy all properties from source
                 self.sts2.editFeature(id=corrList[0],properties=tp)
             else:
-                logging.error('  property change: more than one debrief map feature correspond to the source map feature, which is not a line; no changes made to debrief map')
-        elif sc=='Assignment': # assignment with folder and boundary already created
-            olist=[o for o in self.dmd['outings'] if self.dmd['outings'][o]['sid']==sid]
-            st=st.upper()
-            if len(olist)==0:
-                logging.error('  source map assignment feature edited, but it has no corresponding debrief map feature')
-                self.updateLinkLights() # set back to previous colors
-                return
-            elif len(olist)==1:
-                # handle these title change cases:
-                #   (use longhand logic - don't try logic reductions - then do a catch-all at the end)
-                # 1. blank --> letter only
-                #    blank --> letter and number
-                #    letter only --> letter and number
-                #     --> change title of corresponding debrief map features (folder and boundary);
-                #           change key name for assigments dict entry and fids dict entry; see if there are
-                #           any orphans to be brought in
-                # 2. letter and number --> same letter, different number
-                #     --> do NOT change existing debrief map assignment; create a new debrief map
-                #          assignment (folder, boundary, assignments dict, fids dict) with new title;
-                #          check for orphans
-                # 3. letter and number --> same letter, no number
-                #    all other cases
-                #     --> no change to debrief map or assignments/fids dicts
+                logging.error(' property change: more than one debrief map feature correspond to the source map feature, which is not a line; no changes made to debrief map')
+        elif sc=='Assignment':
+            self.addOuting(f)
+            # # handle these cases:
+            # #   (use longhand logic - don't try logic reductions - then do a catch-all at the end)
+            # # 1. no outing exists with matching sid
+            # #     blank --> letter only
+            # #     letter only --> different letter only
+            # #     letter only --> blank
+            # #     blank --> letter and number
+            # #     letter only --> letter and number
+            # #      --> it wasn't an outing before: call addOuting, which will only import it as an outing
+            # #           if it has letter and number
+            # # 2. letter and number --> same letter, different number
+            # #      --> do NOT change existing debrief map outing; create a new debrief map
+            # #          outing (folder, boundary, assignments dict, fids dict) with new title;
+            # #          check for orphans
+            # # 3. letter and number --> same letter, no number
+            # #    all other cases
+            # #      --> no change to debrief map or assignments/fids dicts
+            # olist=[o for o in self.dmd['outings'] if self.dmd['outings'][o]['sid']==sid]
+            # st=st.upper()
+            # if len(olist)==0: # case 1
+            #     # was previously an assignment without both letter and number, which is not an outing; add outing now if needed
+            #     logging.error(' source map assignment feature edited, but it has no corresponding debrief map feature')
+            #     self.addOuting(f)
+            #     self.updateLinkLights() # set back to previous colors
+            #     return
+            # elif len(olist)==1: # cases 2 and 3
+            #     # oldf=sts2.getFeature(id=corrList[0])
+            #     # oldTitle=oldf['properties']['title']
+            #     oldTitle=olist[0]
+            #     oldTitleHasNumber=any(char.isdigit() for char in oldTitle)
+            #     newTitleHasNumber=any(char.isdigit() for char in st)
+            #     logging.info(' assignment name change: "'+oldTitle+'" --> "'+st+'"')
+            #     # logging.info(json.dumps(self.dmd['outings'],indent=3))
 
-                # oldf=sts2.getFeature(id=corrList[0])
-                # oldTitle=oldf['properties']['title']
-                oldTitle=olist[0]
-                oldTitleHasNumber=any(char.isdigit() for char in oldTitle)
-                newTitleHasNumber=any(char.isdigit() for char in st)
-                logging.info(' assignment name change: "'+oldTitle+'" --> "'+st+'"')
-                # logging.info(json.dumps(self.dmd['outings'],indent=3))
+            #     # case 1:
+            #     if (oldTitle=='' or 'NOTITLE' in oldTitle) or (not oldTitleHasNumber and newTitleHasNumber):
+            #     # if newTitleHasNumber: # cases 1 and 2 (case 3 needs to action)
+            #     #     if oldTitleHasNumber: # case 2
+            #     #         newFeatureCallback(f)
+            #     #     else: # case 1
+            #         logging.info('  existing debrief map assignment title will be updated...')
+            #         o=self.dmd['outings'][oldTitle]
+            #         for tid in [o['bid'],o['fid']]:
+            #             tf=self.sts2.getFeature(id=tid)
+            #             tp=tf['properties']
+            #             tp['title']=st
+            #             self.sts2.editFeature(id=tid,properties=tp)
+            #         self.dmd['outings'][st]=self.dmd['outings'][oldTitle]
+            #         self.addOutingLogEntry(tp['title'],'Outing name changed: '+oldTitle+' --> '+st)
+            #         # fids[tp['title']]=fids[oldTitle]
+            #         del self.dmd['outings'][oldTitle]
+            #         self.checkForOrphans(st)
+            #         # del fids[oldTitle]
 
-                # case 1:
-                if (oldTitle=='' or 'NOTITLE' in oldTitle) or (not oldTitleHasNumber and newTitleHasNumber):
-                # if newTitleHasNumber: # cases 1 and 2 (case 3 needs to action)
-                #     if oldTitleHasNumber: # case 2
-                #         newFeatureCallback(f)
-                #     else: # case 1
-                    logging.info('  existing debrief map assignment title will be updated...')
-                    o=self.dmd['outings'][oldTitle]
-                    for tid in [o['bid'],o['fid']]:
-                        tf=self.sts2.getFeature(id=tid)
-                        tp=tf['properties']
-                        tp['title']=st
-                        self.sts2.editFeature(id=tid,properties=tp)
-                    self.dmd['outings'][st]=self.dmd['outings'][oldTitle]
-                    self.addOutingLogEntry(tp['title'],'Outing name changed: '+oldTitle+' --> '+st)
-                    # fids[tp['title']]=fids[oldTitle]
-                    del self.dmd['outings'][oldTitle]
-                    self.checkForOrphans(st)
-                    # del fids[oldTitle]
+            #     # case 2:
+            #     elif (oldTitleHasNumber and newTitleHasNumber):
+            #         logging.info('  existing debrief map assignment will not be changed; importing to a new assignment...')
+            #         self.newFeatureCallback(f)
+            #         self.checkForOrphans(st)
 
-                # case 2:
-                elif (oldTitleHasNumber and newTitleHasNumber):
-                    logging.info('  existing debrief map assignment will not be changed; importing to a new assignment...')
-                    self.newFeatureCallback(f)
-                    self.checkForOrphans(st)
+            #     # case 3 / all other cases:
+            #     else:
+            #         logging.info('  no change needed to existing debrief map assignments')
 
-                # case 3 / all other cases:
-                else:
-                    logging.info('  no change needed to existing debrief map assignments')
-
-                # logging.info('new assignments dict:')
-                # logging.info(json.dumps(dmd['outings'],indent=3))
-                self.cropUncroppedTracks()
-                self.writeDmdFile()
-            else:
-                logging.info('  more than one existing debrief map outing corresponds to the source map assignment; nothing edited due to ambuguity')
+            #     # logging.info('new assignments dict:')
+            #     # logging.info(json.dumps(dmd['outings'],indent=3))
+            #     self.cropUncroppedTracks()
+            #     self.writeDmdFile()
+            # else:
+            #     logging.info('  more than one existing debrief map outing corresponds to the source map assignment; nothing edited due to ambuguity')
         else:
             logging.info('  source map feature does not have any corresponding feature in debrief map; nothing edited')
         self.updateLinkLights() # set back to previous colors
 
     # parseTrackName: return False if not a track, or [assignment,team,suffix] if a track
     def parseTrackName(self,t):
-        tparse=re.split('(\d+)',t.upper().replace(' ',''))
+        tparse=re.split('(\d+)',t.upper().replace(' ','')) # can result in empty string element(s)
+        if '' in tparse:
+            tparse.remove('')
         if len(tparse)==3:
             return tparse
         else:
@@ -1885,8 +1927,6 @@ class DebriefMapGenerator():
                 fid=self.dmd['outings'][deleteOutingName]['fid']
                 self.sts2.delFeature(id=fid,fClass='Folder')
                 del self.dmd['outings'][deleteOutingName]
-        if not found:
-            logging.info('source map feature does not have any corresponding feature in debrief map; nothing deleted')
         self.writeDmdFile()
         self.redrawFlag=True
         self.updateLinkLights() # set back to previous colors

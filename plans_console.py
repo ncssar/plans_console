@@ -95,9 +95,9 @@ logging.basicConfig(
 
 from specifyMap import SpecifyMapDialog
 
-BG_GREEN = "background-color:#00bb00"
-BG_RED = "background-color:#bb0000"
-BG_GRAY = "background-color:#aaaaaa"
+BG_GREEN = "background-color:#00bb00;"
+BG_RED = "background-color:#bb0000;"
+BG_GRAY = "background-color:#aaaaaa;"
 
 # rebuild all _ui.py files from .ui files in the same directory as this script as needed
 #   NOTE - this will overwrite any edits in _ui.py files

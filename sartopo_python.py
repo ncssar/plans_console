@@ -144,6 +144,13 @@ import threading
 from threading import Thread
 import copy
 
+# import objgraph
+# import psutil
+
+# process=psutil.Process(os.getpid())
+
+# syncing=False
+
 # shapely.geometry improts will generate a logging message if numpy is not installed;
 #  numpy is not actually required
 from shapely.geometry import LineString,Point,Polygon,MultiLineString,MultiPolygon,GeometryCollection
@@ -202,6 +209,7 @@ class SartopoSession():
         self.lastSuccessfulSyncTSLocal=0 # this object's integer milliseconds sync completion time
         self.syncDumpFile=syncDumpFile
         self.useFiddlerProxy=useFiddlerProxy
+        self.syncing=False
         if not self.setupSession():
             raise STSException
         
@@ -401,6 +409,10 @@ class SartopoSession():
         self.sendRequest('post','api/v0/userdata',j,domainAndPort=self.domainAndPort)
 
     def doSync(self):
+        # logging.info('sync marker: '+self.mapID+' begin')
+        if self.syncing:
+            logging.warning('sync-within-sync requested; returning to calling code.')
+            return False
         self.syncing=True
 
         # Keys under 'result':
@@ -434,6 +446,7 @@ class SartopoSession():
             
             # 2 - update existing features as needed
             if len(rjrsf)>0:
+                logging.info('  processing '+str(len(rjrsf))+' feature(s):'+str([x['id'] for x in rjrsf]))
                 # logging.info(json.dumps(rj,indent=3))
                 for f in rjrsf:
                     rjrfid=f['id']
@@ -474,7 +487,7 @@ class SartopoSession():
                             break
                     # 2b - otherwise, create it - and add to ids so it doesn't get cleaned
                     if not processed:
-                        logging.debug('Adding to cache:'+featureClass+':'+title)
+                        # logging.info('Adding to cache:'+featureClass+':'+title)
                         self.mapData['state']['features'].append(f)
                         if f['id'] not in self.mapData['ids'][prop['class']]:
                             self.mapData['ids'][prop['class']].append(f['id'])
@@ -522,7 +535,7 @@ class SartopoSession():
                     f.write('  mapSFIDs='+str(mapSFIDs)+'\n\n')
                     f.write(json.dumps(self.mapData,indent=3))
 
-            self.syncing=False
+            # self.syncing=False
             self.lastSuccessfulSyncTSLocal=int(time.time()*1000)
             if self.sync:
                 if not threading.main_thread().is_alive():
@@ -546,27 +559,33 @@ class SartopoSession():
             self.sync=False
             self.apiVersion=-1 # downstream tools may use apiVersion as indicator of link status
         self.syncing=False
+        # logging.info('sync marker: '+self.mapID+' end')
 
     # refresh - update the cache (self.mapData) by calling doSync once;
     #   only relevant if sync is off; if the latest refresh is within the sync interval value (even when sync is off),
     #   then don't do a refresh unless forceImmediate is True
     #  since doSync() would be called from this thread, it is always blocking
     def refresh(self,blocking=False,forceImmediate=False):
-        d=int(time.time()*1000)-self.lastSuccessfulSyncTSLocal # integer ms since last completed sync
-        msg='refresh requested: '+str(d)+'ms since last completed sync; '
-        if d>(self.syncInterval*1000):
-            msg+='longer than syncInterval: syncing now'
+        msg='refresh requested for map '+self.mapID+': '
+        if self.syncing:
+            msg+='sync already in progress'
             logging.info(msg)
-            self.doSync()
         else:
-            msg+='shorter than syncInterval; '
-            if forceImmediate:
-                msg+='forceImmediate specified: syncing now'
+            d=int(time.time()*1000)-self.lastSuccessfulSyncTSLocal # integer ms since last completed sync
+            msg+=str(d)+'ms since last completed sync; '
+            if d>(self.syncInterval*1000):
+                msg+='longer than syncInterval: syncing now'
                 logging.info(msg)
                 self.doSync()
             else:
-                msg+='forceImmediate not specified: not syncing now'
-                logging.info(msg)
+                msg+='shorter than syncInterval; '
+                if forceImmediate:
+                    msg+='forceImmediate specified: syncing now'
+                    logging.info(msg)
+                    self.doSync()
+                else:
+                    msg+='forceImmediate not specified: not syncing now'
+                    logging.info(msg)
 
     def stop(self):
         logging.info('Sartopo syncing terminated.')
@@ -603,11 +622,24 @@ class SartopoSession():
             if self.syncPauseMessageGiven:
                 logging.info(self.mapID+': sync pause ends; resuming sync')
                 self.syncPauseMessageGiven=False
-            self.doSync()
+            syncWaited=0
+            while self.syncing and syncWaited<20: # wait for any current callbacks within doSync() to complete, with timeout of 20 sec
+                logging.info(' [sync from _syncLoop is waiting for current sync processing to finish, up to '+str(20-syncWaited)+' more seconds...]')
+                time.sleep(1)
+                syncWaited+=1
+            try:
+                self.doSync()
+            except Exception as e:
+                logging.error('Exception during sync of map '+self.mapID+'; retrying after 10 second delay: '+str(e))
+                time.sleep(10)
+                self.doSync()
             if self.sync: # don't bother with the sleep if sync is no longer True
                 time.sleep(self.syncInterval)
 
     def sendRequest(self,type,apiUrlEnd,j,id="",returnJson=None,timeout=None,domainAndPort=None):
+        # objgraph.show_growth()
+        # logging.info('RAM:'+str(process.memory_info().rss/1024**2)+'MB')
+        self.syncPause=True
         timeout=timeout or self.syncTimeout
         newMap='[NEW]' in apiUrlEnd  # specific mapID that indicates a new map should be created
         if self.apiVersion<0:
@@ -647,7 +679,6 @@ class SartopoSession():
             wrapInJsonKey=False
         if '/since/' not in url:
             logging.info("sending "+str(type)+" to "+url)
-        self.syncPause=True
         if type=="post":
             if wrapInJsonKey:
                 params={}
@@ -714,9 +745,11 @@ class SartopoSession():
                 newUrl=r.headers.get('Location',None)
                 if newUrl:
                     logging.info('New map URL:'+newUrl)
+                    self.syncPause=False
                     return newUrl
                 else:
                     logging.info('No new map URL was returned in the response header.')
+                    self.syncPause=False
                     return False
 
         if returnJson:
@@ -730,6 +763,7 @@ class SartopoSession():
             else:
                 if 'status' in rj and rj['status'].lower()!='ok':
                     logging.warning('response status other than "ok":  '+str(rj))
+                    self.syncPause=False
                     return rj
                 if returnJson=="ID":
                     id=None
