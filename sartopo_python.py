@@ -370,8 +370,29 @@ class SartopoSession():
             j['name']='dmg'
             j['lat']=39
             j['lon']=-120
-            j['state']=json.dumps({'type':'FeatureCollection','features':[]})
-            # # j['config']=json.dumps({'activeLayers':[['mbt',1]]})
+            j['state']=json.dumps({
+                'type':'FeatureCollection',
+                'features':[
+                    # At least one feature must exist to set the 'updated' field of the map;
+                    #  otherwise it always shows up at the bottom of the map list when sorted
+                    #  chronologically.  Definitely best to have it show up adjacent to the
+                    #  incident map.
+                    {
+                        'geometry': {
+                            'coordinates': [-120,39,0,0],
+                            'type':'Point'
+                        },
+                        'id':'11111111-1111-1111-1111-111111111111',
+                        'type':'Feature',
+                        'properties':{
+                            'creator':accountId,
+                            'title':'DMGNewMapDummyMarker',
+                            'class':'Marker'
+                        }
+                    }
+                ]
+            })
+            j['config']=json.dumps({'activeLayers':[['mbt',1]]})
             # logging.info('dap='+str(self.domainAndPort))
             # logging.info('payload='+str(json.dumps(j,indent=3)))
             r=self.sendRequest('post','[NEW]',j,domainAndPort=self.domainAndPort)
@@ -381,6 +402,7 @@ class SartopoSession():
                 self.s=requests.session()
                 self.sendUserdata() # to get session cookies for new session
                 time.sleep(1) # to avoid a 401 on the subsequent get request
+                self.delMarker(id='11111111-1111-1111-1111-111111111111')
             else:
                 return False
 
