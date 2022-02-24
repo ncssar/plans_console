@@ -238,6 +238,12 @@ class DebriefMapGenerator(QObject):
         self.debriefOptionsDialog=DebriefOptionsDialog(self)
         self.dd.ui.debriefOptionsButton.clicked.connect(self.debriefOptionsButtonClicked)
 
+        self.dd.ui.stopIcon=QtGui.QIcon()
+        self.dd.ui.stopIcon.addPixmap(QtGui.QPixmap(":/plans_console/stop-icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
+        self.dd.ui.startIcon=QtGui.QIcon()
+        self.dd.ui.startIcon.addPixmap(QtGui.QPixmap(":/plans_console/play-icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
+        self.dd.ui.debriefStopStartButton.clicked.connect(self.debriefStopStartButtonClicked)
+
         # determine / create SartopoSession objects
         #  process the target session first, since nocb definition checks for it
 
@@ -621,6 +627,16 @@ class DebriefMapGenerator(QObject):
         self.debriefOptionsDialog.show()
         self.debriefOptionsDialog.raise_()
     
+    def debriefStopStartButtonClicked(self,*args,**kwargs):
+        if self.sts1.sync: #syncing was on; stop syncing, show the Play icon, set tooltip to Start Syncing
+            self.sts1.stop()
+            self.dd.ui.debriefStopStartButton.setIcon(self.dd.ui.startIcon)
+            self.dd.ui.debriefStopStartButton.setToolTip('Start Syncing')
+        else: #syncing was off; start syncing, show the Stop icon, set tooltip to Stop Syncing
+            self.sts1.start()
+            self.dd.ui.debriefStopStartButton.setIcon(self.dd.ui.stopIcon)
+            self.dd.ui.debriefStopStartButton.setToolTip('Stop Syncing')
+
     def editNoteClicked(self,*args,**kwargs):
         row=self.dd.ui.tableWidget.currentRow()
         outingName=self.dd.ui.tableWidget.item(row,0).text()
@@ -2156,6 +2172,7 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
             for n in range(self.ui.tableWidget.columnCount()):
                 vh.resizeSection(n,pix[16])
             self.ui.topLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
+            self.ui.debriefStopStartButton.setIconSize(QtCore.QSize(pix[24],pix[24]))
             self.ui.debriefOptionsButton.setIconSize(QtCore.QSize(pix[24],pix[24]))
             self.setMinimumSize(QtCore.QSize(int(500*(ldpi/96)),int(500*(ldpi/96))))
             self.setMaximumSize(QtCore.QSize(int(800*(ldpi/96)),screen.size().height()-50))
