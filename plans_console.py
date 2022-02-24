@@ -369,12 +369,24 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.reloaded = False
         self.incidentURL=None
         self.debriefURL=None
+        [i,d,n]=self.preview_saved_data()
         if not args.norestore:
-            if ask_user_to_confirm('Should the session be restored?',parent=self):
-            # name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
-            # if "y" in name1.lower():
-                self.load_data()
-                self.reloaded = True
+            if not (i or d or n):
+                logging.info('Saved session file contained no useful data; not offering to restore')
+            else:
+                iTxt='Incident map = '+i
+                dTxt='No debrief map specified; DMG was not used'
+                if d:
+                    dTxt='Debrief map = '+d+'\n   (DMG will resume if restored)'
+                nSuffix=''
+                if n!=1:
+                    nSuffix='s'
+                nTxt=str(n)+' radiolog record'+nSuffix
+                if ask_user_to_confirm('Should the session be restored?\n\n'+iTxt+'\n'+dTxt+'\n'+nTxt,parent=self):
+                # name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
+                # if "y" in name1.lower():
+                    self.load_data()
+                    self.reloaded = True
         if not args.nourl and not self.reloaded:
             name1=args.mapID
             if name1:
@@ -850,6 +862,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         fid = open("save_plans_console.txt",'w')
         fid.write(alld)
         fid.close()
+
+    def preview_saved_data(self):
+        with open('save_plans_console.txt','r') as fid:
+            alld=fid.read()
+            l=json.loads(alld)
+            incidentURL = l[0]['incidentURL']
+            debriefURL=l[0].get('debriefURL',None)
+            n=len(l[2])
+        return [incidentURL,debriefURL,n]
 
     def load_data(self):
         # logging.info("In load data")

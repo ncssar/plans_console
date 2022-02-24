@@ -1684,7 +1684,7 @@ class DebriefMapGenerator(QObject):
                             newTidList.append(tidList)
                     self.dmd['outings'][ot]['tids']=newTidList
                 del self.dmd['corr'][sid]
-                self.newFeatureCallback(f,outingLogMessageOverride='Reimported track "'+st+'" due to property changes') # this will crop the track automatically
+                self.newFeatureCallback(f,outingLogMessageOverride='Reimported track due to property change:') # this will crop the track automatically
             elif len(corrList)==1: # exactly one correlating feature exists
                 logging.info(' exactly one debrief map feature corresponds to the source map feature; updating the debrief map feature properties')
                 tf=self.sts2.getFeature(id=corrList[0])
