@@ -652,9 +652,8 @@ class SartopoSession():
             try:
                 self.doSync()
             except Exception as e:
-                logging.error('Exception during sync of map '+self.mapID+'; retrying after 10 second delay: '+str(e))
-                time.sleep(10)
-                self.doSync()
+                logging.error('Exception during sync of map '+self.mapID+'; stopping sync: '+str(e))
+                self.sync=False
             if self.sync: # don't bother with the sleep if sync is no longer True
                 time.sleep(self.syncInterval)
 
@@ -1781,16 +1780,18 @@ class SartopoSession():
                     nextInsidePointStartsNewLine=False
                 # the midpoint will be the first point of a new line
                 outLines[-1].append(list(mp.coords)[0])
-            else: # neither endpoint is inside the boundary
+            else: # neither endpoint is inside the boundary: save the portion within the boundary, if any
                 abl=LineString([ap,bp])
                 mp=abl.intersection(boundaryGeom.exterior)
                 # the result will be a single disjoint line segment inside the boundary,
                 #  with both vertices touching the boundary;
                 # the result is a multipoint, which has no .coords attribute
                 #  see https://stackoverflow.com/a/51060918
-                mpcoords=[(p.x,p.y) for p in mp]
-                nextInsidePointStartsNewLine=True
-                outLines.append(mpcoords)
+                # (or LineString Empty if none of the segment is inside the boundary)
+                if mp.geom_type=='MultiPoint' and not mp.is_empty:
+                    mpcoords=[(p.x,p.y) for p in mp]
+                    nextInsidePointStartsNewLine=True
+                    outLines.append(mpcoords)
 
         # don't forget to check the last vertex!
         fc=targetCoords[-1]
