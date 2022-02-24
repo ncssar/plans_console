@@ -853,13 +853,33 @@ class DebriefMapGenerator(QObject):
         # progressBox maximum = total number of ids to delete plus total number of incident map features
         self.sts1.syncPause=True
         self.writeDmdPause=True
+        self.sts1.stop()
+        progress=0
         if outingNameOrAll==':ALL:':
             logging.info('inside rebuild: about to rebuild the entire debrief map')
-            outingsToDelete=list(self.dmd['outings'].keys()) # wrapped in list() so it doesn't change as dmd changes
-            tidCount=0
-            for sid in self.dmd['corr']:
-                tidCount+=len(self.dmd['corr'][sid])
-            progressBox.setMaximum(tidCount+len(self.sts1.mapData['state']['features']))
+            self.dmd={} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
+            self.dmd['outings']={}
+            self.dmd['corr']={}
+            self.sts2.refresh(forceImmediate=True)
+            progressBox.setMaximum(len(self.sts2.mapData['state']['features'])+len(self.sts1.mapData['state']['features']))
+            # group features to delete by class, so that no refresh is needed inside delFeature
+            delDict={}
+            for f in self.sts2.mapData['state']['features']:
+                id=f['id']
+                c=f['properties']['class']
+                if c in delDict.keys():
+                    delDict[c].append(id)
+                else:
+                    delDict[c]=[id]
+            # make sure folders are deleted last
+            fcList_sorted=list(reversed(sorted(delDict,key=lambda x:(x!='folder',x))))
+            for fc in fcList_sorted:
+                for fid in delDict[fc]:
+                    self.sts2.delFeature(id=fid,fClass=fc)
+                    progress+=1
+                    progressBox.setValue(progress)
+                    QCoreApplication.processEvents()
+            self.dmd['corr']={}
         else:
             outingsToDelete=[outingNameOrAll]
             tidCount=2 # bid, fid; other item counts must be calculated
@@ -869,73 +889,65 @@ class DebriefMapGenerator(QObject):
             tidCount+=len(o['utids'])
             tidCount+=len(o['cids'])
             progressBox.setMaximum(tidCount+len(self.sts1.mapData['state']['features']))
-        progress=0
-        for outingName in outingsToDelete:
-            # steps needed to rebuild one outing:
-            # 1. delete related features from the debrief map
-            # 2. delete related entries from dmd['corr']
-            # 3. delete entire outing sub-dictionary, dmd['outings'][<outingName>]
-            # pause sync until the entire rebuild is done
-            logging.info('inside rebuild: about to rebuild outing "'+outingName+'"')
-            o=self.dmd['outings'][outingName]
-            # logging.info(json.dumps(o,indent=3))
-            shapes=[o['bid']] # boundary / begin the delete list
-            for tidlist in o['tids']:
-                if isinstance(tidlist,list):
-                    shapes+=tidlist
-            shapes+=o['utids'] # uncropped tracks
-            markers=o['cids'] # clues
-            folders=[o['fid']] # folders - should never be more than one; this is to provide one flat feature list
-            deleteIds=shapes+markers+folders
-            # logging.info('features that would be deleted:'+str(shapes+markers+folders))
-            for shape in shapes:
-                self.sts2.delFeature(id=shape,fClass='Shape')
-                progress+=1
-                progressBox.setValue(progress)
-            for marker in markers: # clues
-                self.sts2.delFeature(id=marker,fClass='Marker')
-                progress+=1
-                progressBox.setValue(progress)
-            for folder in folders: # folder
-                self.sts2.delFeature(id=folder,fClass='Folder')
-                progress+=1
-                progressBox.setValue(progress)
-            # 2. remove entries for self.dmd['corr']
-            keysToDelete=[]
-            for sid in self.dmd['corr'].keys():
-                newTids=[id for id in self.dmd['corr'][sid] if id not in deleteIds]
-                self.dmd['corr'][sid]=newTids
-                if len(newTids)==0:
-                    keysToDelete.append(sid)
-            for key in keysToDelete:
-                del self.dmd['corr'][key]
-            # inform_user_about_issue('pause...')
-            # self.sts2.doSync()
-            # 3. delete entire outing sub-dictionary
-            del self.dmd['outings'][outingName]
-            self.writeDmdFile()
-            # inform_user_about_issue('pause...')
-            # self.sts2.doSync()
-            # inform_user_about_issue('pause...')
-        #3b. for entire map rebuild, also delete any remaining features and their corr entries
-        if outingNameOrAll==':ALL:':
-            for sid in self.dmd['corr'].keys():
-                for tid in self.dmd['corr'][sid]:
-                    f=self.sts2.getFeature(id=tid)
-                    if f: # if f is False, the feature was probably deleted by hand from the debrief map
-                        tc=f['properties']['class']
-                        self.sts2.delFeature(id=tid,fClass=tc)
+            for outingName in outingsToDelete:
+                # steps needed to rebuild one outing:
+                # 1. delete related features from the debrief map
+                # 2. delete related entries from dmd['corr']
+                # 3. delete entire outing sub-dictionary, dmd['outings'][<outingName>]
+                # pause sync until the entire rebuild is done
+                logging.info('inside rebuild: about to rebuild outing "'+outingName+'"')
+                o=self.dmd['outings'][outingName]
+                # logging.info(json.dumps(o,indent=3))
+                shapes=[o['bid']] # boundary / begin the delete list
+                for tidlist in o['tids']:
+                    if isinstance(tidlist,list):
+                        shapes+=tidlist
+                shapes+=o['utids'] # uncropped tracks
+                markers=o['cids'] # clues
+                folders=[o['fid']] # folders - should never be more than one; this is to provide one flat feature list
+                deleteIds=shapes+markers+folders
+                # logging.info('features that would be deleted:'+str(shapes+markers+folders))
+                for shape in shapes:
+                    self.sts2.delFeature(id=shape,fClass='Shape')
                     progress+=1
                     progressBox.setValue(progress)
-            self.dmd['corr']={}
-        # 4. call newFeatureCallback on all features in the source map
+                    QCoreApplication.processEvents()
+                for marker in markers: # clues
+                    self.sts2.delFeature(id=marker,fClass='Marker')
+                    progress+=1
+                    progressBox.setValue(progress)
+                    QCoreApplication.processEvents()
+                for folder in folders: # folder
+                    self.sts2.delFeature(id=folder,fClass='Folder')
+                    progress+=1
+                    progressBox.setValue(progress)
+                    QCoreApplication.processEvents()
+                # 2. remove entries for self.dmd['corr']
+                keysToDelete=[]
+                for sid in self.dmd['corr'].keys():
+                    newTids=[id for id in self.dmd['corr'][sid] if id not in deleteIds]
+                    self.dmd['corr'][sid]=newTids
+                    if len(newTids)==0:
+                        keysToDelete.append(sid)
+                for key in keysToDelete:
+                    del self.dmd['corr'][key]
+                # inform_user_about_issue('pause...')
+                # self.sts2.doSync()
+                # 3. delete entire outing sub-dictionary
+                del self.dmd['outings'][outingName]
+                self.writeDmdFile()
+                # inform_user_about_issue('pause...')
+                # self.sts2.doSync()
+                # inform_user_about_issue('pause...')
+        logging.info(' rebuild: done deleting features; calling newFeatureCallback for all source map features...')
         for f in self.sts1.mapData['state']['features']:
             self.newFeatureCallback(f)
             progress+=1
             progressBox.setValue(progress)
-                # inform_user_about_issue('pause...')
+            QCoreApplication.processEvents()
         self.sts1.syncPause=False
         self.writeDmdPause=False
+        self.sts1.start()
         self.writeDmdFile()
         progressBox.close()
         logging.info('rebuild complete')

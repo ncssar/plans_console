@@ -728,7 +728,7 @@ class SartopoSession():
             r=self.s.post(url,data=params,timeout=timeout,proxies=self.proxyDict,allow_redirects=False)
         elif type=="get": # no need for json in GET; sending null JSON causes downstream error
             # logging.info("SENDING GET to '"+url+"':")
-            r=self.s.get(url,timeout=timeout)
+            r=self.s.get(url,timeout=timeout,proxies=self.proxyDict)
         elif type=="delete":
             params={}
             if "sartopo.com" in self.domainAndPort.lower():
@@ -750,7 +750,7 @@ class SartopoSession():
             # logging.info("SENDING DELETE to '"+url+"':")
             # logging.info(json.dumps(paramsPrint,indent=3))
             # logging.info("Key:"+str(self.key))
-            r=self.s.delete(url,params=params,timeout=timeout)   ## use params for query vs data for body data
+            r=self.s.delete(url,params=params,timeout=timeout,proxies=self.proxyDict)   ## use params for query vs data for body data
             # logging.info("URL:"+str(url))
             # logging.info("Ris:"+str(r))
         else:
