@@ -170,6 +170,7 @@ class SartopoSession():
             id=None, # 12-character credential ID
             key=None, # credential key
             accountId=None, # 6-character accountId
+            accountIdInternet=None, # in case CTD requires a different accountId than sartopo.com/caltopo.com
             sync=True,
             syncInterval=5,
             syncTimeout=10,
@@ -196,6 +197,7 @@ class SartopoSession():
         self.id=id
         self.key=key
         self.accountId=accountId
+        self.accountIdInternet=accountIdInternet
         self.sync=sync
         self.syncTimeout=syncTimeout
         self.syncPause=False
@@ -221,6 +223,7 @@ class SartopoSession():
         id=None
         key=None
         accountId=None
+        accountIdInternet=None
         # if configpath and account are specified,
         #  conigpath must be the full pathname of a configparser-compliant
         #  config file, and account must be the name of a section within it,
@@ -245,15 +248,18 @@ class SartopoSession():
                 id=section.get("id",None)
                 key=section.get("key",None)
                 accountId=section.get("accountId",None)
+                accountIdInternet=section.get("accountIdInternet",None)
                 if internet:
                     if id is None or key is None:
                         logging.error("account entry '"+self.account+"' in config file '"+self.configpath+"' is not complete:\n  it must specify 'id' and 'key'.")
                         return False
                     if accountId is None:
-                        logging.warning("account entry '"+self.account+"' in config file '"+self.configpath+"' does not specify 'accountId': you will not be able to print from this session.")
+                        logging.warning("account entry '"+self.account+"' in config file '"+self.configpath+"' does not specify 'accountId': you will not be able to generate PDF files from this session.")
                 else:
                     if id is None or key is None or accountId is None:
-                        logging.warning("account entry '"+self.account+"' in config file '"+self.configpath+"' is not complete:\n  it must specify 'id', 'key', and 'accountId' if you want to print from this session.")
+                        logging.warning("account entry '"+self.account+"' in config file '"+self.configpath+"' is not complete:\n  it must specify 'id', 'key', and 'accountId' if you want to generate PDF files from this session.")
+                    if accountIdInternet is None:
+                        logging.warning("account entry '"+self.account+"' in config file '"+self.configpath+"' does not specify 'accountIdInternet': if a different accountId is required for caltopo.com/saratopo.com vs. for CalTopo Desktop, you will not be able to send PDF generation jobs to the internet from this session.")
             else:
                 logging.error("specified config file '"+self.configpath+"' does not exist.")
                 return False
@@ -265,10 +271,13 @@ class SartopoSession():
             key=self.key
         if self.accountId is not None:
             accountId=self.accountId
+        if self.accountIdInternet is not None:
+            accountIdInternet=self.accountIdInternet
         # finally, save them back as parameters of this object
         self.id=id
         self.key=key
         self.accountId=accountId
+        self.accountIdInternet=accountIdInternet
 
         if internet:
             if self.id is None:

@@ -24,6 +24,7 @@ LINK_LIGHT_STYLES={
     -1:"background-color:#bb0000;", # red - no link / link error
     0:"background-color:#aaaaaa;", # gray - no link attempted
     1:"background-color:#009900;", # medium green - good link
+    2:"background-color:#ff9633;", # orange - sync stopped/paused
     5:"background-color:#00dd00;", # med-light green - sync heartbeat
     10:"background-color:#00ff00;", # light green - good link, sync in progress
     100:"background-color:#00ffff;" # cyan - data change in progress
@@ -244,6 +245,12 @@ class DebriefMapGenerator(QObject):
         self.dd.ui.startIcon.addPixmap(QtGui.QPixmap(":/plans_console/play-icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
         self.dd.ui.debriefStopStartButton.clicked.connect(self.debriefStopStartButtonClicked)
 
+        self.debriefHeaderTextPart1={
+            'on':'Debrief Map Generator is running in the background.  You can safely close and reopen this dialog as needed.',
+            'off':'Syncing is currently STOPPED.  Data in the debrief table below may be out of date.  Click the Play button to resume.'
+        }
+        self.debriefHeaderTextPart2='\n\nDebrief data (tracks from returning searchers) should be imported to the INCIDENT map.  The DEBRIEF map is automatically updated and should not need to be directly edited.'
+
         # determine / create SartopoSession objects
         #  process the target session first, since nocb definition checks for it
 
@@ -341,7 +348,7 @@ class DebriefMapGenerator(QObject):
             return
 
         if self.pc:
-            self.dd.ui.debriefDialogLabel.setText('Debrief Map Generator is running in the background.  You can safely close and reopen this dialog as needed.\n\nDebrief data (tracks from returning searchers) should be imported to the INCIDENT map.  The DEBRIEF map is automatically updated and should not need to be directly edited.')
+            self.dd.ui.debriefDialogLabel.setText(self.debriefHeaderTextPart1['on']+self.debriefHeaderTextPart2)
             self.parent.debriefURL=self.debriefURL
 
         # determine / create sts1 (source map SartopoSession instance)
@@ -485,6 +492,8 @@ class DebriefMapGenerator(QObject):
         self.mainTimer.timeout.connect(self.tick)
         self.mainTimer.start(1000)
 
+        self.prevSync=self.sts1.sync # used in tick to update GUI sync indicators if needed
+
         # need to run this program in a loop - it's not a background/daemon process
         # while True:
         #     time.sleep(5)
@@ -564,7 +573,26 @@ class DebriefMapGenerator(QObject):
             self.dd.ui.tableWidget.viewport().update()
             self.dd.moveEvent(None) # initialize sizes
             self.dd.ui.tableWidget.setSortingEnabled(True)
+            self.dd.ui.tableWidget.sortItems(0)
             self.redrawFlag=False
+        if self.sts1.sync!=self.prevSync:
+            self.prevSync=self.sts1.sync
+            if self.sts1.sync:
+                self.dd.ui.debriefDialogLabel.setText(self.debriefHeaderTextPart1['on']+self.debriefHeaderTextPart2)
+                self.dd.ui.debriefStopStartButton.setIcon(self.dd.ui.stopIcon)
+                self.dd.ui.debriefStopStartButton.setToolTip('Stop Syncing')
+                self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[1])
+                if self.pc:
+                    self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[1])
+                self.dd.ui.tableWidget.setStyleSheet('background-color:#FFFFFF;')
+            else:
+                self.dd.ui.debriefDialogLabel.setText(self.debriefHeaderTextPart1['off']+self.debriefHeaderTextPart2)
+                self.dd.ui.debriefStopStartButton.setIcon(self.dd.ui.startIcon)
+                self.dd.ui.debriefStopStartButton.setToolTip('Start Syncing')
+                self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[2])
+                if self.pc:
+                    self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[2])
+                self.dd.ui.tableWidget.setStyleSheet('background-color:#FFAAAA;')
         if self.syncBlinkFlag: # set by syncCallback after each sync
             self.updateLinkLights(incidentLink=5)
             QTimer.singleShot(500,self.updateLinkLights)
@@ -628,14 +656,11 @@ class DebriefMapGenerator(QObject):
         self.debriefOptionsDialog.raise_()
     
     def debriefStopStartButtonClicked(self,*args,**kwargs):
-        if self.sts1.sync: #syncing was on; stop syncing, show the Play icon, set tooltip to Start Syncing
+        if self.sts1.sync: #syncing was on: stop syncing
             self.sts1.stop()
-            self.dd.ui.debriefStopStartButton.setIcon(self.dd.ui.startIcon)
-            self.dd.ui.debriefStopStartButton.setToolTip('Start Syncing')
-        else: #syncing was off; start syncing, show the Stop icon, set tooltip to Stop Syncing
+        else: #syncing was off: start syncing
             self.sts1.start()
-            self.dd.ui.debriefStopStartButton.setIcon(self.dd.ui.stopIcon)
-            self.dd.ui.debriefStopStartButton.setToolTip('Stop Syncing')
+        # GUI indications of sync status are handled by self.tick()
 
     def editNoteClicked(self,*args,**kwargs):
         row=self.dd.ui.tableWidget.currentRow()
@@ -785,16 +810,21 @@ class DebriefMapGenerator(QObject):
         # if the request is CTD, offer to retry to internet if CTD request fails
         attempt=1
         tryAgain=True
+        prefix='http://'
         if 'topo.com' in self.sts2.domainAndPort.lower():
+            prefix='https://'
             attempt=2
         printDomainAndPort=self.sts2.domainAndPort
+        aid=self.sts2.accountId
         while tryAgain:
             tryAgain=False
-            r=self.sts2.sendRequest('post','api/v1/acct/'+self.sts2.accountId+'/PDFLink',payload,returnJson='ID',domainAndPort=printDomainAndPort)
+            r=self.sts2.sendRequest('post','api/v1/acct/'+aid+'/PDFLink',payload,returnJson='ID',domainAndPort=printDomainAndPort)
             if r:
                 if isinstance(r,str):
                     logging.info(outingName+' : PDF generated : '+r+' - opening in new browser tab...')
-                    webbrowser.open_new_tab(printDomainAndPort+'/p/'+r)
+                    # full URL including prefix is needed to use the correct system default browser
+                    #  otherwise it may try Internet Explorer
+                    webbrowser.open_new_tab(prefix+printDomainAndPort+'/p/'+r)
                     self.dmd['outings'][outingName]['PDF']=[r,tsNow]
                     self.setPDFButton(row,'done')
                     self.writeDmdFile()
@@ -806,18 +836,24 @@ class DebriefMapGenerator(QObject):
                         if ask_user_to_confirm('Print request failed.  Response from server:\n\n'+str(r['code'])+':'+r['status']+'\n'+r['message']+suffix+'\nWould you like to try sending the request to sartopo.com?',parent=self.dd):
                             attempt=2
                             printDomainAndPort='sartopo.com'
+                            if self.sts2.accountIdInternet:
+                                aid=self.sts2.accountIdInternet
                             tryAgain=True
                 else:
                     if attempt==1:
                         if ask_user_to_confirm('Print request failed.  See the log file for details.\nWould you like to try sending the request to sartopo.com?',parent=self.dd):
                             attempt=2
                             printDomainAndPort='sartopo.com'
+                            if self.sts2.accountIdInternet:
+                                aid=self.sts2.accountIdInternet
                             tryAgain=True
             else:
                 if attempt==1:
                     if ask_user_to_confirm('No response received from print request.  See the log file for details.\nWould you like to try sending the request to sartopo.com?',parent=self.dd):
                         attempt=2
                         printDomainAndPort='sartopo.com'
+                        if self.sts2.accountIdInternet:
+                            aid=self.sts2.accountIdInternet
                         tryAgain=True
 
     def PDFDoneClicked(self,*args,**kwargs):
