@@ -130,7 +130,6 @@ dmypy.json
 
 # local dir, including plans_console.cfg and other local data as needed
 local/
-plans_console.rc
 *.err
 *.1
 *.2
@@ -142,3 +141,5 @@ plans_console.rc
 *.swp
 *.code-workspace
 scratch/
+save_plans_console.txt
+plans_console.rc

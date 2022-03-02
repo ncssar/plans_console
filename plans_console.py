@@ -76,6 +76,26 @@ import logging
 # log filename should be <top-level-module-name>.log
 logfile=os.path.splitext(os.path.basename(sys.path[0]))[0]+'.log'
 
+cleanShutdownText='Plans Console shutdown requested'
+# cleanShutdownText should appear in the last five lines of the previous
+#  log file if it was a clean shutdown; if not, copy the file
+#  with a unique filename before starting the new log; use seek instead
+#  of readlines to reduce time and memory consumption for large log files
+if os.path.exists(logfile):
+    save=False
+    if os.path.getsize(logfile)>1024:
+        with open(logfile,'rb') as f:
+            f.seek(-1025,2) # 1kB before the file's end
+            tail=f.read(1024).decode()
+        if cleanShutdownText not in tail:
+            save=True
+    else: # tiny file; read the whole file to see if clean shutdown line exists
+        with open(logfile,'r') as f:
+            if cleanShutdownText not in f.read():
+                save=True
+    if save:
+        shutil.copyfile(logfile,os.path.splitext(logfile)[0]+'.aborted.'+datetime.fromtimestamp(os.path.getmtime(logfile)).strftime('%Y-%m-%d-%H-%M-%S')+'.log')
+
 # print by default; let the caller change this if needed
 # (note, caller would need to clear all handlers first,
 #   per stackoverflow.com/questions/12158048)
@@ -375,9 +395,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 logging.info('Saved session file contained no useful data; not offering to restore')
             else:
                 iTxt='Incident map = '+i
-                dTxt='No debrief map specified; DMG was not used'
+                dTxt='No debrief map specified\n   (DMG failed or was not used)'
                 if d:
-                    dTxt='Debrief map = '+d+'\n   (DMG will resume if restored)'
+                    dTxt='Debrief map = '+d+'\n   (DMG sync will resume if restored)'
                 nSuffix=''
                 if n!=1:
                     nSuffix='s'
@@ -530,7 +550,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             logging.info('Connection failed.')
             self.ui.incidentLinkLight.setStyleSheet(BG_RED)
             inform_user_about_issue('Link could not be established with specified incident map\n\n'+self.incidentURL+'\n\nPlease specify a valid map, or hit Cancel from the map dialog to run Plans Console with no incident map.',parent=self)
-            self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.incidentDomainAndPort)
+            self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,domainAndPort)
             if self.incidentMapDialog.exec(): # force modal
                 self.ui.incidentMapField.setText(self.incidentMapDialog.url)
                 self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
@@ -1247,7 +1267,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             event.ignore()
             self.exitClicked=False
             return
-        logging.info('Plans Console shutdown requsted')
+        logging.info(cleanShutdownText)
         self.saveRcFile()
         event.accept()
         self.parent.quit()

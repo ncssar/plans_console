@@ -126,16 +126,16 @@
         </widget>
        </item>
        <item row="1" column="3" rowspan="2">
-        <widget class="QPushButton" name="debriefStopStartButton">
+        <widget class="QPushButton" name="debriefPauseResumeButton">
          <property name="toolTip">
-          <string>Stop Sync</string>
+          <string>Pause Sync</string>
          </property>
          <property name="text">
           <string/>
          </property>
          <property name="icon">
           <iconset resource="plans_console.qrc">
-           <normaloff>:/plans_console/stop-icon.png</normaloff>:/plans_console/stop-icon.png</iconset>
+           <normaloff>:/plans_console/pause.png</normaloff>:/plans_console/pause.png</iconset>
          </property>
         </widget>
        </item>

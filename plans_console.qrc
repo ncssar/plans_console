@@ -1,5 +1,6 @@
 <RCC>
   <qresource prefix="plans_console">
+    <file>pause.png</file>
     <file>stop-icon.png</file>
     <file>play-icon.png</file>
     <file>edit_icon.png</file>

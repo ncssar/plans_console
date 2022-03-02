@@ -239,15 +239,15 @@ class DebriefMapGenerator(QObject):
         self.debriefOptionsDialog=DebriefOptionsDialog(self)
         self.dd.ui.debriefOptionsButton.clicked.connect(self.debriefOptionsButtonClicked)
 
-        self.dd.ui.stopIcon=QtGui.QIcon()
-        self.dd.ui.stopIcon.addPixmap(QtGui.QPixmap(":/plans_console/stop-icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
+        self.dd.ui.pauseIcon=QtGui.QIcon()
+        self.dd.ui.pauseIcon.addPixmap(QtGui.QPixmap(":/plans_console/pause.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
         self.dd.ui.startIcon=QtGui.QIcon()
         self.dd.ui.startIcon.addPixmap(QtGui.QPixmap(":/plans_console/play-icon.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
-        self.dd.ui.debriefStopStartButton.clicked.connect(self.debriefStopStartButtonClicked)
+        self.dd.ui.debriefPauseResumeButton.clicked.connect(self.debriefPauseResumeButtonClicked)
 
         self.debriefHeaderTextPart1={
             'on':'Debrief Map Generator is running in the background.  You can safely close and reopen this dialog as needed.',
-            'off':'Syncing is currently STOPPED.  Data in the debrief table below may be out of date.  Click the Play button to resume.'
+            'off':'Syncing is currently PAUSED.  Data in the debrief table below may be out of date.  Click the Play button to resume.'
         }
         self.debriefHeaderTextPart2='\n\nDebrief data (tracks from returning searchers) should be imported to the INCIDENT map.  The DEBRIEF map is automatically updated and should not need to be directly edited.'
 
@@ -416,13 +416,13 @@ class DebriefMapGenerator(QObject):
         self.cropDegrees=0.001  # about 100 meters - varies with latitude but this is not important for cropping
         self.roamingCropDegrees=0.1 # about 10km - varies with latitude but this is not important for cropping
 
-        self.dmd={} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
-        self.dmd['outings']={}
-        self.dmd['corr']={}
+        self.dmd={'outings':{},'corr':{},'unclaimed':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
+        # self.dmd['outings']={}
+        # self.dmd['corr']={}
         self.writeDmdPause=False
         # self.pdfStatus={}
 
-        self.orphanTracksDict={}
+        # self.dmd['unclaimed']={}
         self.outingSuffixDict={} # index numbers for duplicate-named assignments
         # def writeAssignmentsFile():
         #     # write the correspondence file
@@ -492,7 +492,7 @@ class DebriefMapGenerator(QObject):
         self.mainTimer.timeout.connect(self.tick)
         self.mainTimer.start(1000)
 
-        self.prevSync=self.sts1.sync # used in tick to update GUI sync indicators if needed
+        self.prevPauseManual=False
 
         # need to run this program in a loop - it's not a background/daemon process
         # while True:
@@ -575,24 +575,24 @@ class DebriefMapGenerator(QObject):
             self.dd.ui.tableWidget.setSortingEnabled(True)
             self.dd.ui.tableWidget.sortItems(0)
             self.redrawFlag=False
-        if self.sts1.sync!=self.prevSync:
-            self.prevSync=self.sts1.sync
-            if self.sts1.sync:
-                self.dd.ui.debriefDialogLabel.setText(self.debriefHeaderTextPart1['on']+self.debriefHeaderTextPart2)
-                self.dd.ui.debriefStopStartButton.setIcon(self.dd.ui.stopIcon)
-                self.dd.ui.debriefStopStartButton.setToolTip('Stop Syncing')
-                self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[1])
-                if self.pc:
-                    self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[1])
-                self.dd.ui.tableWidget.setStyleSheet('background-color:#FFFFFF;')
-            else:
+        if self.sts1.syncPauseManual!=self.prevPauseManual:
+            self.prevPauseManual=self.sts1.syncPauseManual
+            if self.sts1.syncPauseManual:
                 self.dd.ui.debriefDialogLabel.setText(self.debriefHeaderTextPart1['off']+self.debriefHeaderTextPart2)
-                self.dd.ui.debriefStopStartButton.setIcon(self.dd.ui.startIcon)
-                self.dd.ui.debriefStopStartButton.setToolTip('Start Syncing')
+                self.dd.ui.debriefPauseResumeButton.setIcon(self.dd.ui.startIcon)
+                self.dd.ui.debriefPauseResumeButton.setToolTip('Resume Sync')
                 self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[2])
                 if self.pc:
                     self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[2])
                 self.dd.ui.tableWidget.setStyleSheet('background-color:#FFAAAA;')
+            else:
+                self.dd.ui.debriefDialogLabel.setText(self.debriefHeaderTextPart1['on']+self.debriefHeaderTextPart2)
+                self.dd.ui.debriefPauseResumeButton.setIcon(self.dd.ui.pauseIcon)
+                self.dd.ui.debriefPauseResumeButton.setToolTip('Pause Sync')
+                self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[1])
+                if self.pc:
+                    self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[1])
+                self.dd.ui.tableWidget.setStyleSheet('background-color:#FFFFFF;')
         if self.syncBlinkFlag: # set by syncCallback after each sync
             self.updateLinkLights(incidentLink=5)
             QTimer.singleShot(500,self.updateLinkLights)
@@ -655,11 +655,11 @@ class DebriefMapGenerator(QObject):
         self.debriefOptionsDialog.show()
         self.debriefOptionsDialog.raise_()
     
-    def debriefStopStartButtonClicked(self,*args,**kwargs):
-        if self.sts1.sync: #syncing was on: stop syncing
-            self.sts1.stop()
-        else: #syncing was off: start syncing
-            self.sts1.start()
+    def debriefPauseResumeButtonClicked(self,*args,**kwargs):
+        if self.sts1.syncPauseManual: # syncing was paused: resume sync
+            self.sts1.resume()
+        else: # syncing was not paused: pause sync
+            self.sts1.pause()
         # GUI indications of sync status are handled by self.tick()
 
     def editNoteClicked(self,*args,**kwargs):
@@ -880,7 +880,7 @@ class DebriefMapGenerator(QObject):
             self.rebuild(outingName)
 
     def rebuild(self,outingNameOrAll):
-        progressBox=QProgressDialog("Rebuilding, please wait...","Abort",0,100)
+        progressBox=QProgressDialog("Rebuilding, please wait...\n\n(sync will resume after rebuild)","Abort",0,100)
         # progressBox.setWindowModality(Qt.WindowModal)
         progressBox.setWindowTitle("Rebuilding")
         progressBox.show()
@@ -893,9 +893,9 @@ class DebriefMapGenerator(QObject):
         progress=0
         if outingNameOrAll==':ALL:':
             logging.info('inside rebuild: about to rebuild the entire debrief map')
-            self.dmd={} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
-            self.dmd['outings']={}
-            self.dmd['corr']={}
+            self.dmd={'outings':{},'corr':{},'unclaimed':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
+            # self.dmd['outings']={}
+            # self.dmd['corr']={}
             self.sts2.refresh(forceImmediate=True)
             progressBox.setMaximum(len(self.sts2.mapData['state']['features'])+len(self.sts1.mapData['state']['features']))
             # group features to delete by class, so that no refresh is needed inside delFeature
@@ -1048,14 +1048,15 @@ class DebriefMapGenerator(QObject):
                         self.dmd['corr'][sid]=idListToAdd
             outings_init=dmd_init['outings']
             for ot in outings_init.keys():
-                # preserve the outing if the sid, tid, and fid all exist
+                # preserve the outing if the boundary and folder exist in the debrief map
                 o=outings_init[ot]
-                logging.info(' checking for sid='+str(o['sid'])+'  bid='+str(o['bid'])+'  fid='+str(o['fid']))
-                if o['sid'] in sids and (o['bid'] and o['bid'] in tids) and (o['fid'] and o['fid'] in tids):
+                logging.info(' checking for bid='+str(o['bid'])+'  fid='+str(o['fid']))
+                if (o['bid'] and o['bid'] in tids) and (o['fid'] and o['fid'] in tids):
                     logging.info('  initial outing preserved: '+ot)
                     self.dmd['outings'][ot]=o
                 else:
                     logging.info('  outing discarded for now since not all of its required components currently exist in the debrief map: '+ot)
+            self.dmd['unclaimed']=dmd_init['unclaimed']
             # for sidToRemove in sidsToRemove:
             #     del corr[sidToRemove]
         # write the correspondence file
@@ -1286,7 +1287,7 @@ class DebriefMapGenerator(QObject):
             # fid=dmd['outings'][t]['fid']
             self.dmd['outings'][t]['sid']=id # assignment feature id in source map
             # logging.info('fids.keys='+str(fids.keys()))
-            self.checkForOrphans(t)
+            self.checkForUnclaimedTracks(t)
         if a:
             g=a['geometry']
             gc=g['coordinates']
@@ -1301,7 +1302,7 @@ class DebriefMapGenerator(QObject):
                 logging.error('newly detected assignment '+t+' has an unhandled geometry type '+gt)
                 return
             self.dmd['outings'][t]['bid']=bid
-            self.addOutingLogEntry(t,'Added assignment boundary')
+            self.addOutingLogEntry(t,'Assignment boundary added')
             # addCorrespondence(id,bid)
             logging.info('boundary created for assignment '+t+': '+self.dmd['outings'][t]['bid'])
             # if the assignment is tiny, it's probably a roaming assignment
@@ -1316,12 +1317,12 @@ class DebriefMapGenerator(QObject):
         self.cropUncroppedTracks()
         self.writeDmdFile()
 
-    # check for orphan tracks (properly-named tracks that were processed before this outing was created)
+    # check for unclaimed tracks (properly-named tracks that were processed before this outing was created)
     #  and bring them into the specified outing as uncropped tracks
-    def checkForOrphans(self,outingTitle):
+    def checkForUnclaimedTracks(self,outingTitle):
         cleanedIDs=[]
-        for otid in self.orphanTracksDict.keys():
-            ott=self.orphanTracksDict[otid]
+        for otid in self.dmd['unclaimed'].keys():
+            ott=self.dmd['unclaimed'][otid]
             tparse=self.parseTrackName(ott)
             if tparse:
                 if tparse[0]+' '+tparse[1]==outingTitle:
@@ -1332,7 +1333,7 @@ class DebriefMapGenerator(QObject):
                     # don't delete while iterating
                     cleanedIDs.append(otid)
         for cleanedID in cleanedIDs:
-            del self.orphanTracksDict[cleanedID]
+            del self.dmd['unclaimed'][cleanedID]
 
     def addShape(self,f,outingLogMessageOverride=None):
         p=f['properties']
@@ -1347,14 +1348,14 @@ class DebriefMapGenerator(QObject):
             #   Q1=YES:
             #     Q2 - does the specified outing already exist?
             #       Q2=YES: import it to the outing (folder, color, crop)
-            #       Q2=NO: import it as a non-owned line (to the default folder) and add to 'orphan track' list
+            #       Q2=NO: import it as a non-owned line (to the default folder) and add to 'unclaimed track' list
             #           (if the outing name was accurate and the outing has just not been imported yet,
             #            this track should be brought into the outing folder, and cropped, when the
             #            outing is created; if the outing name was not accurate, and the outing by that
             #            name is never imported, the line will be left in the default folder, which is fine)
             #   Q1=NO: import it as a non-owned line (to the default folder)
             color=p['stroke']
-            saveAsOrphan=False
+            saveAsUnclaimed=False
             tparse=self.parseTrackName(t)
             if tparse: # Q1=YES
                 ot=tparse[0]+' '+tparse[1] # 'AA 101' - should match a folder name
@@ -1398,16 +1399,16 @@ class DebriefMapGenerator(QObject):
                         # sts2.crop(track,o['bid'],beyond=0.001) # about 100 meters
                     else:
                         logging.error('  assignment boundary has not been processed yet!  How did we get here?')
-                    msg='Added track '+t
+                    msg='Track added: '+t
                     if outingLogMessageOverride:
                         msg=outingLogMessageOverride+' '+t
                     self.addOutingLogEntry(ot,msg)
                     self.writeDmdFile()
                     return
                 else: # Q2=NO
-                    # orphanTrack=self.sts2.addLine(gc,title=title,color=color)
-                    logging.info('Newly detected line '+t+': name does appear to indicate association with outing '+ot+', but, that outing has not yet been processed.  Importing the line as an un-owned feature, which will automatically be processed for the outing later if/when an outing with matching name is imported.')
-                    saveAsOrphan=True
+                    # unclaimedTrack=self.sts2.addLine(gc,title=title,color=color)
+                    logging.info('Newly detected line '+t+': name does appear to indicate association with outing '+ot+', but, that outing has not yet been processed.  Importing the line as an unclaimed track, which will automatically be processed for the outing later if/when an outing with matching name is imported.')
+                    saveAsUnclaimed=True
             else: # Q1=NO
                 logging.info('Newly detected line '+t+': name does not appear to indicate association with an assignment')
             # Q1=NO or Q2=NO
@@ -1419,8 +1420,9 @@ class DebriefMapGenerator(QObject):
                     width=p['stroke-width'],
                     pattern=p['pattern'])
             self.addCorrespondence(sid,lineID)
-            if saveAsOrphan:
-                self.orphanTracksDict[lineID]=t
+            if saveAsUnclaimed:
+                self.dmd['unclaimed'][lineID]=t
+                self.writeDmdFile()
         elif gt=='Polygon':
             logging.info('creating polygon \''+t+'\' in default folder')
             polygonID=self.sts2.addPolygon(gc[0],
@@ -1471,7 +1473,7 @@ class DebriefMapGenerator(QObject):
             self.addOuting(aid)
         outingName=[name for name in self.dmd['outings'] if self.dmd['outings'][name]['sid']==aid][0]
         self.dmd['outings'][outingName]['cids'].append(clueID)
-        self.addOutingLogEntry(outingName,'Added clue '+t)
+        self.addOutingLogEntry(outingName,'Clue added: '+t)
         self.addCorrespondence(f['id'],clueID)
 
     def cropUncroppedTracks(self):
@@ -1490,7 +1492,8 @@ class DebriefMapGenerator(QObject):
                         cropDegrees=self.dmd['outings'][outingName].get('crop',self.cropDegrees)
                         croppedTrackLines=self.sts2.crop(utid,bid,beyond=cropDegrees)
                         # logging.info('crop return value:'+str(croppedTrackLines))
-                        self.dmd['outings'][outingName]['tids'].append(croppedTrackLines)
+                        if croppedTrackLines:
+                            self.dmd['outings'][outingName]['tids'].append(croppedTrackLines)
                         # cropped track line(s) should correspond to the source map line, 
                         #  not the source map assignment; source map line id will be
                         #  the corr key whose val is the utid; also remove the utid
@@ -1503,21 +1506,42 @@ class DebriefMapGenerator(QObject):
                             self.dmd['corr'][slid]=[]
                             self.addCorrespondence(slid,croppedTrackLines)
                         else:
-                            logging.error('    corresponding source map line id could not be determined')
-                            logging.error('    corresponding source line id list:'+str(slidList))
+                            logging.warning('    corresponding source map line id could not be determined (source line id list:'+str(slidList)+')')
                         # assignments[a]['utids'].remove(utid)
                     self.dmd['outings'][outingName]['utids']=[] # don't modify the list during iteration over the list!
                     # self.writeDmdFile()
                 else:
                     logging.info('  Outing '+outingName+' has '+str(len(self.dmd['outings'][outingName]['utids']))+' uncropped tracks, but the boundary has not been imported yet; skipping.')
 
+    # newFeatureCallback
+    # the goal of this function is to determine how to handle a given source map feature;
+    #  possibilities are:
+    #  - import to target map
+    #  - re-import to target map (delete the old target map corresponding feature(s), then import)
+    #  - modify existing target map feature(s)
+    #  - do nothing
 
-    # initialNewFeatureCallback: since dmd must be generated before the add<Type> functions
-    #  are called (since those functions check to see if the feature already exists on the
-    #  debrief map, to prevent duplicates), the actual new feature actions must not be called
-    #  until after dmd is generated (by initDmd).  But, the list of actions to take must be
-    #  generated 
-    # def initialNewFeatureCallback(self,f):
+    #  - Q1: does the source feature have an entry in corr? (assignments don't exist in corr)
+    #    - Q1 YES --> Q2: do all corr features currently exist in the target map?
+    #      - Q2 YES --> Q3: is the source feature a Shape with properly formatted track title?
+    #        - Q3 YES --> Q4: do all corresponding target features have the same title?
+    #          - Q4 YES --> Q5: does the source feature title match the (first) corresponding target feature title?
+    #             - Q5 YES: do nothing
+    #             - Q5 NO: re-import (so that the color and crop happens anew)
+    #          - Q4 NO: re-import - something went wrong since they should all have the same title
+    #        - Q3 NO(a): Q6: do the corresponding target feature properties match the source feature?
+    #          - Q6 YES: do nothing
+    #          - Q6 NO: modify target feature properties
+    #        - Q3 NO(b): Q7: do the corresponding target feature geometry match the source feature?
+    #          - Q7 YES: do nothing
+    #          - Q7 NO: modify target feature geometry
+    #      - Q2 NO: re-import - something went wrong, or, the user deleted the target feature
+    #    - Q1 NO --> Q8: is it a properly named track whose outing does not currently exist?
+    #      - Q8 YES: save to the list of orpha
+    #    - Q1 NO: import to target
+    #               (addOuting will deal with already-existing outings)
+    #               (addShape will add new tracks to unclaimed list if needed)
+    #  
 
     # criteria for a 'match': if a feature exists on the debrief map meeting these criteria,
     #   then it corresponds to the newly read source map feature: don't create a new feature
@@ -1541,37 +1565,94 @@ class DebriefMapGenerator(QObject):
         sid=f['id']
 
         logging.info('newFeatureCallback: class='+c+'  title='+t+'  id='+sid+'  syncing='+str(self.sts1.syncing))
-
         # source id might have a corresponding target id; if all corresponding target ids still exist, skip    
-        tids=sum(self.sts2.mapData['ids'].values(),[])    
-        if sid in self.dmd['corr'].keys():
+        tids=sum(self.sts2.mapData['ids'].values(),[])
+        action='import' # import, re-import, or None; modifications handled separately, below
+        if sid in self.dmd['corr'].keys(): # Q1 yes
             logging.info(' source feature exists in correspondence dictionary')
-            tparse=self.parseTrackName(t)
-            if tparse:
-                ot=tparse[0]+' '+tparse[1]
-                if ot not in self.dmd['outings'].keys():
-                    logging.info('  debrief map does not yet have an outing named "'+ot+'" - adding this line to the orphan list, hopefully to be picked up later')
-                    for tid in self.dmd['corr'][sid]:
-                        self.orphanTracksDict[tid]=t
-            if all(i in tids for i in self.dmd['corr'][sid]):
-                logging.info('  all corresponding features exist in the debrief map')
-                if len(self.dmd['corr'][sid])==1:
-                    tid=self.dmd['corr'][sid][0]
-                    tf=self.sts2.getFeature(id=tid)
+            if not all(i in tids for i in self.dmd['corr'][sid]): # Q2 no
+                logging.info('  but not all correspondence dictionary entries exist in the debrief map; re-importing...')
+                action='re-import'
+            else: # Q2 yes
+                tparse=self.parseTrackName(t)
+                if c.lower()=='shape' and tparse: # Q3 yes
+                    titles=[self.sts2.getFeature(id=tid)['properties']['title'] for tid in self.dmd['corr'][sid]]
+                    if all(title==titles[0] for title in titles): # Q4 yes
+                        if not titles[0].upper().replace(' ','')==t.upper().replace(' ',''): # Q5 no
+                            logging.info('  but the debrief map feature title "'+titles[0]+'" does not match the incident map feature title "'+t+'"; re-importing...')
+                            action='re-import'
+                        else: # Q5 yes
+                            action=None
+                    else: # Q4 no
+                        logging.info('  but they do not all have the same title; re-importing...')
+                        action='re-import'
+                else: # Q3 no
+                    tf=self.sts2.getFeature(id=self.dmd['corr'][sid][0])
                     tfp=tf['properties']
                     g=f.get('geometry',None)
                     tfg=tf.get('geometry',None)
-                    if tfp==p and tfg==g:
-                        logging.info('   properties and geometry are unchanged; moving on...')
-                    else:
-                        # update un-owned features, but leave owned features alone since they have already been colored and cropped
-                        allTidLists=[self.dmd['outings'][ot]['tids'] for ot in self.dmd['outings'].keys()]
-                        # flatten a two-level nested list with possible empty members
-                        #  https://stackoverflow.com/a/952952
-                        allTids=[a for b in [a for b in allTidLists for a in b] for a in b]
-                        if tid not in allTids: # only check the first corresponding feature; should be sufficient
-                            logging.info('   properties and/or geometry have changed; updating debrief map feature')
-                            self.sts2.editFeature(id=tid,properties=p,geometry=g)
+                    modified=False
+                    action=None # no import or re-import needed
+                    if tfp!=p: # Q6 no
+                        logging.info('  but the properties are not the same as the incident map feature; modifying properties...')
+                        self.propertyUpdateCallback(f)
+                        modified=True
+                    if tfg!=g: # Q7 no
+                        logging.info('  but the geometry is not the same as the incident map feature; modifying geometry...')
+                        self.geometryUpdateCallback(f)
+                        modified=True
+                    if not modified: # Q6 yes AND Q7 yes
+                        logging.info('  properties and geometry are unchanged; moving on...')
+                    else: # Q6 no OR Q7 no
+                        logging.info('  done processing modified feature.')
+            if action=='re-import':
+                # when re-importing, delete the previous entry from tids, utids, cids of all outings, and from corr
+                self.deletedFeatureCallback(sid)
+        else: # Q1 no
+            if c!='Assignment': # don't show a message for assignments, since addOuting will determine if it needs to be added
+                logging.info(' no correspondence entry found; adding the feature to the debrief map')
+
+        if action: # import or re-import
+            if c=='Assignment':
+                self.addOuting(f)
+            elif c=='Shape':
+                self.addShape(f,outingLogMessageOverride)
+            elif c=='Marker':
+                self.addMarker(f)
+            elif c=='Clue':
+                self.addClue(f)
+        self.updateLinkLights()
+
+                    # ot=tparse[0]+' '+tparse[1]
+                    # if ot not in self.dmd['outings'].keys():
+                    #     logging.info('  debrief map does not yet have an outing named "'+ot+'" - adding this line to the unclaimed list, hopefully to be picked up later')
+                    #     for tid in self.dmd['corr'][sid]:
+                    #         self.dmd['unclaimed'][tid]=t
+            # if 
+            #     logging.info('  all '+str(len(self.dmd['corr'][sid]))+' corresponding feature(s) exist in the debrief map')
+            #     for tid in self.dmd['corr'][sid]:
+            #         tf=self.sts2.getFeature(id=tid)
+            #         tfp=tf['properties']
+            #         g=f.get('geometry',None)
+            #         tfg=tf.get('geometry',None)
+            #         if tfp==p and tfg==g:
+            #             logging.info('   properties and geometry are unchanged; moving on...')
+            #         else:
+            #             if tfp!=p:
+            #                 self.propertyUpdateCallback(f)
+            #             if tfg!=g:
+            #                 self.geometryUpdateCallback(f)
+            #             logging.info('   done processing modified feature.')
+                        # # update un-owned features, but leave owned features alone since they have already been colored and cropped
+                        # allTidLists=[self.dmd['outings'][ot]['tids'] for ot in self.dmd['outings'].keys()]
+                        # logging.info('allTidLists:'+str(allTidLists))
+                        # # flatten a two-level nested list with possible empty members
+                        # #  https://stackoverflow.com/a/952952
+                        # allTids=[a for b in [a for b in allTidLists for a in b] for a in b]
+                        # if tid not in allTids: # only check the first corresponding feature; should be sufficient
+                        #     logging.info('   properties and/or geometry have changed; updating debrief map feature')
+                        #     self.sts2.editFeature(id=tid,properties=p,geometry=g)
+
                         # assignment boundary geometry change before restart is handled inside addOuting
                 # dead code since assignments don't exist in corr:
                 # crop uncropped tracks even if the assignment already exists in the target;
@@ -1579,15 +1660,13 @@ class DebriefMapGenerator(QObject):
                 # if c=='Assignment':
                 #     self.cropUncroppedTracks()
                 #     self.writeDmdFile()
-                self.updateLinkLights()
-                return
-            else:
-                logging.info('  but debrief map does not contain all of the specified features; adding the feature to the debrief map')
-        elif c!='Assignment': # don't show a message for assignments, since addOuting will determine if it needs to be added
-            logging.info(' no correspondence entry found; adding the feature to the debrief map')
+        #         self.updateLinkLights()
+        #         return
+        #     else:
+        #         logging.info('  but debrief map does not contain all of the specified features; adding the feature to the debrief map')
+        # elif c!='Assignment': # don't show a message for assignments, since addOuting will determine if it needs to be added
+        #     logging.info(' no correspondence entry found; adding the feature to the debrief map')
 
-        if c=='Assignment':
-            self.addOuting(f)
 
         # new assignment:
         # 1. add a folder with name = assignment title (include the team# - we want one folder per pairing)
@@ -1629,8 +1708,8 @@ class DebriefMapGenerator(QObject):
     #     # 2. if polygon:
     #     #   a. create a new polygon with the same geometry in the default folder
 
-        elif c=='Shape':
-            self.addShape(f,outingLogMessageOverride)
+        # elif c=='Shape':
+        #     self.addShape(f,outingLogMessageOverride)
             # g=f['geometry']
             # gc=g['coordinates']
             # gt=g['type']
@@ -1669,11 +1748,11 @@ class DebriefMapGenerator(QObject):
             # new marker:
             #  add the new marker in the default markers folder
 
-        elif c=='Marker':
-            self.addMarker(f)
+        # elif c=='Marker':
+        #     self.addMarker(f)
 
-        elif c=='Clue':
-            self.addClue(f)
+        # elif c=='Clue':
+        #     self.addClue(f)
         
             # new clue:
             #  add a new marker in the assignment folder, using the clue symbol
@@ -1682,7 +1761,7 @@ class DebriefMapGenerator(QObject):
             #     if folder['properties']['title']==t:
             #         sts2.addLine(f['geometry']['coordinates'],title=t,folderId=folder['id'],timeout=10)
             #         # sts2.editFeature(id=id,properties={'folderId':folder['id']})
-        self.updateLinkLights() # set back to previous colors
+        # self.updateLinkLights() # set back to previous colors
 
     # handle these cases:
     #  1 - name change from a non-track to a track ('CURRRENT TRACK' --> 'AA101a')
@@ -1737,27 +1816,50 @@ class DebriefMapGenerator(QObject):
                 logging.info(' exactly one debrief map feature corresponds to the source map feature; updating the debrief map feature properties')
                 tf=self.sts2.getFeature(id=corrList[0])
                 tp=tf['properties']
-                # map properties from source to target, based on source class; start with the existing target
-                #  map feature properties, and only copy the appropriate properties from the source feature
-                if sc=='Clue':
-                    logging.info('  mapping properties from Clue to Marker')
-                    taid=tp['assignmentId']
-                    said=tp['assignmentId']
-                    outingNames=self.dmd['outings'].keys()
-                    targetOutingName=[x for x in outingNames if self.dmd['outings'][x]['sid']==taid][0]
-                    sourceOutingName=[x for x in outingNames if self.dmd['outings'][x]['sid']==said][0]
-                    if taid!=said:
-                        self.dmd['outings'][targetOutingName].remove(sid)
-                        self.addOutingLogEntry(targetOutingName,'Moved clue '+st+' from this outing to '+sourceOutingName)
-                        self.addClue(f)
+                if sc=='Clue':  # update the title and details; move to the correct outing if the owner changed
+                    tid=corrList[0]
+                    ot1=None # title of the outing that owned the clue at the start of this function call
+                    otList=[t for t in self.dmd['outings'].keys() if tid in self.dmd['outings'][t]['cids']]
+                    if otList:
+                        ot1=otList[0]
                     if tp['title']!=st:
-                        self.addOutingLogEntry(targetOutingName,'Clue title changed: '+tp['title']+' --> '+st)
-                    tp['title']=st
-                    tp['description']=sp['description']
-                elif sc=='Assignment': # this may be dead code - if assignment, it should have two corr entries
+                        if ot1:
+                            self.addOutingLogEntry(ot1,'Changed clue title: '+tp["title"]+' --> '+st)
+                        tp['title']=st
+                    if tp['description']!=sp['description']:
+                        if ot1:
+                            self.addOutingLogEntry(ot1,'Changed notes for clue '+tp['title']+': '+tp["description"]+' --> '+sp["description"])
+                        tp['description']=sp['description']
+                    # target map outing sid should equal source map assignmentId
+                    #  But what if multiple outings have the same sid, i.e. the assignment has had multiple outings?
+                    #  Which is the right outing?  We could check for the outing with the title matching the current
+                    #  source map assignment title, but, that's probably not appropriate: if the clue owner is being changed,
+                    #  it's probably after the team has returned / after the assignment team# has been changed/deleted.
+                    #  This is a real ambiguity in sartopo too: the assignmentId field of a clue feature doesn't account
+                    #  for the concept of reassignment of the same assignment feature.  Since debrief map clues show
+                    #  up on all team PDFs anyway, and they don't go into any outing folder, the only place this really
+                    #  matters is dmd (and the debrief table).  So, just go with the first outing that has a matching sid,
+                    #  and live with the ambiguity for now - the worst that could happen is that the clue appears in the
+                    #  'clue' column for the wrong outing.  It would be nice to find a way to specify this sometime.
+                    aid=sp['assignmentId']
+                    if otList:
+                        ot1=otList[0]
+                        osid=self.dmd['outings'][ot1]['sid']
+                        if osid!=aid:
+                            ot2List=[t for t in self.dmd['outings'].keys() if self.dmd['outings'][t]['sid']==aid]
+                            if ot2List:
+                                ot2=ot2List[0]
+                                self.dmd['outings'][ot1]['cids'].remove(tid)
+                                self.dmd['outings'][ot2]['cids'].append(tid)
+                                logText='Moved clue: '+st+': '+ot1+' --> '+ot2
+                                self.writeDmdPause=True
+                                self.addOutingLogEntry(ot1,logText)
+                                self.writeDmdPause=False
+                                self.addOutingLogEntry(ot2,logText) # writes dmd file and sets redraw flag
+                elif sc=='Assignment': # this may be dead code - assignments don't appear in corr
                     tp['title']=st
                 else:
-                    tp=sp # for other feature types, copy all properties from source
+                    tp=sp # for other feature types, copy all properties from source - should be safe assuming target class = source class - ?
                 self.sts2.editFeature(id=corrList[0],properties=tp)
             else:
                 logging.error(' property change: more than one debrief map feature correspond to the source map feature, which is not a line; no changes made to debrief map')
@@ -1776,7 +1878,7 @@ class DebriefMapGenerator(QObject):
             # # 2. letter and number --> same letter, different number
             # #      --> do NOT change existing debrief map outing; create a new debrief map
             # #          outing (folder, boundary, assignments dict, fids dict) with new title;
-            # #          check for orphans
+            # #          check for unclaimed tracks
             # # 3. letter and number --> same letter, no number
             # #    all other cases
             # #      --> no change to debrief map or assignments/fids dicts
@@ -1814,14 +1916,14 @@ class DebriefMapGenerator(QObject):
             #         self.addOutingLogEntry(tp['title'],'Outing name changed: '+oldTitle+' --> '+st)
             #         # fids[tp['title']]=fids[oldTitle]
             #         del self.dmd['outings'][oldTitle]
-            #         self.checkForOrphans(st)
+            #         self.checkForUnclaimedTracks(st)
             #         # del fids[oldTitle]
 
             #     # case 2:
             #     elif (oldTitleHasNumber and newTitleHasNumber):
             #         logging.info('  existing debrief map assignment will not be changed; importing to a new assignment...')
             #         self.newFeatureCallback(f)
-            #         self.checkForOrphans(st)
+            #         self.checkForUnclaimedTracks(st)
 
             #     # case 3 / all other cases:
             #     else:
@@ -1898,12 +2000,17 @@ class DebriefMapGenerator(QObject):
                     else:
                         logging.info('  corresponding debrief map feature '+tid+' has no geometry; no edit performed')
         elif sid in osids:
+            match=False
             for ot in self.dmd['outings'].keys():
                 o=self.dmd['outings'][ot]
                 if o['sid']==sid and ot==st: # the title is current
+                    match=True
                     logging.info('  assignment geometry was edited: applying the same edit to corresponding debrief map boundary that has the same title "'+st+'" as the edited feature (to preserve previous outing boundaries)')
                     self.sts2.editFeature(id=o['bid'],geometry=sg)
                     self.addOutingLogEntry(ot,'Geometry edited for assignment boundary')
+                    break
+            if not match:
+                logging.info('  assignment geometry was edited, but its title does not match any existing outing; no outing boundary geometry was edited')
         # # 1. determine which target-map feature, if any, corresponds to the edited source-map feature
         # if sid in corr.keys():
         #     cval=corr[sid]
@@ -1967,9 +2074,9 @@ class DebriefMapGenerator(QObject):
                                 o['tids'].remove(trackList)
                                 self.addOutingLogEntry(outingName,'Track deleted: '+tidTitle)
                     # outing sid are not currently listed in corr
-                # remove from orphanTracksDict if needed
-                if tid in self.orphanTracksDict.keys():
-                    del self.orphanTracksDict[tid]
+                # remove from unclaimedTracksDict if needed
+                if tid in self.dmd['unclaimed'].keys():
+                    del self.dmd['unclaimed'][tid]
             del self.dmd['corr'][sid] # not currently iterating, so, del should be fine
         if not found:
             deleteOutingName=None
@@ -2220,7 +2327,7 @@ class DebriefDialog(QDialog,Ui_DebriefDialog):
             for n in range(self.ui.tableWidget.columnCount()):
                 vh.resizeSection(n,pix[16])
             self.ui.topLayout.setContentsMargins(pix[6],pix[6],pix[6],pix[6])
-            self.ui.debriefStopStartButton.setIconSize(QtCore.QSize(pix[24],pix[24]))
+            self.ui.debriefPauseResumeButton.setIconSize(QtCore.QSize(pix[24],pix[24]))
             self.ui.debriefOptionsButton.setIconSize(QtCore.QSize(pix[24],pix[24]))
             self.setMinimumSize(QtCore.QSize(int(500*(ldpi/96)),int(500*(ldpi/96))))
             self.setMaximumSize(QtCore.QSize(int(800*(ldpi/96)),screen.size().height()-50))

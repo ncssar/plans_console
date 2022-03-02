@@ -419,6 +419,8 @@ class SartopoSession():
         # logging.info("API version:"+str(self.apiVersion))
         # sync needs to be done here instead of in the caller, so that
         #  edit functions can have access to the full json
+        self.syncThreadStarted=False
+        self.syncPauseManual=False
         if self.sync:
             self.start()
         else: # do an initial since(0) even if sync is false
@@ -617,21 +619,33 @@ class SartopoSession():
                 else:
                     msg+='forceImmediate not specified: not syncing now'
                     logging.info(msg)
-
-    def stop(self):
-        logging.info('Sartopo syncing terminated.')
-        self.sync=False
-
+    
     def __del__(self):
-        logging.info('SartopoSession instance deleted.')
+        logging.info('SartopoSession instance deleted for map '+self.mapID+'.')
         if self.sync:
             self.stop()
 
     def start(self):
         self.sync=True
-        logging.info('Sartopo syncing initiated.')
-        Thread(target=self._syncLoop).start()
+        if self.syncThreadStarted:
+            logging.info('Sartopo sync is already running for map '+self.mapID+'.')
+        else:
+            Thread(target=self._syncLoop).start()
+            logging.info('Sartopo syncing initiated for map '+self.mapID+'.')
+            self.syncThreadStarted=True
 
+    def stop(self):
+        logging.info('Sartopo sync terminating for map '+self.mapID+'.')
+        self.sync=False
+
+    def pause(self):
+        logging.info('Pausing sync for map '+self.mapID+'...')
+        self.syncPauseManual=True
+
+    def resume(self):
+        logging.info('Resuming sync for map '+self.mapID+'.')
+        self.syncPauseManual=False
+    
     # _syncLoop - should only be called from self.start(), which calls _syncLoop in a new thread.
     #  This is just a loop that calls doSync.  To prevent an endless loop, doSync must be
     #  able to terminate the thread if the main thread has ended; also note that any other
@@ -640,29 +654,33 @@ class SartopoSession():
     #  and it allows the blocking sleep call to happen here instead of inside doSync.
     def _syncLoop(self):
         while self.sync:
-            self.syncPauseMessageGiven=False
-            while self.syncPause:
-                if not threading.main_thread().is_alive():
-                    logging.info('Main thread has ended; sync is stopping...')
-                    self.syncPause=False
-                    self.sync=False
-                if not self.syncPauseMessageGiven:
-                    logging.info(self.mapID+': sync pause begins; sync will not happen until sync pause ends')
-                    self.syncPauseMessageGiven=True
-                time.sleep(1)
-            if self.syncPauseMessageGiven:
-                logging.info(self.mapID+': sync pause ends; resuming sync')
+            if not self.syncPauseManual:
                 self.syncPauseMessageGiven=False
-            syncWaited=0
-            while self.syncing and syncWaited<20: # wait for any current callbacks within doSync() to complete, with timeout of 20 sec
-                logging.info(' [sync from _syncLoop is waiting for current sync processing to finish, up to '+str(20-syncWaited)+' more seconds...]')
-                time.sleep(1)
-                syncWaited+=1
-            try:
-                self.doSync()
-            except Exception as e:
-                logging.error('Exception during sync of map '+self.mapID+'; stopping sync: '+str(e))
-                self.sync=False
+                while self.syncPause:
+                    if not threading.main_thread().is_alive():
+                        logging.info('Main thread has ended; sync is stopping...')
+                        self.syncPause=False
+                        self.sync=False
+                    if not self.syncPauseMessageGiven:
+                        logging.info(self.mapID+': sync pause begins; sync will not happen until sync pause ends')
+                        self.syncPauseMessageGiven=True
+                    time.sleep(1)
+                if self.syncPauseMessageGiven:
+                    logging.info(self.mapID+': sync pause ends; resuming sync')
+                    self.syncPauseMessageGiven=False
+                syncWaited=0
+                while self.syncing and syncWaited<20: # wait for any current callbacks within doSync() to complete, with timeout of 20 sec
+                    logging.info(' [sync from _syncLoop is waiting for current sync processing to finish, up to '+str(20-syncWaited)+' more seconds...]')
+                    time.sleep(1)
+                    syncWaited+=1
+                try:
+                    self.doSync()
+                except Exception as e:
+                    logging.error('Exception during sync of map '+self.mapID+'; stopping sync: '+str(e))
+                    # remove sync blockers, to let the thread shut down cleanly, avoiding a zombie loop when sync restart is attempted
+                    self.syncPause=False
+                    self.syncing=False
+                    self.sync=False
             if self.sync: # don't bother with the sleep if sync is no longer True
                 time.sleep(self.syncInterval)
 
@@ -1255,7 +1273,7 @@ class SartopoSession():
                 if allowMultiTitleMatch:
                     return rval
                 else:
-                    logging.error('getFeatures: More than one feature matches the specified title.')
+                    logging.warning('getFeatures: More than one feature matches the specified title.')
                     return [False]
             else:
                 return rval
@@ -1282,10 +1300,10 @@ class SartopoSession():
             if len(r)==1:
                 return r[0]
             elif len(r)<1:
-                logging.error('getFeature: no match')
+                logging.warning('getFeature: no match')
                 return -1
             else:
-                logging.error('getFeature: more than one match')
+                logging.warning('getFeature: more than one match')
                 logging.info(str(r))
                 return -1
         else:
@@ -1356,10 +1374,10 @@ class SartopoSession():
             features=[f for f in self.mapData['state']['features'] if f['properties'].get(ltKey,None)==ltVal and f['properties']['class'].lower()==className.lower()]
                 
             if len(features)==0:
-                logging.error(' no feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
+                logging.warning(' no feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
                 return False
             if len(features)>1:
-                logging.error(' more than one feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
+                logging.warning(' more than one feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
                 return False
             feature=features[0]
             logging.info(' feature found: '+str(feature))
@@ -1479,7 +1497,7 @@ class SartopoSession():
             if isinstance(targetShape,dict):
                 targetStr=targetShape.get('title','NO TITLE')
         if not targetShape:
-            logging.error('Target shape '+targetStr+' not found; operation aborted.')
+            logging.warning('Target shape '+targetStr+' not found; operation aborted.')
             return False
 
         tg=targetShape['geometry']
@@ -1509,7 +1527,7 @@ class SartopoSession():
             if isinstance(cutterShape,dict):
                 cutterStr=cutterShape.get('title','NO TITLE')
         if not cutterShape:
-            logging.error('Cutter shape '+cutterStr+' not found; operation aborted.')
+            logging.warning('Cutter shape '+cutterStr+' not found; operation aborted.')
             return False
 
         logging.info('cut: target='+targetStr+'  cutter='+cutterStr)
@@ -1530,7 +1548,7 @@ class SartopoSession():
         logging.info('cutterGeom:'+str(cutterGeom))
 
         if not cutterGeom.intersects(targetGeom):
-            logging.error(targetShape['properties']['title']+','+cutterShape['properties']['title']+': features do not intersect; no operation performed')
+            logging.warning(targetShape['properties']['title']+','+cutterShape['properties']['title']+': features do not intersect; no operation performed')
             return False
 
         #  shapely.ops.split only works if the second geometry completely splits the first;
@@ -1561,12 +1579,12 @@ class SartopoSession():
         if isinstance(result,Polygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result.exterior.coords)]}))
             if rids==[]:
-                logging.error('cut: target shape not found; operation aborted.')
+                logging.warning('cut: target shape not found; operation aborted.')
                 return False
         elif isinstance(result,MultiPolygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}))
             if rids==[]:
-                logging.error('cut: target shape not found; operation aborted.')
+                logging.warning('cut: target shape not found; operation aborted.')
                 return False
             suffix=0
             for r in result[1:]:
@@ -1610,17 +1628,17 @@ class SartopoSession():
                         gpstype=tp.get('gpstype',''),
                         status=tp.get('status','')))
                 else:
-                    logging.error('cut: target feature class was neither Shape nor Assigment; operation aborted.')
+                    logging.warning('cut: target feature class was neither Shape nor Assigment; operation aborted.')
                     return False
         elif isinstance(result,LineString):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result.coords)}))
             if rids==[]:
-                logging.error('cut: target shape not found; operation aborted.')
+                logging.warning('cut: target shape not found; operation aborted.')
                 return False
         elif isinstance(result,MultiLineString):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result[0].coords)}))
             if rids==[]:
-                logging.error('cut: target shape not found; operation aborted.')
+                logging.warning('cut: target shape not found; operation aborted.')
                 return False
             suffix=0
             for r in result[1:]:
@@ -1685,7 +1703,7 @@ class SartopoSession():
             if isinstance(targetShape,dict):
                 targetStr=targetShape.get('title','NO TITLE')
         if not targetShape:
-            logging.error('Target shape '+targetStr+' not found; operation aborted.')
+            logging.warning('Target shape '+targetStr+' not found; operation aborted.')
             return False
         
         tg=targetShape['geometry']
@@ -1695,7 +1713,7 @@ class SartopoSession():
         if targetType=='Polygon':
             targetGeom=Polygon(tgc) # Shapely object
         else:
-            logging.error('expand: target feature '+targetStr+' is not a polygon: '+targetType)
+            logging.warning('expand: target feature '+targetStr+' is not a polygon: '+targetType)
             return False
         logging.info('targetGeom:'+str(targetGeom))
 
@@ -1711,7 +1729,7 @@ class SartopoSession():
             if isinstance(p2Shape,dict):
                 p2Str=p2Shape.get('title','NO TITLE')
         if not p2Shape:
-            logging.error('expand: second polygon '+p2Str+' not found; operation aborted.')
+            logging.warning('expand: second polygon '+p2Str+' not found; operation aborted.')
             return False
 
         logging.info('expand: target='+targetStr+'  p2='+p2Str)
@@ -1723,19 +1741,19 @@ class SartopoSession():
         if p2Type=='Polygon':
             p2Geom=Polygon(cgc) # Shapely object
         else:
-            logging.error('expand: p2 feature '+p2Str+' is not a polygon: '+p2Type)
+            logging.warning('expand: p2 feature '+p2Str+' is not a polygon: '+p2Type)
             return False
         logging.info('p2Geom:'+str(p2Geom))
 
         if not p2Geom.intersects(targetGeom):
-            logging.error(targetShape['properties']['title']+','+p2Shape['properties']['title']+': features do not intersect; no operation performed')
+            logging.warning(targetShape['properties']['title']+','+p2Shape['properties']['title']+': features do not intersect; no operation performed')
             return False
 
         result=targetGeom|p2Geom
         logging.info('expand result:'+str(result))
 
         if not self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result.exterior.coords)]}):
-            logging.error('expand: target shape not found; operation aborted.')
+            logging.warning('expand: target shape not found; operation aborted.')
             return False
 
         if deleteP2:
@@ -1837,7 +1855,7 @@ class SartopoSession():
                 if isinstance(objShape,dict):
                     objStr=objShape.get('title','NO TITLE')
             if not objShape:
-                logging.error('Object shape '+objStr+' not found; operation aborted.')
+                logging.warning('Object shape '+objStr+' not found; operation aborted.')
                 return False
             og=objShape['geometry']
             objType=og['type']
@@ -1854,7 +1872,7 @@ class SartopoSession():
                 ogc=og['coordinates'][0:2]
                 objGeom=Point(ogc) # Shapely object
             else:
-                logging.error('crop: feature '+objStr+' is not a polygon or line or point: '+objType)
+                logging.warning('crop: feature '+objStr+' is not a polygon or line or point: '+objType)
                 return False
             bbox=objGeom.bounds
             rval=[min(bbox[0],rval[0]),min(bbox[1],rval[1]),max(bbox[2],rval[2]),max(bbox[3],rval[3])]
@@ -1884,7 +1902,7 @@ class SartopoSession():
             if isinstance(targetShape,dict):
                 targetStr=targetShape.get('title','NO TITLE')
         if not targetShape:
-            logging.error('Target shape '+targetStr+' not found; operation aborted.')
+            logging.warning('Target shape '+targetStr+' not found; operation aborted.')
             return False
 
         tg=targetShape['geometry']
@@ -1898,7 +1916,7 @@ class SartopoSession():
             tgc=self.removeSpurs(tgc)
             targetGeom=LineString(tgc)
         else:
-            logging.error('crop: target feature '+targetStr+' is not a polygon or line: '+targetType)
+            logging.warning('crop: target feature '+targetStr+' is not a polygon or line: '+targetType)
             return False
             
         if isinstance(boundary,str): # if string, find feature by name; if id, find feature by id
@@ -1913,7 +1931,7 @@ class SartopoSession():
             if isinstance(boundaryShape,dict):
                 boundaryStr=boundaryShape.get('title','NO TITLE')
         if not boundaryShape:
-            logging.error('crop: boundary shape '+boundaryStr+' not found; operation aborted.')
+            logging.warning('crop: boundary shape '+boundaryStr+' not found; operation aborted.')
             return False
 
         logging.info('crop: target='+targetStr+'  boundary='+boundaryStr)
@@ -1925,12 +1943,12 @@ class SartopoSession():
             cgc=self.removeSpurs(cgc)
             boundaryGeom=Polygon(cgc).buffer(beyond) # Shapely object
         else:
-            logging.error('crop: boundary feature '+boundaryStr+' is not a polygon: '+boundaryType)
+            logging.warning('crop: boundary feature '+boundaryStr+' is not a polygon: '+boundaryType)
             return False
         # logging.info('crop: boundaryGeom:'+str(boundaryGeom))
 
         if not boundaryGeom.intersects(targetGeom):
-            logging.error(targetShape['properties']['title']+','+boundaryShape['properties']['title']+': features do not intersect; no operation performed')
+            logging.warning(targetShape['properties']['title']+','+boundaryShape['properties']['title']+': features do not intersect; no operation performed')
             return False
 
         # if target is a line, and boundary is a polygon, use intersection2; see notes above
@@ -1962,12 +1980,12 @@ class SartopoSession():
         if isinstance(result,Polygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result.exterior.coords)]}))
             if rids==[]:
-                logging.error('crop: target shape not found; operation aborted.')
+                logging.warning('crop: target shape not found; operation aborted.')
                 return False
         elif isinstance(result,MultiPolygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}))
             if rids==[]:
-                logging.error('crop: target shape not found; operation aborted.')
+                logging.warning('crop: target shape not found; operation aborted.')
                 return False
             suffix=0
             for r in result[1:]:
@@ -2011,16 +2029,16 @@ class SartopoSession():
                         gpstype=tp.get('gpstype',''),
                         status=tp.get('status','')))
                 else:
-                    logging.error('crop: target feature class was neither Shape nor Assigment')
+                    logging.warning('crop: target feature class was neither Shape nor Assigment')
         elif isinstance(result,LineString):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result.coords)}))
             if rids==[]:
-                logging.error('crop: target shape not found; operation aborted.')
+                logging.warning('crop: target shape not found; operation aborted.')
                 return False
         elif isinstance(result,MultiLineString):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result[0].coords)}))
             if rids==[]:
-                logging.error('crop: target shape not found; operation aborted.')
+                logging.warning('crop: target shape not found; operation aborted.')
                 return False
             suffix=0
             for r in result[1:]:
@@ -2063,7 +2081,7 @@ class SartopoSession():
                         gpstype=tp.get('gpstype',''),
                         status=tp.get('status','')))
                 else:
-                    logging.error('crop: target feature class was neither Shape nor Assigment')
+                    logging.warning('crop: target feature class was neither Shape nor Assigment')
                     return False
 
         if deleteBoundary:
