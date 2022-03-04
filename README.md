@@ -1,6 +1,6 @@
 # plans_console
 plans_console2    python3.x
-is a semi-real-time view-only interface for radiolog data files being written on a shared drive, entry mechanism to add markers to a sartopo map and provides a means to edit features on a sartopo map.
+is a semi-real-time view-only  interface for radiolog data files being written on a shared drive, entry mechanism to add markers to a sartopo map and provides a means to edit features on a sartopo map.
 
 # installation
 You will need to install pygtail, regex, glob, traceback, jsopn, random, time, io, shutil, os, sys modules:
