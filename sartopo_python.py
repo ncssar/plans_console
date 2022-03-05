@@ -154,7 +154,7 @@ import copy
 # shapely.geometry improts will generate a logging message if numpy is not installed;
 #  numpy is not actually required
 from shapely.geometry import LineString,Point,Polygon,MultiLineString,MultiPolygon,GeometryCollection
-from shapely.ops import split
+from shapely.ops import split,unary_union
 
 # silent exception class to be raised during __init__ and handlded by the caller,
 #  since __init__ should always return None: https://stackoverflow.com/questions/20059766
@@ -676,7 +676,7 @@ class SartopoSession():
                 try:
                     self.doSync()
                 except Exception as e:
-                    logging.error('Exception during sync of map '+self.mapID+'; stopping sync: '+str(e))
+                    logging.error('Exception during sync of map '+self.mapID+'; stopping sync: '+str(type(e).__name__)+':'+str(e.args))
                     # remove sync blockers, to let the thread shut down cleanly, avoiding a zombie loop when sync restart is attempted
                     self.syncPause=False
                     self.syncing=False
@@ -1463,12 +1463,13 @@ class SartopoSession():
         if len(points)>3:
             out=points[0:2]
             for i in range(2,len(points)):
-                if points[i]!=points[i-2]:
-                    out.append(points[i])
-                else:
-                    logging.info('spur removed at '+str(points[i-1]))
-                    out.pop() # delete last vertex
-                # logging.info('\n --> '+str(len(out))+' points: '+str(out))
+                if points[i][0:2]!=points[i-1][0:2]: # skip this point if it is the same as the previous point
+                    if points[i][0:2]!=points[i-2][0:2]:
+                        out.append(points[i])
+                    else:
+                        logging.info('spur removed at '+str(points[i-1]))
+                        out.pop() # delete last vertex
+                    # logging.info('\n --> '+str(len(out))+' points: '+str(out))
         else:
             # logging.info('\n      feature has less than three points; no spur removal attempted.')
             out=points
@@ -1761,6 +1762,11 @@ class SartopoSession():
 
         return True # success
 
+    def buffer2(self,boundaryGeom,beyond):
+        a=boundaryGeom.buffer(0) # split bowties into separate polygons
+        merged=unary_union(a)
+        return merged.buffer(beyond)
+
     # intersection2(targetGeom,boundaryGeom)
     # we want a function that can take the place of shapely.ops.intersection
     #  when the target is a LineString and the boundary is a Polygon,
@@ -1885,6 +1891,18 @@ class SartopoSession():
         rval=[rval[0]-pad,rval[1]-pad,rval[2]+pad,rval[3]+pad]
         return rval
 
+    def twoify(self,points):
+        return [p[0:2] for p in points]
+
+    def fourify(self,points,origPoints):
+        if len(points[0])==4: # it's already a four-element list
+            return points
+        for i in range(len(points)):
+            for o in origPoints:
+                if o[0:2]==points[i][0:2]:
+                    points[i]=o
+                    break
+        return i
 
     # crop - remove portions of a line or polygon that are outside a boundary polygon;
     #          grow the specified boundary polygon by the specified distance before cropping
@@ -1906,14 +1924,18 @@ class SartopoSession():
             return False
 
         tg=targetShape['geometry']
+        tgc_orig=None
         targetType=tg['type']
         if targetType=='Polygon':
             tgc=tg['coordinates'][0]
             tgc=self.removeSpurs(tgc)
             targetGeom=Polygon(tgc) # Shapely object
         elif targetType=='LineString':
-            tgc=tg['coordinates']
+            tgc_orig=tg['coordinates']
+            tgc=self.twoify(tgc_orig)
+            # logging.info('tgc before ('+str(len(tgc))+' points):'+str(tgc))
             tgc=self.removeSpurs(tgc)
+            # logging.info('tgc after ('+str(len(tgc))+' points):'+str(tgc))
             targetGeom=LineString(tgc)
         else:
             logging.warning('crop: target feature '+targetStr+' is not a polygon or line: '+targetType)
@@ -1941,11 +1963,22 @@ class SartopoSession():
         if boundaryType=='Polygon':
             cgc=cg['coordinates'][0]
             cgc=self.removeSpurs(cgc)
-            boundaryGeom=Polygon(cgc).buffer(beyond) # Shapely object
+            # boundaryGeom=Polygon(cgc).buffer(beyond) # Shapely object
+            boundaryGeom=self.buffer2(Polygon(cgc),beyond)
         else:
             logging.warning('crop: boundary feature '+boundaryStr+' is not a polygon: '+boundaryType)
             return False
         # logging.info('crop: boundaryGeom:'+str(boundaryGeom))
+        # tp=targetShape['properties']
+        # self.addPolygon(list(boundaryGeom.exterior.coords),
+        #     title='grownBoundary',
+        #     stroke=tp['stroke'],
+        #     fill=tp['fill'],
+        #     strokeOpacity=tp['stroke-opacity'],
+        #     strokeWidth=tp['stroke-width'],
+        #     fillOpacity=tp['fill-opacity'],
+        #     description=tp['description'],
+        #     gpstype=tp['gpstype'])
 
         if not boundaryGeom.intersects(targetGeom):
             logging.warning(targetShape['properties']['title']+','+boundaryShape['properties']['title']+': features do not intersect; no operation performed')
@@ -2031,7 +2064,8 @@ class SartopoSession():
                 else:
                     logging.warning('crop: target feature class was neither Shape nor Assigment')
         elif isinstance(result,LineString):
-            rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result.coords)}))
+            logging.info('adding shape to result list')
+            rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':self.fourify(list(result.coords),tgc_orig)}))
             if rids==[]:
                 logging.warning('crop: target shape not found; operation aborted.')
                 return False

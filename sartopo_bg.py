@@ -247,7 +247,8 @@ class DebriefMapGenerator(QObject):
 
         self.debriefHeaderTextPart1={
             'on':'Debrief Map Generator is running in the background.  You can safely close and reopen this dialog as needed.',
-            'off':'Syncing is currently PAUSED.  Data in the debrief table below may be out of date.  Click the Play button to resume.'
+            'off':'Syncing is currently PAUSED.  Data in the debrief table below may be out of date.  Click the Play button to resume.',
+            'ended':'Syncing has ENDED, due to shutdown or due to fatal exception.  Check the log file to find out why.  Data in the debrief table below may be out of date.  Click the Play button to restart sync.'
         }
         self.debriefHeaderTextPart2='\n\nDebrief data (tracks from returning searchers) should be imported to the INCIDENT map.  The DEBRIEF map is automatically updated and should not need to be directly edited.'
 
@@ -597,6 +598,15 @@ class DebriefMapGenerator(QObject):
             self.updateLinkLights(incidentLink=5)
             QTimer.singleShot(500,self.updateLinkLights)
             self.syncBlinkFlag=False
+        if not self.sts1.sync: # this should only be the case when sync has ended, due to shutdown or exception
+            self.dd.ui.debriefDialogLabel.setText(self.debriefHeaderTextPart1['ended']+self.debriefHeaderTextPart2)
+            self.dd.ui.debriefPauseResumeButton.setIcon(self.dd.ui.startIcon)
+            self.dd.ui.debriefPauseResumeButton.setToolTip('Restart Sync')
+            self.dd.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[-1])
+            if self.pc:
+                self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[-1])
+            self.dd.ui.tableWidget.setStyleSheet('background-color:#FFAAAA;')
+
 
 
     def setPDFButton(self,outingNameOrRow,state):
@@ -656,10 +666,13 @@ class DebriefMapGenerator(QObject):
         self.debriefOptionsDialog.raise_()
     
     def debriefPauseResumeButtonClicked(self,*args,**kwargs):
-        if self.sts1.syncPauseManual: # syncing was paused: resume sync
-            self.sts1.resume()
-        else: # syncing was not paused: pause sync
-            self.sts1.pause()
+        if self.sts1.sync: # sync is on, but may be paused
+            if self.sts1.syncPauseManual: # syncing was paused: resume sync
+                self.sts1.resume()
+            else: # syncing was not paused: pause sync
+                self.sts1.pause()
+        else: # sync has ended, due to shutdown or exception
+            self.sts1.start()
         # GUI indications of sync status are handled by self.tick()
 
     def editNoteClicked(self,*args,**kwargs):
@@ -889,7 +902,7 @@ class DebriefMapGenerator(QObject):
         # progressBox maximum = total number of ids to delete plus total number of incident map features
         self.sts1.syncPause=True
         self.writeDmdPause=True
-        self.sts1.stop()
+        self.sts1.pause()
         progress=0
         if outingNameOrAll==':ALL:':
             logging.info('inside rebuild: about to rebuild the entire debrief map')
@@ -983,7 +996,7 @@ class DebriefMapGenerator(QObject):
             QCoreApplication.processEvents()
         self.sts1.syncPause=False
         self.writeDmdPause=False
-        self.sts1.start()
+        self.sts1.resume()
         self.writeDmdFile()
         progressBox.close()
         logging.info('rebuild complete')
@@ -1415,7 +1428,7 @@ class DebriefMapGenerator(QObject):
             logging.info('creating line \''+t+'\' in default folder')
             lineID=self.sts2.addLine(gc,title=t,
                     color=color,
-                    description=p['description'],
+                    description=p.get('description',''),
                     opacity=p['stroke-opacity'],
                     width=p['stroke-width'],
                     pattern=p['pattern'])
@@ -1466,14 +1479,23 @@ class DebriefMapGenerator(QObject):
         logging.info('creating clue \''+t+'\' in default folder')
         clueID=self.sts2.addMarker(gc[1],gc[0],title=t,symbol='clue',description=p['description'])
         aid=p['assignmentId']
-        # add outing now if not already done
+        # what outing owns the clue?
+        # Q: are there any outings whose sid matches the clue's assignmentId?
+        #  YES: do any of those outings have the same title as the incident sid?
+        #    YES: use that one!
+        #    NO: just use the first one
+        #  NO: do not attribute the clue to any outing
         outingNames=[name for name in self.dmd['outings'] if self.dmd['outings'][name]['sid']==aid]
-        if not outingNames:
-            logging.info('  The assignment that owns the clue does not yet have an outings dictionary.  Adding the outing now.')
-            self.addOuting(aid)
-        outingName=[name for name in self.dmd['outings'] if self.dmd['outings'][name]['sid']==aid][0]
-        self.dmd['outings'][outingName]['cids'].append(clueID)
-        self.addOutingLogEntry(outingName,'Clue added: '+t)
+        if outingNames:
+            exactMatches=[name for name in outingNames if self.sts1.getFeature(id=aid)['properties']['title']==name]
+            if exactMatches:
+                outingName=exactMatches[0]
+            else:
+                outingName=outingNames[0]
+            self.dmd['outings'][outingName]['cids'].append(clueID)
+            self.addOutingLogEntry(outingName,'Clue added: '+t)
+        else:
+            logging.info('  The assignment that owns the clue does not have any outing in the dmd dictionary.  The clue will not be attributed to any outing.')
         self.addCorrespondence(f['id'],clueID)
 
     def cropUncroppedTracks(self):
@@ -1485,6 +1507,7 @@ class DebriefMapGenerator(QObject):
                 if bid is not None:
                     logging.info('  Outing '+outingName+': cropping '+str(len(utids))+' uncropped track(s):'+str(utids))
                     for utid in utids:
+                        logging.info('   cropping '+utid)
                         # since newly created features are immediately added to the local cache,
                         #  the boundary feature should be available by this time
                         # if crop is specified in dmd, use that value; otherwise use the default
