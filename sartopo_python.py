@@ -1869,14 +1869,14 @@ class SartopoSession():
             if objType=='Polygon':
                 ogc=og['coordinates'][0]
                 ogc=self.removeSpurs(ogc)
-                objGeom=Polygon(ogc) # Shapely object
+                objGeom=Polygon(self.twoify(ogc)) # Shapely object
             elif objType=='LineString':
                 ogc=og['coordinates']
                 ogc=self.removeSpurs(ogc)
-                objGeom=LineString(ogc) # Shapely object
+                objGeom=LineString(self.twoify(ogc)) # Shapely object
             elif objType=='Point':
                 ogc=og['coordinates'][0:2]
-                objGeom=Point(ogc) # Shapely object
+                objGeom=Point(self.twoify(ogc)) # Shapely object
             else:
                 logging.warning('crop: feature '+objStr+' is not a polygon or line or point: '+objType)
                 return False
@@ -1892,7 +1892,12 @@ class SartopoSession():
         return rval
 
     def twoify(self,points):
-        return [p[0:2] for p in points]
+        if not isinstance(points,list):
+            return points
+        if isinstance(points[0],list): # the arg is a list of points
+            return [p[0:2] for p in points]
+        else: # the arg is just one point
+            return points[0:2]
 
     def fourify(self,points,origPoints):
         if len(points[0])==4: # it's already a four-element list
