@@ -1287,7 +1287,8 @@ class SartopoSession():
             featureClassExcludeList=[],
             allowMultiTitleMatch=False,
             since=0,
-            timeout=False):
+            timeout=False,
+            forceRefresh=False):
         r=self.getFeatures(
             featureClass=featureClass,
             title=title,
@@ -1295,7 +1296,8 @@ class SartopoSession():
             featureClassExcludeList=featureClassExcludeList,
             allowMultiTitleMatch=allowMultiTitleMatch,
             since=since,
-            timeout=timeout)
+            timeout=timeout,
+            forceRefresh=forceRefresh)
         if isinstance(r,list):
             if len(r)==1:
                 return r[0]
@@ -1421,6 +1423,9 @@ class SartopoSession():
 
         geomToWrite=None
         if geometry is not None:
+            if isinstance(geometry,dict) and 'coordinates' in geometry.keys():
+                geometry['size']=len(geometry['coordinates'])
+            # logging.info('geometry specified (size was recalculated if needed):\n'+json.dumps(geometry))
             geomToWrite=feature['geometry']
             for key in geometry.keys():
                 geomToWrite[key]=geometry[key]
@@ -1891,6 +1896,8 @@ class SartopoSession():
         rval=[rval[0]-pad,rval[1]-pad,rval[2]+pad,rval[3]+pad]
         return rval
 
+    # twoify - turn four-element-vertex-data into two-element-vertex-data so that
+    #  the shapely functions can operate on it
     def twoify(self,points):
         if not isinstance(points,list):
             return points
@@ -1899,7 +1906,13 @@ class SartopoSession():
         else: # the arg is just one point
             return points[0:2]
 
+    # fourify - try to use four-element-vertex data from original data; called by
+    #  geometry operations during resulting shape creation / editing
     def fourify(self,points,origPoints):
+        # make sure both are lists of lists, since points may initially be a list of tuples
+        if isinstance(points[0],tuple):
+            points=list(map(list,points))
+        logging.info('fourify called:\npoints='+str(points)+'\norigPoints='+str(origPoints))
         if len(points[0])==4: # it's already a four-element list
             return points
         for i in range(len(points)):
@@ -1907,12 +1920,12 @@ class SartopoSession():
                 if o[0:2]==points[i][0:2]:
                     points[i]=o
                     break
-        return i
+        return points
 
     # crop - remove portions of a line or polygon that are outside a boundary polygon;
     #          grow the specified boundary polygon by the specified distance before cropping
 
-    def crop(self,target,boundary,beyond=0.0001,deleteBoundary=False,useResultNameSuffix=False):
+    def crop(self,target,boundary,beyond=0.0001,deleteBoundary=False,useResultNameSuffix=False,drawSizedBoundary=False):
         if isinstance(target,str): # if string, find feature by name; if id, find feature by id
             targetStr=target
             if len(target)==36: # id
@@ -1974,16 +1987,17 @@ class SartopoSession():
             logging.warning('crop: boundary feature '+boundaryStr+' is not a polygon: '+boundaryType)
             return False
         # logging.info('crop: boundaryGeom:'+str(boundaryGeom))
-        # tp=targetShape['properties']
-        # self.addPolygon(list(boundaryGeom.exterior.coords),
-        #     title='grownBoundary',
-        #     stroke=tp['stroke'],
-        #     fill=tp['fill'],
-        #     strokeOpacity=tp['stroke-opacity'],
-        #     strokeWidth=tp['stroke-width'],
-        #     fillOpacity=tp['fill-opacity'],
-        #     description=tp['description'],
-        #     gpstype=tp['gpstype'])
+        if drawSizedBoundary:
+            tp=targetShape['properties']
+            self.addPolygon(list(boundaryGeom.exterior.coords),
+                title='sizedCropBoundary',
+                stroke=tp['stroke'],
+                fill=tp['fill'],
+                strokeOpacity=tp['stroke-opacity'],
+                strokeWidth=tp['stroke-width'],
+                fillOpacity=tp['fill-opacity'],
+                description=tp['description'],
+                gpstype=tp['gpstype'])
 
         if not boundaryGeom.intersects(targetGeom):
             logging.warning(targetShape['properties']['title']+','+boundaryShape['properties']['title']+': features do not intersect; no operation performed')
@@ -2069,8 +2083,10 @@ class SartopoSession():
                 else:
                     logging.warning('crop: target feature class was neither Shape nor Assigment')
         elif isinstance(result,LineString):
-            logging.info('adding shape to result list')
-            rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':self.fourify(list(result.coords),tgc_orig)}))
+            # logging.info('adding shape to result list')
+            four=self.fourify(list(result.coords),tgc_orig)
+            # logging.info('four:'+str(four))
+            rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':four}))
             if rids==[]:
                 logging.warning('crop: target shape not found; operation aborted.')
                 return False
