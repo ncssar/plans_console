@@ -417,7 +417,7 @@ class DebriefMapGenerator(QObject):
         self.cropDegrees=0.001  # about 100 meters - varies with latitude but this is not important for cropping
         self.roamingCropDegrees=0.1 # about 10km - varies with latitude but this is not important for cropping
 
-        self.dmd={'outings':{},'corr':{},'unclaimed':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
+        self.dmd={'outings':{},'corr':{},'unclaimedTracks':{},'unclaimedClues':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
         # self.dmd['outings']={}
         # self.dmd['corr']={}
         self.writeDmdPause=False
@@ -595,6 +595,7 @@ class DebriefMapGenerator(QObject):
                     self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[1])
                 self.dd.ui.tableWidget.setStyleSheet('background-color:#FFFFFF;')
         if self.syncBlinkFlag: # set by syncCallback after each sync
+            self.dd.ui.tableWidget.setStyleSheet('background-color:#FFFFFF;')
             self.updateLinkLights(incidentLink=5)
             QTimer.singleShot(500,self.updateLinkLights)
             self.syncBlinkFlag=False
@@ -673,7 +674,10 @@ class DebriefMapGenerator(QObject):
                 self.sts1.pause()
         else: # sync has ended, due to shutdown or exception
             self.sts1.start()
-        # GUI indications of sync status are handled by self.tick()
+            self.dd.ui.debriefDialogLabel.setText(self.debriefHeaderTextPart1['on']+self.debriefHeaderTextPart2)
+            self.dd.ui.debriefPauseResumeButton.setIcon(self.dd.ui.pauseIcon)
+            self.dd.ui.debriefPauseResumeButton.setToolTip('Pause Sync')
+            # other GUI indications of sync status are handled by self.tick()
 
     def editNoteClicked(self,*args,**kwargs):
         row=self.dd.ui.tableWidget.currentRow()
@@ -703,12 +707,12 @@ class DebriefMapGenerator(QObject):
         outingName=self.dd.ui.tableWidget.item(row,0).text()
         logging.info('Generate PDF button clicked for outing '+outingName)
         outing=self.dmd['outings'][outingName]
-        ids=[outing['bid']]
-        ids.extend(outing['cids'])
+        outingFeatureIds=[outing['bid']]
+        outingFeatureIds.extend(outing['cids'])
         for tidList in outing['tids']:
-            ids.extend(tidList)
-        logging.info('ids for this outing:'+str(ids))
-        bounds=self.sts2.getBounds(ids,padPct=15)
+            outingFeatureIds.extend(tidList)
+        # logging.info('ids for this outing:'+str(ids))
+        bounds=self.sts2.getBounds(outingFeatureIds,padPct=15)
 
         # also print non-outing-related features
         # while there could be folders of non-outing-related features in the incident map,
@@ -717,9 +721,9 @@ class DebriefMapGenerator(QObject):
         nonOutingFeatureIds=[f['id'] for f in self.sts2.mapData['state']['features']
                 if 'folderId' not in f['properties'].keys()
                 and f['properties']['class'].lower() in ['marker','shape']]
-        logging.info('non-outing ids:'+str(nonOutingFeatureIds))
+        # logging.info('non-outing ids:'+str(nonOutingFeatureIds))
 
-        ids=ids+nonOutingFeatureIds
+        ids=outingFeatureIds+nonOutingFeatureIds
 
         lonMult=cos(radians((bounds[3]+bounds[1])/2.0))
         # logging.info('longitude multiplier = '+str(lonMult))
@@ -780,12 +784,12 @@ class DebriefMapGenerator(QObject):
         # process PDF options
         layerString='t' # default
         layerSelection=self.debriefOptionsDialog.ui.layerComboBox.currentText()
-        logging.info('layerSelection='+str(layerSelection))
+        # logging.info('layerSelection='+str(layerSelection))
         for key in BASEMAP_REGEX.keys():
-            logging.info('checking '+str(key))
+            # logging.info('checking '+str(key))
             if re.match('.*'+key+'.*',layerSelection,re.IGNORECASE):
                 layerString=BASEMAP_REGEX[key]
-                logging.info('found!')
+                # logging.info('found!')
                 break
         if self.debriefOptionsDialog.ui.contoursCheckbox.isChecked():
             layerString+=',c'
@@ -793,7 +797,7 @@ class DebriefMapGenerator(QObject):
             layerString+=',sf'
         if self.debriefOptionsDialog.ui.mapBuilderOverlayCheckbox.isChecked():
             layerString+=',mba'
-        logging.info('printing with layerstring='+str(layerString))
+        # logging.info('printing with layerstring='+str(layerString))
         grids=[]
         if self.debriefOptionsDialog.ui.utmGridCheckbox.isChecked():
             grids=['utm']
@@ -820,6 +824,69 @@ class DebriefMapGenerator(QObject):
             }
         }
 
+        # print a summary of features included in the PDF;
+        # categorize by owned/other, then by class, then by source map feature id*, then by feature count
+        #  * categorize by sid instead of title, in case there are multiple source map features with the same title;
+        #     print the title instead of the id after the dict has been built
+        #  features owned by this outing:
+        #    shapes:
+        #      AA101a (6 segments)
+        #      AA101a (2 segments) # in case there are two source map features with the same title
+        #    markers:
+        #      clue1
+        #  other features:
+        #    shapes:
+        #      the-trail
+        #    markers:
+        #      IC
+        pdfSum={'owned':{},'other':{}}
+        for f in features:
+            # logging.info('looking for '+str(f['id']))
+            if f['id'] in outingFeatureIds:
+                key1='owned'
+            else:
+                key1='other'
+            # pdfSum[key1].setdefault(f['properties']['class'],[]).append(f['properties']['title'])
+            # feature id will appear in corr or in outing bid, but not both
+            sid=[key for key in self.dmd['corr'].keys() if f['id'] in self.dmd['corr'][key]]
+            if len(sid)>0:
+                sid=sid[0]
+            else:
+                sid=[self.dmd['outings'][ot]['sid'] for ot in self.dmd['outings'].keys() if self.dmd['outings'][ot]['bid']==f['id']]
+                if len(sid)>0:
+                    sid=sid[0]
+                else:
+                    sid=None
+            if sid:
+                # t=self.sts1.getFeature(id=sid)['properties']['title']
+                pdfSum[key1].setdefault(f['properties']['class'],{})
+                pdfSum[key1][f['properties']['class']].setdefault(sid,[]).append(f['id'])
+
+        # logging.info('pdfSum:\n'+json.dumps(pdfSum,indent=3))
+        logging.info('PDF request summary for outing '+outingName+':')
+        for category in ['owned','other']:
+            logging.info('  '+category+' features:')
+            if len(pdfSum[category].keys())>0:
+                for c in sorted(pdfSum[category].keys(),key=str.casefold):
+                    logging.info('    '+str(len(pdfSum[category][c]))+' '+c+'(s):')
+                    txtList=[]
+                    for sid in pdfSum[category][c].keys():
+                        title=self.sts1.getFeature(id=sid)['properties']['title']
+                        if title=='':
+                            title='<untitled>'
+                        txt='     '+title
+                        if len(pdfSum[category][c][sid])>1:
+                            txt+=' ('+str(len(pdfSum[category][c][sid]))+' segments)'
+                        txtList.append(txt)
+                    for txt in sorted(txtList,key=str.casefold):
+                        logging.info(txt)
+            else:
+                logging.info('    <None>')
+        # for f in features:
+        #     pdfSum.setdefault(f['properties']['class'],[]).append(f['properties']['title'])
+        # for c in pdfSum.keys():
+        #     logging.info('  '+str(len(pdfSum[c]))+' '+c+'(s): '+str(pdfSum[c]))
+            
         # if the request is CTD, offer to retry to internet if CTD request fails
         attempt=1
         tryAgain=True
@@ -906,7 +973,7 @@ class DebriefMapGenerator(QObject):
         progress=0
         if outingNameOrAll==':ALL:':
             logging.info('inside rebuild: about to rebuild the entire debrief map')
-            self.dmd={'outings':{},'corr':{},'unclaimed':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
+            self.dmd={'outings':{},'corr':{},'unclaimedTracks':{},'unclaimedClues':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
             # self.dmd['outings']={}
             # self.dmd['corr']={}
             self.sts2.refresh(forceImmediate=True)
@@ -1069,7 +1136,8 @@ class DebriefMapGenerator(QObject):
                     self.dmd['outings'][ot]=o
                 else:
                     logging.info('  outing discarded for now since not all of its required components currently exist in the debrief map: '+ot)
-            self.dmd['unclaimed']=dmd_init['unclaimed']
+            self.dmd['unclaimedTracks']=dmd_init['unclaimedTracks']
+            self.dmd['unclaimedClues']=dmd_init['unclaimedClues']
             # for sidToRemove in sidsToRemove:
             #     del corr[sidToRemove]
         # write the correspondence file
@@ -1301,6 +1369,7 @@ class DebriefMapGenerator(QObject):
             self.dmd['outings'][t]['sid']=id # assignment feature id in source map
             # logging.info('fids.keys='+str(fids.keys()))
             self.checkForUnclaimedTracks(t)
+            self.checkForUnclaimedClues(t)
         if a:
             g=a['geometry']
             gc=g['coordinates']
@@ -1334,8 +1403,8 @@ class DebriefMapGenerator(QObject):
     #  and bring them into the specified outing as uncropped tracks
     def checkForUnclaimedTracks(self,outingTitle):
         cleanedIDs=[]
-        for otid in self.dmd['unclaimed'].keys():
-            ott=self.dmd['unclaimed'][otid]
+        for otid in self.dmd['unclaimedTracks'].keys():
+            ott=self.dmd['unclaimedTracks'][otid]
             tparse=self.parseTrackName(ott)
             if tparse:
                 if tparse[0]+' '+tparse[1]==outingTitle:
@@ -1346,7 +1415,20 @@ class DebriefMapGenerator(QObject):
                     # don't delete while iterating
                     cleanedIDs.append(otid)
         for cleanedID in cleanedIDs:
-            del self.dmd['unclaimed'][cleanedID]
+            del self.dmd['unclaimedTracks'][cleanedID]
+
+    def checkForUnclaimedClues(self,outingTitle):
+        cleanedIDs=[]
+        sid=self.dmd['outings'][outingTitle]['sid']
+        for ucid in self.dmd['unclaimedClues'].keys():
+            if self.dmd['unclaimedClues'][ucid]==sid:
+                self.dmd['outings'][outingTitle]['cids'].append(ucid)
+                self.addOutingLogEntry(outingTitle,'Imported existing clue: '+str(self.sts2.getFeature(id=ucid)['properties']['title']))
+                # don't delete while iterating
+                cleanedIDs.append(ucid)
+                # don't break - there could be more than one owned by the current outing
+        for cleanedID in cleanedIDs:
+            del self.dmd['unclaimedClues'][cleanedID]
 
     def addShape(self,f,outingLogMessageOverride=None):
         p=f['properties']
@@ -1434,7 +1516,7 @@ class DebriefMapGenerator(QObject):
                     pattern=p['pattern'])
             self.addCorrespondence(sid,lineID)
             if saveAsUnclaimed:
-                self.dmd['unclaimed'][lineID]=t
+                self.dmd['unclaimedTracks'][lineID]=t
                 self.writeDmdFile()
         elif gt=='Polygon':
             logging.info('creating polygon \''+t+'\' in default folder')
@@ -1484,7 +1566,7 @@ class DebriefMapGenerator(QObject):
         #  YES: do any of those outings have the same title as the incident sid?
         #    YES: use that one!
         #    NO: just use the first one
-        #  NO: do not attribute the clue to any outing
+        #  NO: do not attribute the clue to any outing; save it to dmd['unclaimedTracks']
         outingNames=[name for name in self.dmd['outings'] if self.dmd['outings'][name]['sid']==aid]
         if outingNames:
             exactMatches=[name for name in outingNames if self.sts1.getFeature(id=aid)['properties']['title']==name]
@@ -1495,7 +1577,8 @@ class DebriefMapGenerator(QObject):
             self.dmd['outings'][outingName]['cids'].append(clueID)
             self.addOutingLogEntry(outingName,'Clue added: '+t)
         else:
-            logging.info('  The assignment that owns the clue does not have any outing in the dmd dictionary.  The clue will not be attributed to any outing.')
+            logging.info('  The assignment that owns the clue does not have any outing in the dmd dictionary.  The clue will be imported as an unclaimed clue for now.')
+            self.dmd['unclaimedClues'][clueID]=aid
         self.addCorrespondence(f['id'],clueID)
 
     def cropUncroppedTracks(self):
@@ -1525,9 +1608,10 @@ class DebriefMapGenerator(QObject):
                         slidList=[list(i)[0] for i in self.dmd['corr'].items() if list(i)[1]==[utid]]
                         if len(slidList)==1:
                             slid=slidList[0]
-                            # logging.info('    corresponding source line id:'+str(slid))
-                            self.dmd['corr'][slid]=[]
-                            self.addCorrespondence(slid,croppedTrackLines)
+                            if croppedTrackLines: # don't try to update corr if crop failed
+                                # logging.info('    corresponding source line id:'+str(slid))
+                                self.dmd['corr'][slid]=[]
+                                self.addCorrespondence(slid,croppedTrackLines)
                         else:
                             logging.warning('    corresponding source map line id could not be determined (source line id list:'+str(slidList)+')')
                         # assignments[a]['utids'].remove(utid)
@@ -1644,6 +1728,8 @@ class DebriefMapGenerator(QObject):
                 self.addMarker(f)
             elif c=='Clue':
                 self.addClue(f)
+            else:
+                logging.warning('  feature class '+str(c)+' is unexpected; the feature was not added to the debrief map.')
         self.updateLinkLights()
 
                     # ot=tparse[0]+' '+tparse[1]
@@ -1964,7 +2050,7 @@ class DebriefMapGenerator(QObject):
 
     # parseTrackName: return False if not a track, or [assignment,team,suffix] if a track
     def parseTrackName(self,t):
-        tparse=re.split('(\d+)',t.upper().replace(' ','')) # can result in empty string element(s)
+        tparse=re.split('(\d+)',t.upper().replace(' ','').replace('-','')) # can result in empty string element(s)
         if '' in tparse:
             tparse.remove('')
         if len(tparse)==3:
@@ -2098,8 +2184,10 @@ class DebriefMapGenerator(QObject):
                                 self.addOutingLogEntry(outingName,'Track deleted: '+tidTitle)
                     # outing sid are not currently listed in corr
                 # remove from unclaimedTracksDict if needed
-                if tid in self.dmd['unclaimed'].keys():
-                    del self.dmd['unclaimed'][tid]
+                if tid in self.dmd['unclaimedTracks'].keys():
+                    del self.dmd['unclaimedTracks'][tid]
+                if tid in self.dmd['unclaimedClues'].keys():
+                    del self.dmd['unclaimedClues'][tid]
             del self.dmd['corr'][sid] # not currently iterating, so, del should be fine
         if not found:
             deleteOutingName=None

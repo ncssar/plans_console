@@ -486,6 +486,9 @@ class SartopoSession():
                     prop=f['properties']
                     title=str(prop.get('title',None))
                     featureClass=str(prop['class'])
+                    if featureClass=='AppTrack':
+                        logging.info('  AppTrack not yet supported.  Skipping AppTrack '+str(title))
+                        continue
                     # 2a - if id already exists, replace it
                     processed=False
                     for i in range(len(self.mapData['state']['features'])):
@@ -501,6 +504,8 @@ class SartopoSession():
                             if 'title' in prop.keys():
                                 if self.mapData['state']['features'][i]['properties']!=prop:
                                     logging.info('  Updating properties for '+featureClass+':'+title)
+                                    # logging.info('    old:'+json.dumps(self.mapData['state']['features'][i]['properties']))
+                                    # logging.info('    new:'+json.dumps(prop))
                                     self.mapData['state']['features'][i]['properties']=prop
                                     if self.propertyUpdateCallback:
                                         self.propertyUpdateCallback(f)
@@ -618,7 +623,7 @@ class SartopoSession():
                     self.doSync()
                 else:
                     msg+='forceImmediate not specified: not syncing now'
-                    logging.info(msg)
+                    # logging.info(msg)
     
     def __del__(self):
         logging.info('SartopoSession instance deleted for map '+self.mapID+'.')
@@ -680,6 +685,7 @@ class SartopoSession():
                     # remove sync blockers, to let the thread shut down cleanly, avoiding a zombie loop when sync restart is attempted
                     self.syncPause=False
                     self.syncing=False
+                    self.syncThreadStarted=False
                     self.sync=False
             if self.sync: # don't bother with the sleep if sync is no longer True
                 time.sleep(self.syncInterval)
@@ -750,8 +756,11 @@ class SartopoSession():
                 paramsPrint=params
             # logging.info("SENDING POST to '"+url+"':")
             # logging.info(json.dumps(paramsPrint,indent=3))
-            logging.info(jsonForLog(paramsPrint))
+            # don't print the entire PDF generation request - upstream code can print a PDF data summary
+            if 'PDFLink' not in url:
+                logging.info(jsonForLog(paramsPrint))
             r=self.s.post(url,data=params,timeout=timeout,proxies=self.proxyDict,allow_redirects=False)
+            # logging.info('r immediate:'+str(r))
         elif type=="get": # no need for json in GET; sending null JSON causes downstream error
             # logging.info("SENDING GET to '"+url+"':")
             r=self.s.get(url,timeout=timeout,proxies=self.proxyDict)
@@ -1912,7 +1921,7 @@ class SartopoSession():
         # make sure both are lists of lists, since points may initially be a list of tuples
         if isinstance(points[0],tuple):
             points=list(map(list,points))
-        logging.info('fourify called:\npoints='+str(points)+'\norigPoints='+str(origPoints))
+        # logging.info('fourify called:\npoints='+str(points)+'\norigPoints='+str(origPoints))
         if len(points[0])==4: # it's already a four-element list
             return points
         for i in range(len(points)):
