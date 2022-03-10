@@ -809,21 +809,39 @@ class DebriefMapGenerator(QObject):
         
         ##### draw the legend #####
 
-        lgx=w/100 # legend grid x
-        lgy=h/50 # legend grid y
+        if size[0]==11: # landscape
+            lgx=w/100 # legend grid x
+            lgy=h/50 # legend grid y
+        else: # portrait
+            lgx=w/75
+            lgy=h/75
         lh=lgy*(2*len(legendItems)+2) # 2 grid pitch, plus bottom margin
 
-        lp='botLeft' # legend position - can be chosen to avoid drawn features
+        lp='botRight' # legend position - can be chosen to avoid drawn features
         if lp=='botLeft':
-            lbLeft=bounds[0]+(w*0.02)
+            lbLeft=bounds[0]+(2*lgx)
             lbRight=lbLeft+(23*lgx)
-            lbBottom=bounds[1]+(h*0.02)
+            lbBottom=bounds[1]+lgy
             lbTop=lbBottom+lh
+        elif lp=='topLeft':
+            lbLeft=bounds[0]+(2*lgx)
+            lbRight=lbLeft+(23*lgx)
+            lbTop=bounds[3]-lgy
+            lbBottom=lbTop-lh
+        elif lp=='botRight':
+            lbRight=bounds[2]-(2*lgx)
+            lbLeft=lbRight-(23*lgx)
+            lbBottom=bounds[1]+lgy
+            lbTop=lbBottom+lh
+        elif lp=='topRight':
+            lbRight=bounds[2]-(2*lgx)
+            lbLeft=lbRight-(23*lgx)
+            lbTop=bounds[3]-lgy
+            lbBottom=lbTop-lh
         else:
-            lbLeft=bounds[0]
-            lbRight=bounds[2]
-            lbBottom=bounds[1]
-            lbTop=bounds[1]+(h*0.1)
+            logging.error('invalid legend location "'+str(lp)+'" - PDF generation aborted')
+            inform_user_about_issue('invalid legend location "'+str(lp)+'" - PDF generation aborted')
+            return False
         lbCoords=[[lbLeft,lbBottom],[lbLeft,lbTop],[lbRight,lbTop],[lbRight,lbBottom],[lbLeft,lbBottom]]
         legendFeatures=[
             {
@@ -913,17 +931,15 @@ class DebriefMapGenerator(QObject):
             )
             llat=llat-(2*lgy)
 
+        # hide labels by removing title keys from boundary, owned tracks and legend overlays
         legendFeaturesNoTitles=copy.deepcopy(legendFeatures)
         for f in legendFeaturesNoTitles:
             try:
                 del f['properties']['title']
             except:
                 pass
-
         _features=[f for f in self.sts2.mapData['state']['features'] if f['id'] in ids]
         features=copy.deepcopy(_features) # don't modify the cache
-
-        # remove title keys from owned tracks
         for f in features:
             if f['id']==bid or f['id'] in alltids:
                 try:
