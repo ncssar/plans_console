@@ -6,6 +6,7 @@ import os
 import sys
 import json
 import shutil
+import copy
 from datetime import datetime
 import webbrowser
 from math import floor,cos,radians
@@ -280,7 +281,13 @@ class DebriefMapGenerator(QObject):
                 self.defaultDomainAndPort=self.parent.defaultDomainAndPort
             self.debriefMapDialog=SpecifyMapDialog(self,'Debrief','Create New Map, or Use Existing Map?',self.defaultDomainAndPort,enableNewMap=True)
             if self.debriefMapDialog.exec(): # force modal
+                if '.com' in self.debriefMapDialog.dap:
+                    if not ask_user_to_confirm('Internet sites are not recommended for the debrief map.  The debrief map should be hosted on the local node or an intranet server running CalTopo Desktop, if at all possible.\n\nDMG makes a lot of network requests; an internet debrief map could result in poor performace for others on the same network.\n\nUse an internet debrief map anyway?'):
+                        return
                 if self.debriefMapDialog.newMap:
+                    if '.com' in self.debriefMapDialog.dap:
+                        inform_user_about_issue('New map creation on internet sites is not supported.  Use an existing internet map, or use localhost or an intranet server instead.')
+                        return
                     logging.info('new map requested')
                     configpath='../sts.ini'
                     account=None
@@ -295,11 +302,16 @@ class DebriefMapGenerator(QObject):
                     self.startupBox.setStandardButtons(QMessageBox.NoButton)
                     self.startupBox.show()
                     QCoreApplication.processEvents()
-                    self.sts2=SartopoSession(self.debriefDomainAndPort,'[NEW]',
-                        sync=False,
-                        account=account,
-                        configpath=configpath,
-                        syncTimeout=10)
+                    try:
+                        self.sts2=SartopoSession(self.debriefDomainAndPort,'[NEW]',
+                            sync=False,
+                            account=account,
+                            configpath=configpath,
+                            syncTimeout=10)
+                    except:
+                        inform_user_about_issue('New map request failed.  See the log for details.  You can try to create a new map on a different host, or, you can use an existing map.')
+                        self.startupBox.done(0)
+                        return
                     self.debriefMapID=self.sts2.mapID
                     self.debriefURL=self.debriefMapDialog.url.replace('<Pending>',self.sts2.mapID)
                     self.startupBox.setText('New map created:\n\n'+self.debriefURL+'\n\nPopulating new map...')
@@ -709,8 +721,10 @@ class DebriefMapGenerator(QObject):
         outing=self.dmd['outings'][outingName]
         outingFeatureIds=[outing['bid']]
         outingFeatureIds.extend(outing['cids'])
+        alltids=[]
         for tidList in outing['tids']:
-            outingFeatureIds.extend(tidList)
+            alltids.extend(tidList)
+        outingFeatureIds+=alltids
         # logging.info('ids for this outing:'+str(ids))
         bounds=self.sts2.getBounds(outingFeatureIds,padPct=15)
 
@@ -772,7 +786,150 @@ class DebriefMapGenerator(QObject):
         ar=w/h
         # logging.info('bounds after adjust (ar='+str(round(ar,4))+') : '+str(bounds))
 
-        features=[f for f in self.sts2.mapData['state']['features'] if f['id'] in ids]
+        # draw the legend
+        # legendItems - list of dictionaries
+        legendItems=[]
+        bid=outing['bid']
+        bidp=self.sts2.getFeature(id=bid)['properties']
+        legendItems.append({
+            'text':'Boundary',
+            'stroke':bidp['stroke'],
+            'stroke-opacity':bidp['stroke-opacity'],
+            'stroke-width':bidp['stroke-width']
+        })
+        for trackList in self.dmd['outings'][outingName]['tids']:
+            # assumption: all lines in the same tid list have the same title/stroke/opacity/weight
+            t0p=self.sts2.getFeature(id=trackList[0])['properties']
+            legendItems.append({
+                'text':t0p['title'],
+                'stroke':t0p['stroke'],
+                'stroke-opacity':t0p['stroke-opacity'],
+                'stroke-width':t0p['stroke-width']
+            })
+        
+        ##### draw the legend #####
+
+        lgx=w/100 # legend grid x
+        lgy=h/50 # legend grid y
+        lh=lgy*(2*len(legendItems)+2) # 2 grid pitch, plus bottom margin
+
+        lp='botLeft' # legend position - can be chosen to avoid drawn features
+        if lp=='botLeft':
+            lbLeft=bounds[0]+(w*0.02)
+            lbRight=lbLeft+(23*lgx)
+            lbBottom=bounds[1]+(h*0.02)
+            lbTop=lbBottom+lh
+        else:
+            lbLeft=bounds[0]
+            lbRight=bounds[2]
+            lbBottom=bounds[1]
+            lbTop=bounds[1]+(h*0.1)
+        lbCoords=[[lbLeft,lbBottom],[lbLeft,lbTop],[lbRight,lbTop],[lbRight,lbBottom],[lbLeft,lbBottom]]
+        legendFeatures=[
+            {
+                'type':'Feature',
+                # 'id':'22222222-2222-2222-2222-222222222222',
+                'geometry':{
+                    'type':'Polygon',
+                    'coordinates':[lbCoords]
+                },
+                'properties':{
+                    # 'creator':self.sts2.accountId,
+                    'stroke-opacity':1,
+                    # 'description':'',
+                    'stroke-width':2,
+                    # 'title':'',
+                    'fill':'#eeeee',
+                    'class':'Shape',
+                    # 'updated':0,
+                    'stroke':'#eeeeee',
+                    'fill-opacity':0.95,
+                    'gpstype':'TRACK'
+                }
+            },
+            {
+                'type':'Feature',
+                'geometry':{
+                    'type':'Polygon',
+                    'coordinates':[lbCoords]
+                },
+                'properties':{
+                    # 'creator':self.sts2.accountId,
+                    'stroke-opacity':1,
+                    # 'description':'',
+                    'stroke-width':4,
+                    # 'title':'',
+                    'fill':'#111111',
+                    'class':'Shape',
+                    # 'updated':0,
+                    'stroke':'#111111',
+                    'fill-opacity':0,
+                    'gpstype':'TRACK'
+                }
+            }
+        ]
+
+        # hatchLon=lbLeft
+        # legendHatchFeatures=[]
+        # while hatchLon<lbRight:
+        #     legendHatchFeatures.append(
+        #         {
+        #             'type':'Feature',
+        #             'geometry':{
+        #                 'type':'LineString',
+        #                 'coordinates':[[hatchLon,lbBottom],[hatchLon,lbTop]]
+        #             },
+        #             'properties':{
+        #                 'stroke-opacity':0.5,
+        #                 'title':'                ',
+        #                 'stroke-width':1,
+        #                 'class':'Shape',
+        #                 'stroke':'#ff0000'
+        #             }
+        #         }
+        #     )
+        #     hatchLon+=lgx
+
+        llat=lbTop-(2.5*lgy)
+        # llon=lbLeft+(2*lgx)
+        # for li in sorted(legendItems,key=lambda i: i['text'].lower()):
+        for li in [legendItems[0]]+sorted(legendItems[1:],key=lambda i: i['text'].lower()):
+            logging.info('legend item:'+json.dumps(li))
+            legendFeatures.append(
+                {
+                    'type':'Feature',
+                    'geometry':{
+                        'type':'LineString',
+                        'coordinates':[[lbLeft+(2*lgx),llat],[lbRight-(2*lgx),llat]]
+                    },
+                    'properties':{
+                        'stroke-opacity':li['stroke-opacity'],
+                        'stroke-width':li['stroke-width'],
+                        'title':li['text'],
+                        'class':'Shape',
+                        'stroke':li['stroke']
+                    }
+                }
+            )
+            llat=llat-(2*lgy)
+
+        legendFeaturesNoTitles=copy.deepcopy(legendFeatures)
+        for f in legendFeaturesNoTitles:
+            try:
+                del f['properties']['title']
+            except:
+                pass
+
+        _features=[f for f in self.sts2.mapData['state']['features'] if f['id'] in ids]
+        features=copy.deepcopy(_features) # don't modify the cache
+
+        # remove title keys from owned tracks
+        for f in features:
+            if f['id']==bid or f['id'] in alltids:
+                try:
+                    del f['properties']['title']
+                except:
+                    pass
 
         # 'expires' should be 7 days from now; if it does expire
         #   before the search is done, that's not really a problem
@@ -805,7 +962,7 @@ class DebriefMapGenerator(QObject):
             'properties':{
                 'mapState':{
                     'type':'FeatureCollection',
-                    'features':features
+                    'features':legendFeatures+features+legendFeaturesNoTitles
                 },
                 'layer':layerString,
                 'grids':grids,

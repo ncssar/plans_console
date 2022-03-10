@@ -359,7 +359,7 @@ class SartopoSession():
             try:
                 r=requests.get('http://127.0.0.1:8888')
             except:
-                logging.warning('Fiddler proxy host does not appear to be responding correctly; this session will not use Fiddler proxies.')
+                logging.warning('Fiddler proxy host does not appear to be running.  This session will not use Fiddler proxies.')
             else:
                 logging.info('  Fiddler ping response appears valid; setting the proxies: r='+str(r))
                 self.proxyDict={
@@ -406,13 +406,13 @@ class SartopoSession():
             # logging.info('payload='+str(json.dumps(j,indent=3)))
             r=self.sendRequest('post','[NEW]',j,domainAndPort=self.domainAndPort)
             if r:
-                # logging.info('return='+str(r))
                 self.mapID=r.rstrip('/').split('/')[-1]
                 self.s=requests.session()
                 self.sendUserdata() # to get session cookies for new session
                 time.sleep(1) # to avoid a 401 on the subsequent get request
                 self.delMarker(id='11111111-1111-1111-1111-111111111111')
             else:
+                logging.info('New map request failed.  See the log for details.')
                 return False
 
 
@@ -720,8 +720,13 @@ class SartopoSession():
             return False
         prefix='http://'
         # set a flag: is this an internet request?
+        accountId=self.accountId
         internet=domainAndPort.lower() in ['sartopo.com','caltopo.com']
         if internet:
+            if self.accountIdInternet:
+                accountId=self.accountIdInternet
+            else:
+                logging.warning('A request is about to be sent to the internet, but accountIdInternet was not specified.  The request will use accountId, but will fail if that ID does not have valid permissions at the internet host.')
             prefix='https://'
             if not self.key or not self.id:
                 logging.error("There was an attempt to send an internet request, but 'id' and/or 'key' was not specified for this session.  The request will not be sent.")
@@ -760,7 +765,6 @@ class SartopoSession():
             if 'PDFLink' not in url:
                 logging.info(jsonForLog(paramsPrint))
             r=self.s.post(url,data=params,timeout=timeout,proxies=self.proxyDict,allow_redirects=False)
-            # logging.info('r immediate:'+str(r))
         elif type=="get": # no need for json in GET; sending null JSON causes downstream error
             # logging.info("SENDING GET to '"+url+"':")
             r=self.s.get(url,timeout=timeout,proxies=self.proxyDict)
@@ -793,21 +797,37 @@ class SartopoSession():
             self.syncPause=False
             return False
 
-        if r.status_code!=200:
+        if newMap or r.status_code!=200:
             logging.info("response code = "+str(r.status_code))
-            # new map request should return 3xx response (redirect); if allow_redirects=False is
+
+        if newMap:
+            # on CTD 4214, new map request should return 3xx response (redirect); if allow_redirects=False is
             #  in the response, the redirect target will appear as the 'Location' response header.
-            if newMap and 300<=r.status_code<=399:
-                # logging.info("response headers:"+str(json.dumps(dict(r.headers),indent=3)))
-                newUrl=r.headers.get('Location',None)
-                if newUrl:
-                    logging.info('New map URL:'+newUrl)
-                    self.syncPause=False
-                    return newUrl
+            # for CTD 4221 and internet, new map request should return 200, and the response data
+            #  should contain the new map ID
+            if url.endswith('/map'):
+                if 300<=r.status_code<=399:
+                    # logging.info("response headers:"+str(json.dumps(dict(r.headers),indent=3)))
+                    newUrl=r.headers.get('Location',None)
+                    if newUrl:
+                        logging.info('New map URL:'+newUrl)
+                        self.syncPause=False
+                        return newUrl
+                    else:
+                        logging.info('No new map URL was returned in the response header.')
+                        self.syncPause=False
+                        return False
                 else:
-                    logging.info('No new map URL was returned in the response header.')
-                    self.syncPause=False
+                    logging.info('Unexpected response from new map request:'+str(r.status_code)+':'+r.text)
                     return False
+            else:
+                if r.status_code==200:
+                    logging.info('200 response from new map request:'+r.text)
+                    return False
+                else:
+                    logging.info('Unexpected response from new map request:'+str(r.status_code)+':'+r.text)
+                    return False
+
 
         if returnJson:
             # logging.info('response:'+str(r))
