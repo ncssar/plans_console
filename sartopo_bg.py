@@ -16,6 +16,8 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
+from shapely.geometry import LineString,Point,Polygon
+
 from specifyMap import SpecifyMapDialog
 
 from debrief_ui import Ui_DebriefDialog
@@ -705,6 +707,16 @@ class DebriefMapGenerator(QObject):
             self.writeDmdFile()
         # logging.info('entered: '+str(text))
 
+    # twoify - turn four-element-vertex-data into two-element-vertex-data so that
+    #  the shapely functions can operate on it
+    def twoify(self,points):
+        if not isinstance(points,list):
+            return points
+        if isinstance(points[0],list): # the arg is a list of points
+            return [p[0:2] for p in points]
+        else: # the arg is just one point
+            return points[0:2]
+
     def PDFGenClicked(self,*args,**kwargs):
         if not self.sts2.id:
             inform_user_about_issue("'id' is not defined for the debrief map session; cannot generarte PDF.'",parent=self.dd)
@@ -786,7 +798,6 @@ class DebriefMapGenerator(QObject):
         ar=w/h
         # logging.info('bounds after adjust (ar='+str(round(ar,4))+') : '+str(bounds))
 
-        # draw the legend
         # legendItems - list of dictionaries
         legendItems=[]
         bid=outing['bid']
@@ -806,8 +817,6 @@ class DebriefMapGenerator(QObject):
                 'stroke-opacity':t0p['stroke-opacity'],
                 'stroke-width':t0p['stroke-width']
             })
-        
-        ##### draw the legend #####
 
         if size[0]==11: # landscape
             lgx=w/100 # legend grid x
@@ -817,27 +826,67 @@ class DebriefMapGenerator(QObject):
             lgy=h/75
         lh=lgy*(2*len(legendItems)+2) # 2 grid pitch, plus bottom margin
 
-        lp='botRight' # legend position - can be chosen to avoid drawn features
-        if lp=='botLeft':
-            lbLeft=bounds[0]+(2*lgx)
-            lbRight=lbLeft+(23*lgx)
-            lbBottom=bounds[1]+lgy
-            lbTop=lbBottom+lh
-        elif lp=='topLeft':
-            lbLeft=bounds[0]+(2*lgx)
-            lbRight=lbLeft+(23*lgx)
-            lbTop=bounds[3]-lgy
-            lbBottom=lbTop-lh
-        elif lp=='botRight':
-            lbRight=bounds[2]-(2*lgx)
-            lbLeft=lbRight-(23*lgx)
-            lbBottom=bounds[1]+lgy
-            lbTop=lbBottom+lh
-        elif lp=='topRight':
-            lbRight=bounds[2]-(2*lgx)
-            lbLeft=lbRight-(23*lgx)
-            lbTop=bounds[3]-lgy
-            lbBottom=lbTop-lh
+        lpDict={ # each value: [left,bottom,right,top]
+            'botLeft':[
+                bounds[0]+(2*lgx),
+                bounds[1]+lgy,
+                bounds[0]+(25*lgx),
+                bounds[1]+lgy+lh
+            ],
+            'topLeft':[
+                bounds[0]+(2*lgx),
+                bounds[3]-lgy-lh,
+                bounds[0]+(25*lgx),
+                bounds[3]-lgy
+            ],
+            'botRight':[
+                bounds[2]-(25*lgx),
+                bounds[1]+lgy,
+                bounds[2]-(2*lgx),
+                bounds[1]+lgy+lh
+            ],
+            'topRight':[
+                bounds[2]-(25*lgx),
+                bounds[3]-lgy-lh,
+                bounds[2]-(2*lgx),
+                bounds[3]-lgy
+            ]
+        }
+
+        # find the best legend location
+        start=time.perf_counter()
+        idDict={'owned':outingFeatureIds,'other':nonOutingFeatureIds}
+        overlapDict={}
+        for lp in lpDict.keys():
+            [lbLeft,lbBottom,lbRight,lbTop]=lpDict[lp]
+            lbCoords=[[lbLeft,lbBottom],[lbLeft,lbTop],[lbRight,lbTop],[lbRight,lbBottom],[lbLeft,lbBottom]]
+            lbsg=Polygon(lbCoords).buffer(lgx*2) # oversize a bit for use in overlaps calculation
+            overlapDict[lp]={'owned':0,'other':0}
+            for cat in idDict.keys():
+                for id in idDict[cat]:
+                    f=self.sts2.getFeature(id=id)
+                    g=f['geometry']
+                    t=g['type']
+                    if t=='Polygon':
+                        sg=Polygon(self.twoify(g['coordinates'][0]))
+                    elif t=='LineString':
+                        sg=LineString(self.twoify(g['coordinates']))
+                    elif t=='Point':
+                        sg=Point(self.twoify(g['coordinates']))
+                    else:
+                        logging.warning('unknown geometry type "'+str(t)+'" for id '+id+' skipped during legend location determination')
+                        continue
+                    if sg.intersects(lbsg):
+                        overlapDict[lp][cat]+=1
+        stop=time.perf_counter()
+        logging.info('final overlaps ('+str(stop-start)+' seconds):\n'+json.dumps(overlapDict,indent=3))
+        
+        # select the corner with fewest 'weighted overlaps': owned features count more than unowned
+        ownedOverlapWeight=5
+        lp=min(overlapDict,key=lambda x:overlapDict[x]['owned']*ownedOverlapWeight+overlapDict[x]['other'])
+
+        if lp in lpDict.keys():
+            [lbLeft,lbBottom,lbRight,lbTop]=lpDict[lp]
         else:
             logging.error('invalid legend location "'+str(lp)+'" - PDF generation aborted')
             inform_user_about_issue('invalid legend location "'+str(lp)+'" - PDF generation aborted')
@@ -912,7 +961,7 @@ class DebriefMapGenerator(QObject):
         # llon=lbLeft+(2*lgx)
         # for li in sorted(legendItems,key=lambda i: i['text'].lower()):
         for li in [legendItems[0]]+sorted(legendItems[1:],key=lambda i: i['text'].lower()):
-            logging.info('legend item:'+json.dumps(li))
+            # logging.info('legend item:'+json.dumps(li))
             legendFeatures.append(
                 {
                     'type':'Feature',
