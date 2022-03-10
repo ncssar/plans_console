@@ -36,11 +36,11 @@ def genLpix(ldpi):
     return lpix
 
 class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
-    def __init__(self,parent,name=None,headerText=None,defaultDomainAndPort=None,enableNewMap=False):
+    def __init__(self,parent,name=None,headerText=None,defaultDomainAndPort=None,enableNewMap=False,newDefault=False):
         QDialog.__init__(self)
         self.parent=parent
         self.enableNewMap=enableNewMap
-        self.newMap=False
+        self.newMap=newDefault
         self.ldpi=0
         self.tmp='small'
         
@@ -54,9 +54,15 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
         self.ui.setupUi(self)
         self.ui.newMapRadioButton.setVisible(enableNewMap)
         self.ui.existingMapRadioButton.setVisible(enableNewMap)
+        self.ui.newOrExistingLine1.setVisible(enableNewMap)
+        self.ui.newOrExistingLine2.setVisible(enableNewMap)
         self.ui.mapSourceButtonGroup.buttonClicked.connect(self.mapSourceClicked)
         self.ui.domainAndPortButtonGroup.buttonClicked.connect(self.domainAndPortClicked)
-        self.ui.existingMapRadioButton.setChecked(True)
+        if self.newMap:
+            self.ui.newMapRadioButton.setChecked(True)
+        else:
+            self.ui.existingMapRadioButton.setChecked(True)
+        self.mapSourceClicked()
         self.urlChanged()
         self.ui.mapIDField.setFocus()
         if defaultDomainAndPort:
@@ -76,6 +82,9 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
             self.ui.headerLabel.setText(str(headerText))
         elif name:
             self.ui.headerLabel.setText('Specify the '+str(name)+' map:')
+        self.adjustSize()
+        self.setMinimumSize(self.size())
+        self.setMaximumSize(self.size())
 
     def moveEvent(self,event):
         self.setMinimumSize(0,0)
@@ -125,23 +134,33 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
                 QRadioButton{
                     spacing:'''+str(pix[8])+'''px;
                 }
+                #newMapRadioButton,#existingMapRadioButton{
+                    font-size:'''+str(pix[16])+'''px;
+                }
+                #newMapRadioButton::indicator,#existingMapRadioButton::indicator{
+                    width:'''+str(pix[12])+'''px;
+                    height:'''+str(pix[12])+'''px;
+                }
             ''')
             # this results in 'ratcheting': the resize happens by moving the right and bottom sides,
             #  and leaving the top left where it is, relative to the mouse; so each size reduction
             #  means the mouse is farther to the right within the banner, and eventually the mouse
             #  is outisde (to the right of) the banner
-            initialSize=QSize(int(500*(self.ldpi/96)),int(395*(self.ldpi/96)))
-            self.setMinimumSize(initialSize)
-            self.setMaximumSize(initialSize)
+            self.ui.dapGroupBox.setMinimumWidth(int(250*(self.ldpi/96)))
+            self.adjustSize()
+            self.setMinimumSize(self.size())
+            self.setMaximumSize(self.size())
             # it would be good to resolve the ratchetings at some point, but this is good enough for now
 
     def mapSourceClicked(self,*args,**kwargs):
         val=self.ui.mapSourceButtonGroup.checkedButton().text()
         if val=='New Map':
             self.ui.mapIDGroupBox.setEnabled(False)
+            self.ui.mapIDGroupBox.setStyleSheet('QGroupBox:title {color: gray;}')
             self.newMap=True
         else:
             self.ui.mapIDGroupBox.setEnabled(True)
+            self.ui.mapIDGroupBox.setStyleSheet('QGroupBox:title {color: black;}')
             self.newMap=False
             self.ui.mapIDField.setFocus()
         self.urlChanged()

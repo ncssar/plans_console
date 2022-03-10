@@ -281,7 +281,7 @@ class DebriefMapGenerator(QObject):
             self.defaultDomainAndPort=None
             if hasattr(self.parent,'defaultDomainAndPort'):
                 self.defaultDomainAndPort=self.parent.defaultDomainAndPort
-            self.debriefMapDialog=SpecifyMapDialog(self,'Debrief','Create New Map, or Use Existing Map?',self.defaultDomainAndPort,enableNewMap=True)
+            self.debriefMapDialog=SpecifyMapDialog(self,'Debrief','Create New Map, or Use Existing Map?',self.defaultDomainAndPort,enableNewMap=True,newDefault=True)
             if self.debriefMapDialog.exec(): # force modal
                 if '.com' in self.debriefMapDialog.dap:
                     if not ask_user_to_confirm('Internet sites are not recommended for the debrief map.  The debrief map should be hosted on the local node or an intranet server running CalTopo Desktop, if at all possible.\n\nDMG makes a lot of network requests; an internet debrief map could result in poor performace for others on the same network.\n\nUse an internet debrief map anyway?'):
