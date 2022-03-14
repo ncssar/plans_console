@@ -486,13 +486,11 @@ class SartopoSession():
                     prop=f['properties']
                     title=str(prop.get('title',None))
                     featureClass=str(prop['class'])
-                    if featureClass=='AppTrack':
-                        logging.info('  AppTrack not yet supported.  Skipping AppTrack '+str(title))
-                        continue
-                    # 2a - if id already exists, replace it
                     processed=False
                     for i in range(len(self.mapData['state']['features'])):
-                        if self.mapData['state']['features'][i]['id']==rjrfid:
+                        # only modify existing cache data if id and class are both matches:
+                        #  subset apptracks can have the same id as the finished apptrack shape
+                        if self.mapData['state']['features'][i]['id']==rjrfid and self.mapData['state']['features'][i]['properties']['class']==featureClass:
                             # don't simply overwrite the entire feature entry:
                             #  - if only geometry was changed, indicated by properties['nop']=true,
                             #    then leave properties alone and just overwrite geometry;

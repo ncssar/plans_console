@@ -22,6 +22,7 @@ from specifyMap import SpecifyMapDialog
 
 from debrief_ui import Ui_DebriefDialog
 from debriefOptionsDialog_ui import Ui_DebriefOptionsDialog
+from appTracksDialog_ui import Ui_AppTracksDialog
 
 LINK_LIGHT_STYLES={
     -1:"background-color:#bb0000;", # red - no link / link error
@@ -203,6 +204,34 @@ def dictHasAllKeys(d,klist):
         return False
     return all(key in d for key in klist)
 
+def isApptrackSubsetOfLine(lineCoords,apptrackCoords):
+    # comparisons will be easier if we make a dictionary: keys are timestamps, values are [lon,lat] (ignore elevation)
+    #  but we need to do a sort again before it's readable
+    lineTSDict={v[3]:v[0:2] for v in lineCoords}
+    apptrackTSDict={v[3]:v[0:2] for v in apptrackCoords}
+    # this could be a one-liner since we only need to check if one dict is subset of the other (sequence doesn't matter)
+    #  but this way we have access to internal statistics if needed
+    subset=True
+    matches=0
+    tsDifferencesList=[]
+    lineTsMissingFromApptrackList=[]
+    for ts in lineTSDict.keys():
+        if ts in apptrackTSDict.keys():
+            if lineTSDict[ts]==apptrackTSDict[ts]:
+                matches+=1
+            else:
+                subset=False
+                tsDifferencesList.append(ts)
+        else:
+            lineTsMissingFromApptrackList.append(ts)
+    if matches==0:
+        subset=False
+    # logging.info('matches:'+str(matches))
+    # logging.info('tsDifferences:'+str(len(tsDifferencesList)))
+    # # logging.info('lineTsMissingFromApptrackList:'+str(len(lineTsMissingFromApptrackList))+':'+str(lineTsMissingFromApptrackList))
+    # logging.info('lineTsMissingFromApptrackList:'+str(len(lineTsMissingFromApptrackList)))
+    return subset
+
 class DebriefMapGenerator(QObject):
     updateLinkLightsSignal=pyqtSignal()
     def __init__(self,parent,sourceMap,targetMap):
@@ -241,6 +270,9 @@ class DebriefMapGenerator(QObject):
 
         self.debriefOptionsDialog=DebriefOptionsDialog(self)
         self.dd.ui.debriefOptionsButton.clicked.connect(self.debriefOptionsButtonClicked)
+
+        self.appTracksDialog=AppTracksDialog(self)
+        self.dd.ui.appTracksButton.clicked.connect(self.appTracksButtonClicked)
 
         self.dd.ui.pauseIcon=QtGui.QIcon()
         self.dd.ui.pauseIcon.addPixmap(QtGui.QPixmap(":/plans_console/pause.png"),QtGui.QIcon.Normal,QtGui.QIcon.Off)
@@ -431,7 +463,7 @@ class DebriefMapGenerator(QObject):
         self.cropDegrees=0.001  # about 100 meters - varies with latitude but this is not important for cropping
         self.roamingCropDegrees=0.1 # about 10km - varies with latitude but this is not important for cropping
 
-        self.dmd={'outings':{},'corr':{},'unclaimedTracks':{},'unclaimedClues':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
+        self.dmd={'outings':{},'corr':{},'unclaimedTracks':{},'unclaimedClues':{},'appTracks':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
         # self.dmd['outings']={}
         # self.dmd['corr']={}
         self.writeDmdPause=False
@@ -548,9 +580,13 @@ class DebriefMapGenerator(QObject):
             outings=self.dmd.get('outings',None)
             self.dd.ui.tableWidget.setRowCount(len(outings))
             for outingName in outings:
+                appTrackCount=len([atid for atid in self.dmd['appTracks'] if self.dmd['appTracks'][atid][1]==outingName])
                 o=self.dmd['outings'][outingName]
+                trackCountText=str(len(o['tids']))
+                if appTrackCount>0:
+                    trackCountText+=' + '+str(appTrackCount)
                 self.dd.ui.tableWidget.setItem(row,0,QTableWidgetItem(outingName))
-                self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(str(len(o['tids']))))
+                self.dd.ui.tableWidget.setItem(row,1,QTableWidgetItem(trackCountText))
                 self.dd.ui.tableWidget.setItem(row,2,QTableWidgetItem(str(len(o['cids']))))
                 editNoteButton=QPushButton(self.dd.ui.editNoteIcon,'')
                 editNoteButton.setIconSize(QSize(self.lpix[16],self.lpix[16]))
@@ -679,7 +715,77 @@ class DebriefMapGenerator(QObject):
     def debriefOptionsButtonClicked(self,*args,**kwargs):
         self.debriefOptionsDialog.show()
         self.debriefOptionsDialog.raise_()
+        
+    def appTracksButtonClicked(self,*args,**kwargs):
+        row=[0,0]
+        tsNow=time.time()
+        self.appTracksDialog.ui.tableWidgetAssociated.setSortingEnabled(False)
+        self.appTracksDialog.ui.tableWidgetUnassociated.setSortingEnabled(False)
+        associatedCount=len([x for x in self.dmd['appTracks'].values() if x[1] is not None and x[1]!='[SUBSET]'])
+        unassociatedCount=len([x for x in self.dmd['appTracks'].values() if x[1] is None])
+        self.appTracksDialog.ui.ignoredListWidget.clear()
+        self.appTracksDialog.ui.tableWidgetAssociated.setRowCount(associatedCount)
+        self.appTracksDialog.ui.tableWidgetUnassociated.setRowCount(unassociatedCount)
+        for atid in self.dmd['appTracks'].keys():
+            at=self.dmd['appTracks'][atid]
+            latestSec=int(tsNow)-int(at[2]/1000)
+            if latestSec<60:
+                latestStr='<1 min.'
+            elif latestSec<300:
+                latestStr='<5 mins.'
+            elif latestSec<600:
+                latestStr='<10 mins.'
+            elif latestSec<1800:
+                latestStr='<30 mins.'
+            elif latestSec<3600:
+                latestStr='<1 hr.'
+            elif latestSec<21600:
+                latestStr='<6 hrs.'
+            elif latestSec<86400:
+                latestStr='<1 day'
+            else:
+                latestStr='>1 day'
+            comboOptions=['None']+sorted(self.dmd['outings'].keys(),key=str.casefold)
+            combo=QComboBox()
+            combo.setObjectName(atid) # for use in the callback
+            for i in comboOptions:
+                combo.addItem(i)
+            # set combo box to reflect already-associated outing
+            if self.dmd['appTracks'][atid][1] in comboOptions:
+                combo.setCurrentText(self.dmd['appTracks'][atid][1])
+            combo.currentTextChanged.connect(self.appTrackComboBoxChanged)
+            if at[1]:
+                if at[1]=='[SUBSET]':
+                    self.appTracksDialog.ui.ignoredListWidget.addItem(at[0])
+                else:
+                    self.appTracksDialog.ui.tableWidgetAssociated.setItem(row[0],0,QTableWidgetItem(self.dmd['appTracks'][atid][0]))
+                    self.appTracksDialog.ui.tableWidgetAssociated.setCellWidget(row[0],1,combo)
+                    combo.setObjectName(atid)
+                    # combo.currentTextChanged.connect(self.appTrackAssociatedComboBoxChanged)
+                    self.appTracksDialog.ui.tableWidgetAssociated.setItem(row[0],2,QTableWidgetItem(latestStr))
+                    row[0]+=1
+            else:
+                self.appTracksDialog.ui.tableWidgetUnassociated.setItem(row[1],0,QTableWidgetItem(self.dmd['appTracks'][atid][0]))
+                self.appTracksDialog.ui.tableWidgetUnassociated.setCellWidget(row[1],1,combo)
+                # combo.currentTextChanged.connect(self.appTrackUnassociatedComboBoxChanged)
+                self.appTracksDialog.ui.tableWidgetUnassociated.setItem(row[1],2,QTableWidgetItem(latestStr))
+                row[1]+=1
+        self.appTracksDialog.ui.tableWidgetAssociated.setSortingEnabled(True)
+        self.appTracksDialog.ui.tableWidgetAssociated.sortItems(0)
+        self.appTracksDialog.ui.tableWidgetUnassociated.setSortingEnabled(True)
+        self.appTracksDialog.ui.tableWidgetUnassociated.sortItems(0)
+        self.appTracksDialog.show()
+        self.appTracksDialog.raise_()
     
+    def appTrackComboBoxChanged(self,newText):
+        atid=self.sender().objectName()
+        if newText!='None':
+            self.dmd['appTracks'][atid][1]=newText
+        else:
+            self.dmd['appTracks'][atid][1]=None
+        self.redrawFlag=True
+        QTimer.singleShot(500,self.appTracksButtonClicked)
+
     def debriefPauseResumeButtonClicked(self,*args,**kwargs):
         if self.sts1.sync: # sync is on, but may be paused
             if self.sts1.syncPauseManual: # syncing was paused: resume sync
@@ -1195,7 +1301,7 @@ class DebriefMapGenerator(QObject):
         progress=0
         if outingNameOrAll==':ALL:':
             logging.info('inside rebuild: about to rebuild the entire debrief map')
-            self.dmd={'outings':{},'corr':{},'unclaimedTracks':{},'unclaimedClues':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
+            self.dmd={'outings':{},'corr':{},'unclaimedTracks':{},'unclaimedClues':{},'appTracks':{}} # master map data and correspondence dictionary - short for 'Debrief Map Dictionary'
             # self.dmd['outings']={}
             # self.dmd['corr']={}
             self.sts2.refresh(forceImmediate=True)
@@ -1592,6 +1698,7 @@ class DebriefMapGenerator(QObject):
             # logging.info('fids.keys='+str(fids.keys()))
             self.checkForUnclaimedTracks(t)
             self.checkForUnclaimedClues(t)
+            self.checkForUnclaimedApptracks()
         if a:
             g=a['geometry']
             gc=g['coordinates']
@@ -1651,6 +1758,28 @@ class DebriefMapGenerator(QObject):
                 # don't break - there could be more than one owned by the current outing
         for cleanedID in cleanedIDs:
             del self.dmd['unclaimedClues'][cleanedID]
+            
+    def checkForUnclaimedApptracks(self,id=None):
+        if id:
+            atidList=[id]
+        else:
+            atidList=[atid for atid in self.dmd['appTracks'].keys() if not self.dmd['appTracks'][atid][1]]
+        for uatid in atidList:
+            outingName=None
+            # if there is a line by the same name, and the apptrack is a subset of the line,
+            #  this apptrack should be ignored as a duplicate (the id is probably the same as the line)
+            at=self.sts1.getFeature(id=uatid)
+            t=self.dmd['appTracks'][uatid][0]
+            s=self.sts1.getFeature('Shape',title=t)
+            if s and isApptrackSubsetOfLine(s['geometry']['coordinates'],at['geometry']['coordinates']):
+                outingName='[SUBSET]'
+                self.redrawFlag=True
+            else:
+                pt=self.parseTrackName(t)
+                if pt and pt[0]+' '+pt[1] in self.dmd['outings'].keys():
+                    outingName=pt[0]+' '+pt[1]
+                    self.redrawFlag=True
+            self.dmd['appTracks'][uatid][1]=outingName
 
     def addShape(self,f,outingLogMessageOverride=None):
         p=f['properties']
@@ -1894,6 +2023,12 @@ class DebriefMapGenerator(QObject):
         sid=f['id']
 
         logging.info('newFeatureCallback: class='+c+'  title='+t+'  id='+sid+'  syncing='+str(self.sts1.syncing))
+        if c=='AppTrack':
+            self.dmd['appTracks'][sid]=[t,None,f['geometry']['coordinates'][-1][3]]
+            self.checkForUnclaimedApptracks(sid)
+            self.updateLinkLights()
+            self.writeDmdFile()
+            return
         # source id might have a corresponding target id; if all corresponding target ids still exist, skip    
         tids=sum(self.sts2.mapData['ids'].values(),[])
         action='import' # import, re-import, or None; modifications handled separately, below
@@ -2579,6 +2714,23 @@ class DebriefOptionsDialog(QDialog,Ui_DebriefOptionsDialog):
             initialSize=QSize(int(500*(self.ldpi/96)),int(395*(self.ldpi/96)))
             self.setMinimumSize(initialSize)
             self.setMaximumSize(initialSize)
+
+
+class AppTracksDialog(QDialog,Ui_AppTracksDialog):
+    def __init__(self,parent):
+        QDialog.__init__(self)
+        self.parent=parent
+        self.ui=Ui_AppTracksDialog()
+        self.ui.setupUi(self)
+        self.ldpi=self.screen().logicalDotsPerInch()
+        self.ui.tableWidgetAssociated.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.ui.tableWidgetUnassociated.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.ui.tableWidgetAssociated.setColumnWidth(1,int(80*(self.ldpi/96)))
+        self.ui.tableWidgetAssociated.setColumnWidth(2,int(60*(self.ldpi/96)))
+        self.ui.tableWidgetAssociated.horizontalHeader().setSectionResizeMode(0,1)
+        self.ui.tableWidgetUnassociated.setColumnWidth(1,int(80*(self.ldpi/96)))
+        self.ui.tableWidgetUnassociated.setColumnWidth(2,int(60*(self.ldpi/96)))
+        self.ui.tableWidgetUnassociated.horizontalHeader().setSectionResizeMode(0,1)
 
 
 class DebriefDialog(QDialog,Ui_DebriefDialog):
