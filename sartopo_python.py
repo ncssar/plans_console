@@ -175,6 +175,7 @@ class SartopoSession():
             syncInterval=5,
             syncTimeout=10,
             syncDumpFile=None,
+            cacheDumpFile=None,
             propertyUpdateCallback=None,
             geometryUpdateCallback=None,
             newFeatureCallback=None,
@@ -210,6 +211,7 @@ class SartopoSession():
         self.lastSuccessfulSyncTimestamp=0 # the server's integer milliseconds 'sincce' request completion time
         self.lastSuccessfulSyncTSLocal=0 # this object's integer milliseconds sync completion time
         self.syncDumpFile=syncDumpFile
+        self.cacheDumpFile=cacheDumpFile
         self.useFiddlerProxy=useFiddlerProxy
         self.syncing=False
         if not self.setupSession():
@@ -461,7 +463,7 @@ class SartopoSession():
         rj=self.sendRequest('get','since/'+str(max(0,self.lastSuccessfulSyncTimestamp-500)),None,returnJson='ALL',timeout=self.syncTimeout)
         if rj and rj['status']=='ok':
             if self.syncDumpFile:
-                with open(self.insertBeforeExt(self.syncDumpFile,'.since'+str(self.lastSuccessfulSyncTimestamp-500)),"w") as f:
+                with open(insertBeforeExt(self.syncDumpFile,'.since'+str(max(0,self.lastSuccessfulSyncTimestamp-500))),"w") as f:
                     f.write(json.dumps(rj,indent=3))
             # response timestamp is an integer number of milliseconds; equivalent to
             # int(time.time()*1000))
@@ -473,7 +475,9 @@ class SartopoSession():
             rjrsf=rjr['state']['features']
             
             # 1 - if 'ids' exists, use it verbatim; cleanup happens later
+            idsBefore=None
             if 'ids' in rjr.keys():
+                idsBefore=copy.deepcopy(self.mapData['ids'])
                 self.mapData['ids']=rjr['ids']
                 logging.info('  Updating "ids"')
             
@@ -533,21 +537,42 @@ class SartopoSession():
 
             # 3 - cleanup - remove features from the cache whose ids are no longer in cached id list
             #  (ids will be part of the response whenever feature(s) were added or deleted)
+            #  (finishing an apptrack moves the id from AppTracks to Shapes, so the id count is not affected)
+            #  (if the server does not remove the apptrack correctly after finishing, the same id will
+            #   be in AppTracks and in Shapes)
             # beforeStr='mapData before cleanup:'+json.dumps(self.mapData,indent=3)
             #  at this point in the code, the deleted feature has been removed from ids but is still part of state-features
-            self.mapIDs=sum(self.mapData['ids'].values(),[])
-            mapSFIDsBefore=[f['id'] for f in self.mapData['state']['features']]
+            # self.mapIDs=sum(self.mapData['ids'].values(),[])
+            # mapSFIDsBefore=[f['id'] for f in self.mapData['state']['features']]
             # edit the cache directly: https://stackoverflow.com/a/1157174/3577105
-            l1=len(self.mapData['state']['features'])
-            self.mapData['state']['features'][:]=(f for f in self.mapData['state']['features'] if f['id'] in self.mapIDs)
-            mapSFIDs=[f['id'] for f in self.mapData['state']['features']]
-            l2=len(self.mapData['state']['features'])
-            if l2!=l1:
-                deletedIds=list(set(mapSFIDsBefore)-set(mapSFIDs))
-                logging.info('cleaned up '+str(l1-l2)+' feature(s) from the cache:'+str(deletedIds))
-                if self.deletedFeatureCallback:
-                    for did in deletedIds:
-                        self.deletedFeatureCallback(did)
+
+            if idsBefore:
+                deletedDict={}
+                deletedAnythingFlag=False
+                for c in idsBefore.keys():
+                    for id in idsBefore[c]:
+                        if id not in self.mapData['ids'][c]:
+                            self.mapData['state']['features'][:]=(f for f in self.mapData['state']['features'] if not(f['id']==id and f['properties']['class']==c))
+                            deletedDict.setdefault(c,[]).append(id)
+                            deletedAnythingFlag=True
+                            if self.deletedFeatureCallback:
+                                self.deletedFeatureCallback(id,c)
+                if deletedAnythingFlag:
+                    logging.info('deleted items have been removed from cache:\n'+json.dumps(deletedDict,indent=3))
+            
+
+            # l1=len(self.mapData['state']['features'])
+            # logging.info('before:'+str(l1)+':'+str(self.mapData['state']['features']))
+            # self.mapData['state']['features'][:]=(f for f in self.mapData['state']['features'] if f['id'] in self.mapIDs)
+            # mapSFIDs=[f['id'] for f in self.mapData['state']['features']]
+            # l2=len(self.mapData['state']['features'])
+            # logging.info('after:'+str(l1)+':'+str(self.mapData['state']['features']))
+            # if l2!=l1:
+            #     deletedIds=list(set(mapSFIDsBefore)-set(mapSFIDs))
+            #     logging.info('cleaned up '+str(l1-l2)+' feature(s) from the cache:'+str(deletedIds))
+            #     if self.deletedFeatureCallback:
+            #         for did in deletedIds:
+            #             self.deletedFeatureCallback(did)
                 # logging.info(beforeStr)
                 # logging.info('mapData after cleanup:'+json.dumps(self.mapData,indent=3))
 
@@ -564,8 +589,8 @@ class SartopoSession():
             # #         del self.mapData['state']['features'][i]
             
 
-            if self.syncDumpFile:
-                with open(self.insertBeforeExt(self.syncDumpFile,'.cache'+str(self.lastSuccessfulSyncTimestamp)),"w") as f:
+            if self.cacheDumpFile:
+                with open(insertBeforeExt(self.cacheDumpFile,'.cache'+str(max(0,self.lastSuccessfulSyncTimestamp))),"w") as f:
                     f.write('sync cleanup:')
                     f.write('  mapIDs='+str(self.mapIDs)+'\n\n')
                     f.write('  mapSFIDs='+str(mapSFIDs)+'\n\n')
@@ -2172,21 +2197,21 @@ class SartopoSession():
         return rids # resulting feature IDs
 
         
-    def insertBeforeExt(self,fn,ins):
-        if '.' in fn:
-            lastSlashIndex=-1
-            lastBackSlashIndex=-1
-            if '/' in fn:
-                lastSlashIndex=fn.rindex('/')
-            if '\\' in fn:
-                lastBackSlashIndex=fn.rindex('\\')
-            lastSepIndex=max(lastBackSlashIndex,lastSlashIndex)
-            try:
-                lastDotIndex=fn.rindex('.',lastSepIndex)
-                return fn[:lastDotIndex]+ins+fn[lastDotIndex:]
-            except:
-                pass
-        return fn+ins
+def insertBeforeExt(fn,ins):
+    if '.' in fn:
+        lastSlashIndex=-1
+        lastBackSlashIndex=-1
+        if '/' in fn:
+            lastSlashIndex=fn.rindex('/')
+        if '\\' in fn:
+            lastBackSlashIndex=fn.rindex('\\')
+        lastSepIndex=max(0,lastBackSlashIndex,lastSlashIndex)
+        try:
+            lastDotIndex=fn.rindex('.',lastSepIndex)
+            return fn[:lastDotIndex]+ins+fn[lastDotIndex:]
+        except:
+            pass
+    return fn+ins
 
 
 # print by default; let the caller change this if needed

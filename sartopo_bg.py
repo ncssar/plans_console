@@ -533,6 +533,7 @@ class DebriefMapGenerator(QObject):
         self.updateLinkLights()
   
         self.redrawFlag=True
+        self.appTracksDialogRedrawFlag=False
         self.syncBlinkFlag=False
 
         self.mainTimer=QTimer()
@@ -657,6 +658,9 @@ class DebriefMapGenerator(QObject):
             if self.pc:
                 self.parent.ui.debriefLinkLight.setStyleSheet(LINK_LIGHT_STYLES[-1])
             self.dd.ui.tableWidget.setStyleSheet('background-color:#FFAAAA;')
+        if self.appTracksDialogRedrawFlag:
+            self.appTracksDialogRedrawFlag=False
+            self.appTracksDialogRedraw()
 
 
 
@@ -711,12 +715,19 @@ class DebriefMapGenerator(QObject):
         # this function is probably called from a sync thread:
         #  can't create a timer or do some GUI operations from here, etc.
         self.syncBlinkFlag=True
+        if self.appTracksDialog.isVisible():
+            self.appTracksDialogRedrawFlag=True
 
     def debriefOptionsButtonClicked(self,*args,**kwargs):
         self.debriefOptionsDialog.show()
         self.debriefOptionsDialog.raise_()
         
     def appTracksButtonClicked(self,*args,**kwargs):
+        self.appTracksDialogRedraw()
+        self.appTracksDialog.show()
+        self.appTracksDialog.raise_()
+    
+    def appTracksDialogRedraw(self):
         row=[0,0]
         tsNow=time.time()
         self.appTracksDialog.ui.tableWidgetAssociated.setSortingEnabled(False)
@@ -729,7 +740,11 @@ class DebriefMapGenerator(QObject):
         for atid in self.dmd['appTracks'].keys():
             at=self.dmd['appTracks'][atid]
             latestSec=int(tsNow)-int(at[2]/1000)
-            if latestSec<60:
+            if latestSec<10:
+                latestStr='<10 sec.'
+            elif latestSec<30:
+                latestStr='<30 sec.'
+            elif latestSec<60:
                 latestStr='<1 min.'
             elif latestSec<300:
                 latestStr='<5 mins.'
@@ -774,9 +789,7 @@ class DebriefMapGenerator(QObject):
         self.appTracksDialog.ui.tableWidgetAssociated.sortItems(0)
         self.appTracksDialog.ui.tableWidgetUnassociated.setSortingEnabled(True)
         self.appTracksDialog.ui.tableWidgetUnassociated.sortItems(0)
-        self.appTracksDialog.show()
-        self.appTracksDialog.raise_()
-    
+
     def appTrackComboBoxChanged(self,newText):
         atid=self.sender().objectName()
         if newText!='None':
@@ -1864,7 +1877,7 @@ class DebriefMapGenerator(QObject):
                     description=p.get('description',''),
                     opacity=p['stroke-opacity'],
                     width=p['stroke-width'],
-                    pattern=p['pattern'])
+                    pattern=p.get('pattern',''))
             self.addCorrespondence(sid,lineID)
             if saveAsUnclaimed:
                 self.dmd['unclaimedTracks'][lineID]=t
@@ -2026,6 +2039,7 @@ class DebriefMapGenerator(QObject):
         if c=='AppTrack':
             self.dmd['appTracks'][sid]=[t,None,f['geometry']['coordinates'][-1][3]]
             self.checkForUnclaimedApptracks(sid)
+            self.appTracksDialogRedrawFlag=True
             self.updateLinkLights()
             self.writeDmdFile()
             return
@@ -2421,9 +2435,17 @@ class DebriefMapGenerator(QObject):
         self.updateLinkLights(debriefLink=10)
         sid=f['id']
         sp=f['properties']
-        st=sp['title'].rstrip() # assignment with letter but no number could end with space
         sc=sp['class']
         sg=f['geometry']
+        # apptrack updates don't include title
+        if sc=='AppTrack':
+            # cache has already been updated; all we need to do here is update the latest timestamp
+            # logging.info(' updating apptrack - existing entry:'+str(self.dmd['appTracks'][sid]))
+            # logging.info('  geom:\n'+json.dumps(sg,indent=3))
+            self.dmd['appTracks'][sid][2]=sg['coordinates'][-1][3]
+            self.appTracksDialogRedrawFlag=True
+            return
+        st=sp['title'].rstrip() # assignment with letter but no number could end with space
         osids=[self.dmd['outings'][x]['sid'] for x in self.dmd['outings'].keys()] # list of sid of all outings
         logging.info('osids:'+str(osids))
         # if the edited source feature is a track (a linestring with appropriate name format),
@@ -2498,17 +2520,27 @@ class DebriefMapGenerator(QObject):
         self.updateLinkLights() # set back to previous colors
 
     # note that the argument to deletedFeatureCallback is just the source map id
-    def deletedFeatureCallback(self,sid):
+    def deletedFeatureCallback(self,sid,className):
         # this function is probably called from a sync thread:
         #  can't create a timer or do some GUI operations from here, etc.
         self.updateLinkLights(debriefLink=10)
         # sid=f['id']
-        logging.info('deletedFeatureCallback called for source map feature with id '+str(sid)+' :')
+        logging.info('deletedFeatureCallback called for source map '+className+' with id '+str(sid)+' :')
         # logging.info(json.dumps(f,indent=3))
         # 1. determine which target-map feature, if any, corresponds to the edited source-map feature
         # logging.info('corr keys:')
         # logging.info(str(dmd['corr'].keys()))
         # logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
+        if className=='AppTrack':
+            try:
+                del self.dmd['appTracks'][sid]
+            except:
+                pass
+            self.writeDmdFile()
+            self.redrawFlag=True
+            self.appTracksDialogRedrawFlag=True
+            self.updateLinkLights() # set back to previous colors
+            return
         found=False
         if sid in self.dmd['corr'].keys():
             cval=self.dmd['corr'][sid]

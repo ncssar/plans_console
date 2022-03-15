@@ -353,12 +353,16 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         parser=argparse.ArgumentParser()
         parser.add_argument('mapID',nargs='?',default=None) # optional incident map ID (#abcd or $abcd for now)
         parser.add_argument('debriefMapID',nargs='?',default=None) # optional debrief map ID (#abcd or $abcd for now)
+        parser.add_argument('-sd','--syncdump',action='store_true',
+                help='write a sync dump file containing every "since" response; for debug only; results in a LOT of files'),
+        parser.add_argument('-cd','--cachedump',action='store_true',
+                help='write a cache dump file after every "since" response; for debug only; results in a LOT of potentially HUGE files'),
         parser.add_argument('-nr','--norestore',action='store_true',
                 help='do not try to restore the previous session, and do not ask the user')
         parser.add_argument('-nu','--nourl',action='store_true',
                 help='disable all interactions with SARTopo/Caltopo')
-        args=parser.parse_args()
-        logging.info('args:'+str(args))
+        self.args=parser.parse_args()
+        logging.info('args:'+str(self.args))
 
         self.readConfigFile()
         if self.watchedDir and not os.path.isdir(self.watchedDir):
@@ -390,7 +394,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.incidentURL=None
         self.debriefURL=None
         [i,d,n]=self.preview_saved_data()
-        if not args.norestore:
+        if not self.args.norestore:
             if not (i or d or n):
                 logging.info('Saved session file contained no useful data; not offering to restore')
             else:
@@ -407,8 +411,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 # if "y" in name1.lower():
                     self.load_data()
                     self.reloaded = True
-        if not args.nourl and not self.reloaded:
-            name1=args.mapID
+        if not self.args.nourl and not self.reloaded:
+            name1=self.args.mapID
             if name1:
                 if "#" in name1:
                     self.incidentURL="https://sartopo.com/m/"+name1[1:]        # remove the #
@@ -492,12 +496,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
         # if debrief map was specified both on command line and in restored file,
         #  then ignore so that the user will have to specify the debrief map in the GUI
-        if self.debriefURL and args.debriefMapID:
+        if self.debriefURL and self.args.debriefMapID:
             self.debriefMapID=None
             self.debriefURL=None
 
-        if args.debriefMapID and self.link>-1:
-            name2=args.debriefMapID
+        if self.args.debriefMapID and self.link>-1:
+            name2=self.args.debriefMapID
             if name2:
                 if "#" in name2:
                     self.debriefURL="https://sartopo.com/m/"+name2[1:]        # remove the #
@@ -517,6 +521,16 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         parse=self.incidentURL.replace("http://","").replace("https://","").split("/")
         domainAndPort=parse[0]
         mapID=parse[-1]
+        syncDumpFile=None
+        if self.args.syncdump:
+            syncDumpFile='syncdump.'+mapID
+            logging.info('Sync dump file will be written with the response to each "since" request; each filename will begin with '+syncDumpFile)
+            syncDumpFile+='.txt'
+        cacheDumpFile=None
+        if self.args.cachedump:
+            cacheDumpFile='cachedump.'+mapID
+            logging.info('Cache dump file will be written after each "since" request; each filename will begin with '+cacheDumpFile)
+            cacheDumpFile+='.txt'
         self.sts=None
         box=QMessageBox(
             QMessageBox.NoIcon, # other vaues cause the chime sound to play
@@ -533,9 +547,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                         configpath=self.stsconfigpath,
                                         account=self.accountName,
                                         sync=False,
-                                        useFidderProxy=True)
+                                        syncDumpFile=syncDumpFile,
+                                        useFiddlerProxy=True)
             else:
-                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,useFiddlerProxy=True)
+                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,syncDumpFile=syncDumpFile,useFiddlerProxy=True)
             self.link=self.sts.apiVersion
         except Exception as e:
             logging.warning('Exception during createSTS:\n'+str(e))
