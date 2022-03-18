@@ -548,9 +548,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                         account=self.accountName,
                                         sync=False,
                                         syncDumpFile=syncDumpFile,
+                                        cacheDumpFile=cacheDumpFile,
                                         useFiddlerProxy=True)
             else:
-                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,syncDumpFile=syncDumpFile,useFiddlerProxy=True)
+                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,syncDumpFile=syncDumpFile,cacheDumpFile=cacheDumpFile,useFiddlerProxy=True)
             self.link=self.sts.apiVersion
         except Exception as e:
             logging.warning('Exception during createSTS:\n'+str(e))

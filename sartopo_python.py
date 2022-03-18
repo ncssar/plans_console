@@ -143,6 +143,7 @@ import sys
 import threading
 from threading import Thread
 import copy
+import traceback
 
 # import objgraph
 # import psutil
@@ -518,7 +519,25 @@ class SartopoSession():
                             if 'geometry' in f.keys():
                                 if self.mapData['state']['features'][i]['geometry']!=f['geometry']:
                                     logging.info('  Updating geometry for '+featureClass+':'+title)
-                                    self.mapData['state']['features'][i]['geometry']=f['geometry']
+                                    # if geometry.incremental exists and is true, append new coordinates to existing coordinates
+                                    # otherwise, replace the entire geometry value
+                                    fg=f['geometry']
+                                    mdsfg=self.mapData['state']['features'][i]['geometry']
+                                    if fg.get('incremental',None):
+                                        mdsfgc=mdsfg['coordinates']
+                                        latestExistingTS=mdsfgc[-1][3]
+                                        fgc=fg.get('coordinates',[])
+                                        # avoid duplicates without walking the entire existing list of points;
+                                        #  assume that timestamps are strictly increasing in list item sequence
+                                        # walk forward through new points:
+                                        # if timestamp is more recent than latest existing point, then append the rest of the new point list
+                                        for n in range(len(fgc)):
+                                            if fgc[n][3]>latestExistingTS:
+                                                mdsfgc+=fgc[n:]
+                                                break
+                                        mdsfg['size']=len(mdsfgc)
+                                    else:
+                                        self.mapData['state']['features'][i]['geometry']=f['geometry']
                                     if self.geometryUpdateCallback:
                                         self.geometryUpdateCallback(f)
                                 else:
@@ -592,8 +611,8 @@ class SartopoSession():
             if self.cacheDumpFile:
                 with open(insertBeforeExt(self.cacheDumpFile,'.cache'+str(max(0,self.lastSuccessfulSyncTimestamp))),"w") as f:
                     f.write('sync cleanup:')
-                    f.write('  mapIDs='+str(self.mapIDs)+'\n\n')
-                    f.write('  mapSFIDs='+str(mapSFIDs)+'\n\n')
+                    f.write('  mapIDs='+str(self.mapID)+'\n\n')
+                    # f.write('  mapSFIDs='+str(mapSFIDs)+'\n\n')
                     f.write(json.dumps(self.mapData,indent=3))
 
             # self.syncing=False
@@ -704,7 +723,7 @@ class SartopoSession():
                 try:
                     self.doSync()
                 except Exception as e:
-                    logging.error('Exception during sync of map '+self.mapID+'; stopping sync: '+str(type(e).__name__)+':'+str(e.args))
+                    logging.exception('Exception during sync of map '+self.mapID+'; stopping sync:')
                     # remove sync blockers, to let the thread shut down cleanly, avoiding a zombie loop when sync restart is attempted
                     self.syncPause=False
                     self.syncing=False
@@ -1288,9 +1307,6 @@ class SartopoSession():
             rval=[]
             features=self.mapData['state']['features']
             for feature in features:
-                if feature['id']==id:
-                    rval.append(feature)
-                    break
                 prop=feature.get('properties',None)
                 if prop and isinstance(prop,dict):
                     pk=prop.keys()
@@ -1298,6 +1314,20 @@ class SartopoSession():
                     logging.error('getFeatures: "properties" does not exist or is not a dict:'+str(feature))
                     return [False]
                 c=prop['class']
+                # logging.info('checking class='+c+'  id='+feature['id'])
+                if feature['id']==id:
+                    # logging.info(' id match:'+id)
+                    if featureClass:
+                        # logging.info('   featureClass specified:'+featureClass)
+                        if c.lower()==featureClass.lower():
+                            rval.append(feature)
+                            # logging.info('     match')
+                            break
+                        # else:
+                            # logging.info('     but class '+c+' did not match')
+                    else:
+                        rval.append(feature)
+                        break
                 if featureClass is None and c not in featureClassExcludeList:
                     if 'title' in pk:
                         if prop['title'].rstrip()==title: # since assignments without number will still have a space after letter
@@ -1306,7 +1336,7 @@ class SartopoSession():
                     else:
                         logging.error('getFeatures: no title key exists:'+str(feature))
                 else:
-                    if c==featureClass:
+                    if c==featureClass and id is None:
                         if title is None:
                             rval.append(feature)
                         else:
@@ -1357,7 +1387,14 @@ class SartopoSession():
                 logging.warning('getFeature: no match')
                 return -1
             else:
-                logging.warning('getFeature: more than one match')
+                msg='getFeature: more than one match found while looking for feature:'
+                if featureClass:
+                    msg+=' featureClass='+str(featureClass)
+                if title:
+                    msg+=' title='+str(title)
+                if id:
+                    msg+=' id='+str(id)
+                logging.warning(msg)
                 logging.info(str(r))
                 return -1
         else:
@@ -1977,7 +2014,7 @@ class SartopoSession():
     # crop - remove portions of a line or polygon that are outside a boundary polygon;
     #          grow the specified boundary polygon by the specified distance before cropping
 
-    def crop(self,target,boundary,beyond=0.0001,deleteBoundary=False,useResultNameSuffix=False,drawSizedBoundary=False):
+    def crop(self,target,boundary,beyond=0.0001,deleteBoundary=False,useResultNameSuffix=False,drawSizedBoundary=False,noDraw=False):
         if isinstance(target,str): # if string, find feature by name; if id, find feature by id
             targetStr=target
             if len(target)==36: # id
@@ -2063,6 +2100,17 @@ class SartopoSession():
         # logging.info('crop targetGeom:'+str(targetGeom))
         # logging.info('crop boundaryGeom:'+str(boundaryGeom))
         # logging.info('crop result:'+str(result))
+
+        # if specified, only return the coordinate list(s) instead of editing / adding map features
+        if noDraw:
+            # return a list of line segments with points as lists rather than tuples; a.k.a. a list of lists of lists
+            if isinstance(result,LineString):
+                return [list(map(list,result.coords))]
+            elif isinstance(result,MultiLineString):
+                return [list(map(list,ls.coords)) for ls in result]
+            else:
+                logging.error('Unexpected noDraw crop result type '+str(result.__class__.__name__))
+                return False
 
         # preserve target properties when adding new features
         tp=targetShape['properties']

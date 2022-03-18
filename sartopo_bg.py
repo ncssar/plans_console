@@ -728,14 +728,18 @@ class DebriefMapGenerator(QObject):
         self.appTracksDialog.raise_()
     
     def appTracksDialogRedraw(self):
-        row=[0,0]
+        row=[0,0,0]
         tsNow=time.time()
-        self.appTracksDialog.ui.tableWidgetAssociated.setSortingEnabled(False)
+        self.appTracksDialog.ui.tableWidgetAssociatedUnfinished.setSortingEnabled(False)
+        self.appTracksDialog.ui.tableWidgetAssociatedFinished.setSortingEnabled(False)
         self.appTracksDialog.ui.tableWidgetUnassociated.setSortingEnabled(False)
-        associatedCount=len([x for x in self.dmd['appTracks'].values() if x[1] is not None and x[1]!='[SUBSET]'])
+        associatedAppTracks=[x for x in self.dmd['appTracks'].values() if x[1] is not None and x[1]!='[SUBSET]']
+        associatedFinishedCount=len([x for x in associatedAppTracks if '[FINISHED]' in x[1]])
+        associatedUnfinishedCount=len(associatedAppTracks)-associatedFinishedCount
         unassociatedCount=len([x for x in self.dmd['appTracks'].values() if x[1] is None])
         self.appTracksDialog.ui.ignoredListWidget.clear()
-        self.appTracksDialog.ui.tableWidgetAssociated.setRowCount(associatedCount)
+        self.appTracksDialog.ui.tableWidgetAssociatedUnfinished.setRowCount(associatedUnfinishedCount)
+        self.appTracksDialog.ui.tableWidgetAssociatedFinished.setRowCount(associatedFinishedCount)
         self.appTracksDialog.ui.tableWidgetUnassociated.setRowCount(unassociatedCount)
         for atid in self.dmd['appTracks'].keys():
             at=self.dmd['appTracks'][atid]
@@ -760,44 +764,46 @@ class DebriefMapGenerator(QObject):
                 latestStr='<1 day'
             else:
                 latestStr='>1 day'
-            comboOptions=['None']+sorted(self.dmd['outings'].keys(),key=str.casefold)
-            combo=QComboBox()
-            combo.setObjectName(atid) # for use in the callback
-            for i in comboOptions:
-                combo.addItem(i)
-            # set combo box to reflect already-associated outing
-            if self.dmd['appTracks'][atid][1] in comboOptions:
-                combo.setCurrentText(self.dmd['appTracks'][atid][1])
-            combo.currentTextChanged.connect(self.appTrackComboBoxChanged)
+            # comboOptions=['None']+sorted(self.dmd['outings'].keys(),key=str.casefold)
+            # combo=QComboBox()
+            # combo.setObjectName(atid) # for use in the callback
+            # for i in comboOptions:
+            #     combo.addItem(i)
+            # # set combo box to reflect already-associated outing
+            # if self.dmd['appTracks'][atid][1] in comboOptions:
+            #     combo.setCurrentText(self.dmd['appTracks'][atid][1])
+            # combo.currentTextChanged.connect(self.appTrackComboBoxChanged)
             if at[1]:
                 if at[1]=='[SUBSET]':
                     self.appTracksDialog.ui.ignoredListWidget.addItem(at[0])
+                elif '[FINISHED]' in at[1]:
+                    self.appTracksDialog.ui.tableWidgetAssociatedFinished.setItem(row[1],0,QTableWidgetItem(at[0]))
+                    self.appTracksDialog.ui.tableWidgetAssociatedFinished.setItem(row[1],1,QTableWidgetItem(latestStr))
+                    row[1]+=1
                 else:
-                    self.appTracksDialog.ui.tableWidgetAssociated.setItem(row[0],0,QTableWidgetItem(self.dmd['appTracks'][atid][0]))
-                    self.appTracksDialog.ui.tableWidgetAssociated.setCellWidget(row[0],1,combo)
-                    combo.setObjectName(atid)
-                    # combo.currentTextChanged.connect(self.appTrackAssociatedComboBoxChanged)
-                    self.appTracksDialog.ui.tableWidgetAssociated.setItem(row[0],2,QTableWidgetItem(latestStr))
+                    self.appTracksDialog.ui.tableWidgetAssociatedUnfinished.setItem(row[0],0,QTableWidgetItem(at[0]))
+                    self.appTracksDialog.ui.tableWidgetAssociatedUnfinished.setItem(row[0],1,QTableWidgetItem(at[1]))
+                    self.appTracksDialog.ui.tableWidgetAssociatedUnfinished.setItem(row[0],2,QTableWidgetItem(latestStr))
                     row[0]+=1
             else:
-                self.appTracksDialog.ui.tableWidgetUnassociated.setItem(row[1],0,QTableWidgetItem(self.dmd['appTracks'][atid][0]))
-                self.appTracksDialog.ui.tableWidgetUnassociated.setCellWidget(row[1],1,combo)
-                # combo.currentTextChanged.connect(self.appTrackUnassociatedComboBoxChanged)
-                self.appTracksDialog.ui.tableWidgetUnassociated.setItem(row[1],2,QTableWidgetItem(latestStr))
-                row[1]+=1
-        self.appTracksDialog.ui.tableWidgetAssociated.setSortingEnabled(True)
-        self.appTracksDialog.ui.tableWidgetAssociated.sortItems(0)
+                self.appTracksDialog.ui.tableWidgetUnassociated.setItem(row[2],0,QTableWidgetItem(at[0]))
+                self.appTracksDialog.ui.tableWidgetUnassociated.setItem(row[2],1,QTableWidgetItem(latestStr))
+                row[2]+=1
+        self.appTracksDialog.ui.tableWidgetAssociatedUnfinished.setSortingEnabled(True)
+        self.appTracksDialog.ui.tableWidgetAssociatedUnfinished.sortItems(0)
+        self.appTracksDialog.ui.tableWidgetAssociatedFinished.setSortingEnabled(True)
+        self.appTracksDialog.ui.tableWidgetAssociatedFinished.sortItems(0)
         self.appTracksDialog.ui.tableWidgetUnassociated.setSortingEnabled(True)
         self.appTracksDialog.ui.tableWidgetUnassociated.sortItems(0)
 
-    def appTrackComboBoxChanged(self,newText):
-        atid=self.sender().objectName()
-        if newText!='None':
-            self.dmd['appTracks'][atid][1]=newText
-        else:
-            self.dmd['appTracks'][atid][1]=None
-        self.redrawFlag=True
-        QTimer.singleShot(500,self.appTracksButtonClicked)
+    # def appTrackComboBoxChanged(self,newText):
+    #     atid=self.sender().objectName()
+    #     if newText!='None':
+    #         self.dmd['appTracks'][atid][1]=newText
+    #     else:
+    #         self.dmd['appTracks'][atid][1]=None
+    #     self.redrawFlag=True
+    #     QTimer.singleShot(500,self.appTracksButtonClicked)
 
     def debriefPauseResumeButtonClicked(self,*args,**kwargs):
         if self.sts1.sync: # sync is on, but may be paused
@@ -856,6 +862,29 @@ class DebriefMapGenerator(QObject):
         for tidList in outing['tids']:
             alltids.extend(tidList)
         outingFeatureIds+=alltids
+        # add feature(s) now for any unfinished apptracks associated with this outing
+        appTracksIDList=[id for id in self.dmd['appTracks'].keys() if self.dmd['appTracks'][id][1]==outingName]
+        appTracksFeaturesUncropped=[] # used for legend generation
+        appTracksFeaturesCropped=[] # sent in the PDF request
+        cropDegrees=self.dmd['outings'][outingName].get('crop',self.cropDegrees)
+        for atid in appTracksIDList:
+            atf=self.sts1.getFeature(id=atid,featureClass='AppTrack')
+            atfp=atf['properties']
+            tparse=self.parseTrackName(atf['properties']['title'])
+            # atf['properties']['pattern']='M0 -3 L0 3,,12,F' # simple dashed line
+            # atf['properties']['pattern']='M0 -1 L0 1,,8,F' # simple dotted line
+            atfp['pattern']='M0 -3 L0 2,,8,F' # heavy dashed line
+            atfp['stroke-width']=4 # since dashed lines are thinner on PDF
+            atfp['stroke']=self.trackColorDict.get(tparse[2].lower(),'#444444')
+            logging.info('adding AppTrack '+atid+':\n'+json.dumps(atf,indent=3))
+            cropped=self.sts2.crop(atf,outing['bid'],beyond=cropDegrees,noDraw=True)
+            for seg in cropped:
+                logging.info('  cropped segment:'+str(seg))
+                segf=copy.deepcopy(atf)
+                segf['geometry']['coordinates']=seg
+                appTracksFeaturesCropped.append(segf)
+            appTracksFeaturesUncropped.append(atf)
+        # croppedAppTrackList=self.sts2.crop(appTrackCoords,boundary)
         # logging.info('ids for this outing:'+str(ids))
         bounds=self.sts2.getBounds(outingFeatureIds,padPct=15)
 
@@ -935,6 +964,15 @@ class DebriefMapGenerator(QObject):
                 'stroke':t0p['stroke'],
                 'stroke-opacity':t0p['stroke-opacity'],
                 'stroke-width':t0p['stroke-width']
+            })
+        for atf in appTracksFeaturesUncropped:
+            atfp=atf['properties']
+            legendItems.append({
+                'text':atfp['title'],
+                'stroke':atfp['stroke'],
+                'pattern':atfp['pattern'],
+                'stroke-opacity':atfp['stroke-opacity'],
+                'stroke-width':atfp['stroke-width']
             })
 
         if size[0]==11: # landscape
@@ -1091,6 +1129,7 @@ class DebriefMapGenerator(QObject):
                     'properties':{
                         'stroke-opacity':li['stroke-opacity'],
                         'stroke-width':li['stroke-width'],
+                        'pattern':li.get('pattern',''),
                         'title':li['text'],
                         'class':'Shape',
                         'stroke':li['stroke']
@@ -1114,6 +1153,12 @@ class DebriefMapGenerator(QObject):
                     del f['properties']['title']
                 except:
                     pass
+        appTracksFeaturesNoTitles=copy.deepcopy(appTracksFeaturesCropped) # don't modify the cache
+        for f in appTracksFeaturesNoTitles:
+            try:
+                del f['properties']['title']
+            except:
+                pass
 
         # 'expires' should be 7 days from now; if it does expire
         #   before the search is done, that's not really a problem
@@ -1146,7 +1191,7 @@ class DebriefMapGenerator(QObject):
             'properties':{
                 'mapState':{
                     'type':'FeatureCollection',
-                    'features':legendFeatures+features+legendFeaturesNoTitles
+                    'features':legendFeatures+features+appTracksFeaturesNoTitles+legendFeaturesNoTitles
                 },
                 'layer':layerString,
                 'grids':grids,
@@ -1711,7 +1756,7 @@ class DebriefMapGenerator(QObject):
             # logging.info('fids.keys='+str(fids.keys()))
             self.checkForUnclaimedTracks(t)
             self.checkForUnclaimedClues(t)
-            self.checkForUnclaimedApptracks()
+            self.checkForUnclaimedAppTracks()
         if a:
             g=a['geometry']
             gc=g['coordinates']
@@ -1772,7 +1817,7 @@ class DebriefMapGenerator(QObject):
         for cleanedID in cleanedIDs:
             del self.dmd['unclaimedClues'][cleanedID]
             
-    def checkForUnclaimedApptracks(self,id=None):
+    def checkForUnclaimedAppTracks(self,id=None):
         if id:
             atidList=[id]
         else:
@@ -2038,7 +2083,7 @@ class DebriefMapGenerator(QObject):
         logging.info('newFeatureCallback: class='+c+'  title='+t+'  id='+sid+'  syncing='+str(self.sts1.syncing))
         if c=='AppTrack':
             self.dmd['appTracks'][sid]=[t,None,f['geometry']['coordinates'][-1][3]]
-            self.checkForUnclaimedApptracks(sid)
+            self.checkForUnclaimedAppTracks(sid)
             self.appTracksDialogRedrawFlag=True
             self.updateLinkLights()
             self.writeDmdFile()
@@ -2272,6 +2317,14 @@ class DebriefMapGenerator(QObject):
         sgt=self.sts1.getFeature(id=sid)['geometry']['type']
         logging.info('propertyUpdateCallback called for '+sc+':'+st)
         # determine which target-map feature, if any, corresponds to the edited source-map feature
+        if sc=='AppTrack' and sid in self.dmd['appTracks'].keys():
+            self.dmd['appTracks'][sid][0]=st
+            self.checkForUnclaimedAppTracks(sid)
+            self.appTracksDialogRedrawFlag=True
+            self.redrawFlag=True
+            self.updateLinkLights()
+            self.writeDmdFile()
+            return
         if sid in self.dmd['corr'].keys(): # this means there's a match but it's not an outing
             corrList=self.dmd['corr'][sid]
             if sc=='Shape' and sgt=='LineString':
@@ -2532,10 +2585,11 @@ class DebriefMapGenerator(QObject):
         # logging.info(str(dmd['corr'].keys()))
         # logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
         if className=='AppTrack':
-            try:
+            # was it finished (converted to shape), or just plain deleted?
+            if self.sts1.getFeature('Shape',id=sid):
+                self.dmd['appTracks'][sid][1]=(self.dmd['appTracks'][sid][1] or '')+'[FINISHED]'
+            else:
                 del self.dmd['appTracks'][sid]
-            except:
-                pass
             self.writeDmdFile()
             self.redrawFlag=True
             self.appTracksDialogRedrawFlag=True
@@ -2755,13 +2809,15 @@ class AppTracksDialog(QDialog,Ui_AppTracksDialog):
         self.ui=Ui_AppTracksDialog()
         self.ui.setupUi(self)
         self.ldpi=self.screen().logicalDotsPerInch()
-        self.ui.tableWidgetAssociated.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.ui.tableWidgetAssociatedUnfinished.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.ui.tableWidgetAssociatedUnfinished.setColumnWidth(1,int(80*(self.ldpi/96)))
+        self.ui.tableWidgetAssociatedUnfinished.setColumnWidth(2,int(60*(self.ldpi/96)))
+        self.ui.tableWidgetAssociatedUnfinished.horizontalHeader().setSectionResizeMode(0,1)
+        self.ui.tableWidgetAssociatedFinished.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.ui.tableWidgetAssociatedFinished.setColumnWidth(1,int(60*(self.ldpi/96)))
+        self.ui.tableWidgetAssociatedFinished.horizontalHeader().setSectionResizeMode(0,1)
         self.ui.tableWidgetUnassociated.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
-        self.ui.tableWidgetAssociated.setColumnWidth(1,int(80*(self.ldpi/96)))
-        self.ui.tableWidgetAssociated.setColumnWidth(2,int(60*(self.ldpi/96)))
-        self.ui.tableWidgetAssociated.horizontalHeader().setSectionResizeMode(0,1)
         self.ui.tableWidgetUnassociated.setColumnWidth(1,int(80*(self.ldpi/96)))
-        self.ui.tableWidgetUnassociated.setColumnWidth(2,int(60*(self.ldpi/96)))
         self.ui.tableWidgetUnassociated.horizontalHeader().setSectionResizeMode(0,1)
 
 
