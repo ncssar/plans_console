@@ -141,9 +141,7 @@ import time
 import logging
 import sys
 import threading
-from threading import Thread
 import copy
-import traceback
 
 # import objgraph
 # import psutil
@@ -209,6 +207,7 @@ class SartopoSession():
         self.deletedFeatureCallback=deletedFeatureCallback
         self.syncCallback=syncCallback
         self.syncInterval=syncInterval
+        self.syncCompletedCount=0
         self.lastSuccessfulSyncTimestamp=0 # the server's integer milliseconds 'sincce' request completion time
         self.lastSuccessfulSyncTSLocal=0 # this object's integer milliseconds sync completion time
         self.syncDumpFile=syncDumpFile
@@ -424,10 +423,14 @@ class SartopoSession():
         #  edit functions can have access to the full json
         self.syncThreadStarted=False
         self.syncPauseManual=False
+
+        # regardless of whether sync is specified, we need to do the initial cache population
+        #   here in the main thread, so that mapData is populated right away
+        self.doSync()
+
         if self.sync:
             self.start()
-        else: # do an initial since(0) even if sync is false
-            self.doSync()
+
         return True
 
     def sendUserdata(self,activeLayers=[['mbt',1]],center=[-120,39],zoom=13):
@@ -677,7 +680,7 @@ class SartopoSession():
         if self.syncThreadStarted:
             logging.info('Sartopo sync is already running for map '+self.mapID+'.')
         else:
-            Thread(target=self._syncLoop).start()
+            threading.Thread(target=self._syncLoop).start()
             logging.info('Sartopo syncing initiated for map '+self.mapID+'.')
             self.syncThreadStarted=True
 
@@ -700,6 +703,9 @@ class SartopoSession():
     #  iterative rather than recursive (which would eventually hit recursion limit issues),
     #  and it allows the blocking sleep call to happen here instead of inside doSync.
     def _syncLoop(self):
+        if self.syncCompletedCount==0:
+            logging.info('This is the first sync attempt; pausing for the normal sync interval before starting sync.')
+            time.sleep(self.syncInterval)
         while self.sync:
             if not self.syncPauseManual:
                 self.syncPauseMessageGiven=False
@@ -722,8 +728,9 @@ class SartopoSession():
                     syncWaited+=1
                 try:
                     self.doSync()
+                    self.syncCompletedCount+=1
                 except Exception as e:
-                    logging.exception('Exception during sync of map '+self.mapID+'; stopping sync:')
+                    logging.exception('Exception during sync of map '+self.mapID+'; stopping sync:') # logging.exception logs details and traceback
                     # remove sync blockers, to let the thread shut down cleanly, avoiding a zombie loop when sync restart is attempted
                     self.syncPause=False
                     self.syncing=False
@@ -1306,6 +1313,7 @@ class SartopoSession():
             titleMatchCount=0
             rval=[]
             features=self.mapData['state']['features']
+            # logging.info('features:\n'+json.dumps(features,indent=3))
             for feature in features:
                 prop=feature.get('properties',None)
                 if prop and isinstance(prop,dict):
