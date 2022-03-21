@@ -6,9 +6,15 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>861</width>
-    <height>601</height>
+    <width>805</width>
+    <height>490</height>
    </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
   </property>
   <property name="font">
    <font>
@@ -20,6 +26,9 @@
    <string>AppTracks Summary</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="sizeConstraint">
+    <enum>QLayout::SetMinimumSize</enum>
+   </property>
    <item>
     <widget class="QLabel" name="label">
      <property name="sizePolicy">
@@ -29,16 +38,15 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>Use this dialog to view and edit AppTrack/outing associations.
+      <string>Use this dialog to view AppTrack/outing associations.
 
-Ideally, if all AppTracks are properly named, and Finished by the app user when done with the assignment, you won't need to make any changes here.
+Outing association is automatically determined based on the AppTrack name.  To change an AppTrack's outing association, change the AppTrack's name from the app or from a web browser.
 
- - AppTracks with proper titles will automatically be associated with an outing and listed below.
  - AppTracks not associated with any outing will not be shown on generated debrief PDFs.
- - When an AppTrack is Finished, it is converted to a Line and removed from these tables; AppTracks listed here are still being recorded / have not been Finished.
- - AppTracks that are entirely covered by Lines of the same name (remnants of correctly Finished AppTracks) are listed under 'Ignored Duplicates' for reference, and will not appear on generated debrief PDFs.
-
-Changes here take effect immediately; you can close and reopen this dialog at any time.</string>
+ - AppTracks that are entirely covered by Lines of the same name (remnants of correctly Finished AppTracks) are listed under 'Ignored Duplicates' for reference, and will not appear on generated debrief PDFs.</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
@@ -73,7 +81,7 @@ Changes here take effect immediately; you can close and reopen this dialog at an
            <item>
             <widget class="QLabel" name="label_2">
              <property name="text">
-              <string>Still being recorded</string>
+              <string>Unfinished / still being recorded</string>
              </property>
             </widget>
            </item>
@@ -121,7 +129,7 @@ Changes here take effect immediately; you can close and reopen this dialog at an
            <item>
             <widget class="QLabel" name="label_3">
              <property name="text">
-              <string>Finished</string>
+              <string>Finished / converted to Line</string>
              </property>
             </widget>
            </item>

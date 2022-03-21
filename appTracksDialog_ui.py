@@ -14,12 +14,18 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_AppTracksDialog(object):
     def setupUi(self, AppTracksDialog):
         AppTracksDialog.setObjectName("AppTracksDialog")
-        AppTracksDialog.resize(861, 601)
+        AppTracksDialog.resize(805, 490)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(AppTracksDialog.sizePolicy().hasHeightForWidth())
+        AppTracksDialog.setSizePolicy(sizePolicy)
         font = QtGui.QFont()
         font.setFamily("Arial")
         font.setPointSize(12)
         AppTracksDialog.setFont(font)
         self.verticalLayout = QtWidgets.QVBoxLayout(AppTracksDialog)
+        self.verticalLayout.setSizeConstraint(QtWidgets.QLayout.SetMinimumSize)
         self.verticalLayout.setObjectName("verticalLayout")
         self.label = QtWidgets.QLabel(AppTracksDialog)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
@@ -27,6 +33,7 @@ class Ui_AppTracksDialog(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.label.sizePolicy().hasHeightForWidth())
         self.label.setSizePolicy(sizePolicy)
+        self.label.setAlignment(QtCore.Qt.AlignLeading|QtCore.Qt.AlignLeft|QtCore.Qt.AlignTop)
         self.label.setWordWrap(True)
         self.label.setObjectName("label")
         self.verticalLayout.addWidget(self.label)
@@ -144,25 +151,21 @@ class Ui_AppTracksDialog(object):
     def retranslateUi(self, AppTracksDialog):
         _translate = QtCore.QCoreApplication.translate
         AppTracksDialog.setWindowTitle(_translate("AppTracksDialog", "AppTracks Summary"))
-        self.label.setText(_translate("AppTracksDialog", "Use this dialog to view and edit AppTrack/outing associations.\n"
+        self.label.setText(_translate("AppTracksDialog", "Use this dialog to view AppTrack/outing associations.\n"
 "\n"
-"Ideally, if all AppTracks are properly named, and Finished by the app user when done with the assignment, you won\'t need to make any changes here.\n"
+"Outing association is automatically determined based on the AppTrack name.  To change an AppTrack\'s outing association, change the AppTrack\'s name from the app or from a web browser.\n"
 "\n"
-" - AppTracks with proper titles will automatically be associated with an outing and listed below.\n"
 " - AppTracks not associated with any outing will not be shown on generated debrief PDFs.\n"
-" - When an AppTrack is Finished, it is converted to a Line and removed from these tables; AppTracks listed here are still being recorded / have not been Finished.\n"
-" - AppTracks that are entirely covered by Lines of the same name (remnants of correctly Finished AppTracks) are listed under \'Ignored Duplicates\' for reference, and will not appear on generated debrief PDFs.\n"
-"\n"
-"Changes here take effect immediately; you can close and reopen this dialog at any time."))
+" - AppTracks that are entirely covered by Lines of the same name (remnants of correctly Finished AppTracks) are listed under \'Ignored Duplicates\' for reference, and will not appear on generated debrief PDFs."))
         self.label_5.setText(_translate("AppTracksDialog", "Associated with an outing"))
-        self.label_2.setText(_translate("AppTracksDialog", "Still being recorded"))
+        self.label_2.setText(_translate("AppTracksDialog", "Unfinished / still being recorded"))
         item = self.tableWidgetAssociatedUnfinished.horizontalHeaderItem(0)
         item.setText(_translate("AppTracksDialog", "Title"))
         item = self.tableWidgetAssociatedUnfinished.horizontalHeaderItem(1)
         item.setText(_translate("AppTracksDialog", "Outing"))
         item = self.tableWidgetAssociatedUnfinished.horizontalHeaderItem(2)
         item.setText(_translate("AppTracksDialog", "Latest"))
-        self.label_3.setText(_translate("AppTracksDialog", "Finished"))
+        self.label_3.setText(_translate("AppTracksDialog", "Finished / converted to Line"))
         item = self.tableWidgetAssociatedFinished.horizontalHeaderItem(0)
         item.setText(_translate("AppTracksDialog", "Title"))
         item = self.tableWidgetAssociatedFinished.horizontalHeaderItem(1)

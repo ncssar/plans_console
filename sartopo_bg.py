@@ -375,9 +375,9 @@ class DebriefMapGenerator(QObject):
                 account=self.parent.accountName
             QCoreApplication.processEvents()
             box.raise_()
-            parse=self.debriefURL.replace("http://","").replace("https://","").split("/")
-            domainAndPort=parse[0]
-            mapID=parse[-1]
+            # parse=self.debriefURL.replace("http://","").replace("https://","").split("/")
+            # domainAndPort=parse[0]
+            # mapID=parse[-1]
             self.sts2=SartopoSession(self.debriefDomainAndPort,self.debriefMapID,
                 sync=False,
                 account=account,
@@ -503,15 +503,45 @@ class DebriefMapGenerator(QObject):
         #  the source cache
         logging.info('sts1.apiVersion:'+str(self.sts1.apiVersion))
         logging.info('sts2.apiVersion:'+str(self.sts2.apiVersion))
+
+        if self.startupBox:
+            self.startupBox.done(0)
+
         if self.sts1.apiVersion>=0 and self.sts2.apiVersion>=0:
+            logging.info('Initial feature processing begins.')
             self.sts1.refresh() # this should do a blocking refresh
+
+            # block since requests for both maps (triggered by getFeatures) during initial processing
+            self.sts1.syncing=True
+            self.sts2.syncing=True
+
             self.initDmd()
 
             # now that dmd is generated, all source map features should be passed to newFeatureCallback,
             #  which is what would happen if the callback were registered when sts1 was created - but
             #  that would be too early, since the feature creation functions rely on dmd
-            for f in self.sts1.mapData['state']['features']:
+            mdsf=self.sts1.mapData['state']['features']
+            fc=len(mdsf)
+            progressBox=QProgressDialog('Processing incident map features, please wait...',"Abort",0,100)
+            progressBox.setMaximum(fc)
+            progress=1
+            # progressBox.setWindowModality(Qt.WindowModal)
+            progressBox.setWindowTitle("Initializing")
+            progressBox.show()
+            progressBox.raise_()
+            QCoreApplication.processEvents()
+            
+            for f in mdsf:
                 self.newFeatureCallback(f)
+                progress+=1
+                progressBox.setValue(progress)
+                QCoreApplication.processEvents()
+            progressBox.close()
+            logging.info('Initial feature processing completed.')
+
+            # unblock since requests now that initial processing is done
+            self.sts1.syncing=False
+            self.sts2.syncing=False
 
             # don't register the callbacks until after the initial refresh dmd file processing,
             #  to prevent duplicate feature creation in the debrief map on restart
@@ -519,12 +549,9 @@ class DebriefMapGenerator(QObject):
             self.sts1.propertyUpdateCallback=self.propertyUpdateCallback
             self.sts1.geometryUpdateCallback=self.geometryUpdateCallback
             self.sts1.deletedFeatureCallback=self.deletedFeatureCallback
-        
+
             if not self.sts1.sync:
                 self.sts1.start()
-
-        if self.startupBox:
-            self.startupBox.done(0)
 
         # updateLinnkLightsSignal, emitted from thread-safe updateLinkLights function,
         #  calls _updateLinkLights slot which always runs in the main thread
@@ -878,12 +905,13 @@ class DebriefMapGenerator(QObject):
             atfp['stroke']=self.trackColorDict.get(tparse[2].lower(),'#444444')
             logging.info('adding AppTrack '+atid+':\n'+json.dumps(atf,indent=3))
             cropped=self.sts2.crop(atf,outing['bid'],beyond=cropDegrees,noDraw=True)
-            for seg in cropped:
-                logging.info('  cropped segment:'+str(seg))
-                segf=copy.deepcopy(atf)
-                segf['geometry']['coordinates']=seg
-                appTracksFeaturesCropped.append(segf)
-            appTracksFeaturesUncropped.append(atf)
+            if cropped: # if target was entirely outside boundary, cropped result is False
+                for seg in cropped:
+                    logging.info('  cropped segment:'+str(seg))
+                    segf=copy.deepcopy(atf)
+                    segf['geometry']['coordinates']=seg
+                    appTracksFeaturesCropped.append(segf)
+                appTracksFeaturesUncropped.append(atf)
         # croppedAppTrackList=self.sts2.crop(appTrackCoords,boundary)
         # logging.info('ids for this outing:'+str(ids))
         bounds=self.sts2.getBounds(outingFeatureIds,padPct=15)
@@ -954,17 +982,32 @@ class DebriefMapGenerator(QObject):
             'text':'Boundary',
             'stroke':bidp['stroke'],
             'stroke-opacity':bidp['stroke-opacity'],
-            'stroke-width':bidp['stroke-width']
+            'stroke-width':bidp['stroke-width'],
+            'creator':bidp['creator']
         })
         for trackList in self.dmd['outings'][outingName]['tids']:
             # assumption: all lines in the same tid list have the same title/stroke/opacity/weight
             t0p=self.sts2.getFeature(id=trackList[0])['properties']
-            legendItems.append({
-                'text':t0p['title'],
-                'stroke':t0p['stroke'],
-                'stroke-opacity':t0p['stroke-opacity'],
-                'stroke-width':t0p['stroke-width']
-            })
+            # determine the incident map feature creator
+            sidList=[x for x in self.dmd['corr'].keys() if trackList[0] in self.dmd['corr'][x]]
+            creator=t0p.get('creator',None) # use debrief feature creator by default
+            if len(sidList)>0:
+                sid=sidList[0]
+                creator=self.sts1.getFeature(id=sidList[0])['properties']['creator']
+            # how to handle multiple lines with the same title:
+            #  add one legend entry per creator
+            #  (note, we have to look at the incident map to determine the actual creator)
+            #  so, if there are two lines named AA102c and they have the same creator, only
+            #   list one legend entry; if they have different creators, list two legend entries
+            sameTitleEntries=[x for x in legendItems if x['text']==t0p['title']]
+            if sameTitleEntries==[] or t0p['creator'] not in [x['creator'] for x in sameTitleEntries]:
+                legendItems.append({
+                    'text':t0p['title'],
+                    'stroke':t0p['stroke'],
+                    'stroke-opacity':t0p['stroke-opacity'],
+                    'stroke-width':t0p['stroke-width'],
+                    'creator':creator
+                })
         for atf in appTracksFeaturesUncropped:
             atfp=atf['properties']
             legendItems.append({
@@ -972,7 +1015,8 @@ class DebriefMapGenerator(QObject):
                 'stroke':atfp['stroke'],
                 'pattern':atfp['pattern'],
                 'stroke-opacity':atfp['stroke-opacity'],
-                'stroke-width':atfp['stroke-width']
+                'stroke-width':atfp['stroke-width'],
+                'creator':creator
             })
 
         if size[0]==11: # landscape
@@ -2130,7 +2174,7 @@ class DebriefMapGenerator(QObject):
                         logging.info('  done processing modified feature.')
             if action=='re-import':
                 # when re-importing, delete the previous entry from tids, utids, cids of all outings, and from corr
-                self.deletedFeatureCallback(sid)
+                self.deletedFeatureCallback(sid,c)
         else: # Q1 no
             if c!='Assignment': # don't show a message for assignments, since addOuting will determine if it needs to be added
                 logging.info(' no correspondence entry found; adding the feature to the debrief map')

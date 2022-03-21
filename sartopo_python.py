@@ -426,7 +426,9 @@ class SartopoSession():
 
         # regardless of whether sync is specified, we need to do the initial cache population
         #   here in the main thread, so that mapData is populated right away
+        logging.info('Initial cache population begins.')
         self.doSync()
+        logging.info('Initial cache population complete.')
 
         if self.sync:
             self.start()
@@ -2012,11 +2014,26 @@ class SartopoSession():
         # logging.info('fourify called:\npoints='+str(points)+'\norigPoints='+str(origPoints))
         if len(points[0])==4: # it's already a four-element list
             return points
+        # logging.info('fourify: '+str(len(points))+' points: '+str(points[0:3])+' ... '+str(points[-3:]))
+        # logging.info('orig: '+str(len(origPoints))+' points: '+str(origPoints[0:3])+' ... '+str(origPoints[-3:]))
         for i in range(len(points)):
-            for o in origPoints:
-                if o[0:2]==points[i][0:2]:
-                    points[i]=o
+            found=False
+            for j in range(len(origPoints)):
+                if origPoints[j][0:2]==points[i][0:2]:
+                    points[i]=origPoints[j]
+                    found=True
                     break
+            # generated endpoints (possibly first and/or last point after crop) won't have timestamps;
+            #  for the new first point, use the timestamp from the original first point;
+            #  for the new last point, use the timestamp from the original last point
+            if not found:
+                if i==0:
+                    points[i]=points[i][0:2]+[0,origPoints[0][3]]
+                elif i==len(points)-1:
+                    points[i]=points[i][0:2]+[0,origPoints[-1][3]]
+                else:
+                    logging.error('Fourify - could not find a matching point, not at beginning or end of new line:')
+                    logging.info('not found: '+str(len(points))+' points:  points['+str(i)+']='+str(points[i]))
         return points
 
     # crop - remove portions of a line or polygon that are outside a boundary polygon;

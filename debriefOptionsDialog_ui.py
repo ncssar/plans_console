@@ -14,7 +14,11 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_DebriefOptionsDialog(object):
     def setupUi(self, DebriefOptionsDialog):
         DebriefOptionsDialog.setObjectName("DebriefOptionsDialog")
-        DebriefOptionsDialog.resize(620, 484)
+        DebriefOptionsDialog.resize(463, 345)
+        font = QtGui.QFont()
+        font.setFamily("Arial")
+        font.setPointSize(12)
+        DebriefOptionsDialog.setFont(font)
         self.topLayout = QtWidgets.QVBoxLayout(DebriefOptionsDialog)
         self.topLayout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
         self.topLayout.setObjectName("topLayout")
