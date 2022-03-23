@@ -217,6 +217,22 @@ class SartopoSession():
         self.syncing=False
         if not self.setupSession():
             raise STSException
+        # check for objects with title name:#
+        print("At TITLE processing")
+        self.cutCount = 0
+        xinfo = self.mapData['state']['features'] 
+        for props in xinfo:
+            titl = props['properties'].get('title')
+            if titl is None: continue
+            parts = titl.split(":")
+            if len(parts) != 2: continue   # skip cause no ":" or too many pieces
+            part2 = parts[1].split()       # separate off team number if it exists
+            chk = part2[0]
+            if chk.isnumeric():
+                if int(chk) > self.cutCount:
+                    self.cutCount = int(chk)   # when loop completes we have the highest number used 
+        self.editFlag = False    # changes some functionality if in an edit function (cut, expand, crop)       
+
         
     def setupSession(self):
         # set a flag: is this an internet session?
@@ -418,7 +434,7 @@ class SartopoSession():
                 logging.info('New map request failed.  See the log for details.')
                 return False
 
-
+        
         # logging.info("API version:"+str(self.apiVersion))
         # sync needs to be done here instead of in the caller, so that
         #  edit functions can have access to the full json
@@ -429,6 +445,7 @@ class SartopoSession():
         else: # do an initial since(0) even if sync is false
             self.doSync()
         return True
+
 
     def sendUserdata(self,activeLayers=[['mbt',1]],center=[-120,39],zoom=13):
         j={
@@ -1330,9 +1347,15 @@ class SartopoSession():
                         break
                 if featureClass is None and c not in featureClassExcludeList:
                     if 'title' in pk:
-                        if prop['title'].rstrip()==title: # since assignments without number will still have a space after letter
-                            titleMatchCount+=1
-                            rval.append(feature)
+    ### change SDL                    
+                        if self.editFlag:
+                            if prop['title'].split()[0]==title: # since assignments title may include number (not desired for edits) 
+                                titleMatchCount+=1
+                                rval.append(feature)
+                        else:        
+                            if prop['title'].rstrip()==title: # since assignments without number will still have a space after letter
+                                titleMatchCount+=1
+                                rval.append(feature)
                     else:
                         logging.error('getFeatures: no title key exists:'+str(feature))
                 else:
@@ -1580,6 +1603,10 @@ class SartopoSession():
     #  the arguments (target, cutter) can be name (string), id (string), or feature (json)
 
     def cut(self,target,cutter,deleteCutter=True,useResultNameSuffix=True):
+        ## keep a cut object counter self.cutCount
+        ##  review all objects for name:# when program starts; increment for each created shape
+        #
+        self.editFlag =True
         if isinstance(target,str): # if string, find feature by name; if id, find feature by id
             targetStr=target
             if len(target)==36: # id
@@ -1593,6 +1620,7 @@ class SartopoSession():
                 targetStr=targetShape.get('title','NO TITLE')
         if not targetShape:
             logging.warning('Target shape '+targetStr+' not found; operation aborted.')
+            self.editFlag = False
             return False
 
         tg=targetShape['geometry']
@@ -1607,6 +1635,7 @@ class SartopoSession():
             targetGeom=LineString(tgc) # Shapely object
         else:
             logging.error('cut: unhandled target '+targetStr+' geometry type: '+targetType)
+            self.editFlag = False
             return False
         logging.info('targetGeom:'+str(targetGeom))
 
@@ -1623,6 +1652,7 @@ class SartopoSession():
                 cutterStr=cutterShape.get('title','NO TITLE')
         if not cutterShape:
             logging.warning('Cutter shape '+cutterStr+' not found; operation aborted.')
+            self.editFlag = False
             return False
 
         logging.info('cut: target='+targetStr+'  cutter='+cutterStr)
@@ -1639,11 +1669,13 @@ class SartopoSession():
             cutterGeom=LineString(cgc) # Shapely object
         else:
             logging.error('cut: unhandled cutter geometry type: '+cutterType)
+            self.editFlag = False
             return False
         logging.info('cutterGeom:'+str(cutterGeom))
 
         if not cutterGeom.intersects(targetGeom):
             logging.warning(targetShape['properties']['title']+','+cutterShape['properties']['title']+': features do not intersect; no operation performed')
+            self.editFlag = False
             return False
 
         #  shapely.ops.split only works if the second geometry completely splits the first;
@@ -1670,20 +1702,23 @@ class SartopoSession():
                     result=MultiLineString(result)
                 except:
                     logging.error('cut: resulting GeometryCollection could not be converted to MultiPolygon or MultiLineString.  Operation aborted.')
+                    self.editFlag = False
                     return False
         if isinstance(result,Polygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result.exterior.coords)]}))
             if rids==[]:
                 logging.warning('cut: target shape not found; operation aborted.')
+                self.editFlag = False
                 return False
         elif isinstance(result,MultiPolygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}))
             if rids==[]:
                 logging.warning('cut: target shape not found; operation aborted.')
+                self.editFlag = False
                 return False
-            suffix=0
             for r in result[1:]:
-                suffix+=1
+                self.cutCount+=1
+                suffix = self.cutCount
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
@@ -1724,20 +1759,23 @@ class SartopoSession():
                         status=tp.get('status','')))
                 else:
                     logging.warning('cut: target feature class was neither Shape nor Assigment; operation aborted.')
+                    self.editFlag = False
                     return False
         elif isinstance(result,LineString):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result.coords)}))
             if rids==[]:
                 logging.warning('cut: target shape not found; operation aborted.')
+                self.editFlag = False
                 return False
         elif isinstance(result,MultiLineString):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result[0].coords)}))
             if rids==[]:
                 logging.warning('cut: target shape not found; operation aborted.')
+                self.editFlag = False
                 return False
-            suffix=0
             for r in result[1:]:
-                suffix+=1
+                self.cutCount+=1
+                suffix = self.cutCount
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
@@ -1777,15 +1815,18 @@ class SartopoSession():
                         status=tp.get('status','')))
                 else:
                     logging.error('cut: target feature class was neither Shape nor Assigment; operation aborted.')
+                    self.editFlag = False
                     return False
         if deleteCutter:
             self.delFeature(id=cutterShape['id'],fClass=cutterShape['properties']['class'])
 
+        self.editFlag = False
         return rids # resulting feature IDs
 
     # expand - expand target polygon to include the area of p2 polygon
 
     def expand(self,target,p2,deleteP2=True):
+        self.editFlag =True
         if isinstance(target,str): # if string, find feature by name; if id, find feature by id
             targetStr=target
             if len(target)==36: # id
@@ -1799,6 +1840,7 @@ class SartopoSession():
                 targetStr=targetShape.get('title','NO TITLE')
         if not targetShape:
             logging.warning('Target shape '+targetStr+' not found; operation aborted.')
+            self.editFlag = False
             return False
         
         tg=targetShape['geometry']
@@ -1809,6 +1851,7 @@ class SartopoSession():
             targetGeom=Polygon(tgc) # Shapely object
         else:
             logging.warning('expand: target feature '+targetStr+' is not a polygon: '+targetType)
+            self.editFlag = False
             return False
         logging.info('targetGeom:'+str(targetGeom))
 
@@ -1825,6 +1868,7 @@ class SartopoSession():
                 p2Str=p2Shape.get('title','NO TITLE')
         if not p2Shape:
             logging.warning('expand: second polygon '+p2Str+' not found; operation aborted.')
+            self.editFlag = False
             return False
 
         logging.info('expand: target='+targetStr+'  p2='+p2Str)
@@ -1837,11 +1881,13 @@ class SartopoSession():
             p2Geom=Polygon(cgc) # Shapely object
         else:
             logging.warning('expand: p2 feature '+p2Str+' is not a polygon: '+p2Type)
+            self.editFlag = False
             return False
         logging.info('p2Geom:'+str(p2Geom))
 
         if not p2Geom.intersects(targetGeom):
             logging.warning(targetShape['properties']['title']+','+p2Shape['properties']['title']+': features do not intersect; no operation performed')
+            self.editFlag = False
             return False
 
         result=targetGeom|p2Geom
@@ -1849,11 +1895,13 @@ class SartopoSession():
 
         if not self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result.exterior.coords)]}):
             logging.warning('expand: target shape not found; operation aborted.')
+            self.editFlag = False
             return False
 
         if deleteP2:
             self.delFeature(id=p2Shape['id'],fClass=p2Shape['properties']['class'])
 
+        self.editFlag = False
         return True # success
 
     def buffer2(self,boundaryGeom,beyond):
@@ -2015,6 +2063,7 @@ class SartopoSession():
     #          grow the specified boundary polygon by the specified distance before cropping
 
     def crop(self,target,boundary,beyond=0.0001,deleteBoundary=False,useResultNameSuffix=False,drawSizedBoundary=False,noDraw=False):
+        self.editFlag =True
         if isinstance(target,str): # if string, find feature by name; if id, find feature by id
             targetStr=target
             if len(target)==36: # id
@@ -2028,6 +2077,7 @@ class SartopoSession():
                 targetStr=targetShape.get('title','NO TITLE')
         if not targetShape:
             logging.warning('Target shape '+targetStr+' not found; operation aborted.')
+            self.editFlag = False
             return False
 
         tg=targetShape['geometry']
@@ -2046,6 +2096,7 @@ class SartopoSession():
             targetGeom=LineString(tgc)
         else:
             logging.warning('crop: target feature '+targetStr+' is not a polygon or line: '+targetType)
+            self.editFlag = False
             return False
             
         if isinstance(boundary,str): # if string, find feature by name; if id, find feature by id
@@ -2061,6 +2112,7 @@ class SartopoSession():
                 boundaryStr=boundaryShape.get('title','NO TITLE')
         if not boundaryShape:
             logging.warning('crop: boundary shape '+boundaryStr+' not found; operation aborted.')
+            self.editFlag = False
             return False
 
         logging.info('crop: target='+targetStr+'  boundary='+boundaryStr)
@@ -2074,6 +2126,7 @@ class SartopoSession():
             boundaryGeom=self.buffer2(Polygon(cgc),beyond)
         else:
             logging.warning('crop: boundary feature '+boundaryStr+' is not a polygon: '+boundaryType)
+            self.editFlag = False
             return False
         # logging.info('crop: boundaryGeom:'+str(boundaryGeom))
         if drawSizedBoundary:
@@ -2090,6 +2143,7 @@ class SartopoSession():
 
         if not boundaryGeom.intersects(targetGeom):
             logging.warning(targetShape['properties']['title']+','+boundaryShape['properties']['title']+': features do not intersect; no operation performed')
+            self.editFlag = False
             return False
 
         # if target is a line, and boundary is a polygon, use intersection2; see notes above
@@ -2105,11 +2159,14 @@ class SartopoSession():
         if noDraw:
             # return a list of line segments with points as lists rather than tuples; a.k.a. a list of lists of lists
             if isinstance(result,LineString):
+                self.editFlag = False
                 return [list(map(list,result.coords))]
             elif isinstance(result,MultiLineString):
+                self.editFlag = False
                 return [list(map(list,ls.coords)) for ls in result]
             else:
                 logging.error('Unexpected noDraw crop result type '+str(result.__class__.__name__))
+                self.editFlag = False
                 return False
 
         # preserve target properties when adding new features
@@ -2128,20 +2185,23 @@ class SartopoSession():
                     result=MultiLineString(result)
                 except:
                     logging.error('crop: resulting GeometryCollection could not be converted to MultiPolygon or MultiLineString.  Operation aborted.')
+                    self.editFlag = False
                     return False
         if isinstance(result,Polygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result.exterior.coords)]}))
             if rids==[]:
                 logging.warning('crop: target shape not found; operation aborted.')
+                self.editFlag = False
                 return False
         elif isinstance(result,MultiPolygon):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}))
             if rids==[]:
                 logging.warning('crop: target shape not found; operation aborted.')
+                self.editFlag = False
                 return False
-            suffix=0
             for r in result[1:]:
-                suffix+=1
+                self.cutCount+=1
+                suffix = self.cutCount
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
@@ -2189,15 +2249,17 @@ class SartopoSession():
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':four}))
             if rids==[]:
                 logging.warning('crop: target shape not found; operation aborted.')
+                self.editFlag = False
                 return False
         elif isinstance(result,MultiLineString):
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':list(result[0].coords)}))
             if rids==[]:
                 logging.warning('crop: target shape not found; operation aborted.')
+                self.editFlag = False
                 return False
-            suffix=0
             for r in result[1:]:
-                suffix+=1
+                self.cutCount+=1
+                suffix = self.cutCount
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
@@ -2237,11 +2299,13 @@ class SartopoSession():
                         status=tp.get('status','')))
                 else:
                     logging.warning('crop: target feature class was neither Shape nor Assigment')
+                    self.editFlag = False
                     return False
 
         if deleteBoundary:
             self.delFeature(id=boundaryShape['id'],fClass=boundaryShape['properties']['class'])
 
+        self.editFlag = False
         return rids # resulting feature IDs
 
         

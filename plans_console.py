@@ -601,7 +601,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
                                 self.curAssign,clr,markr,None,self.folderId)
         ## also add team number to assignment
-        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':self.curTeam})
+        rval2 = self.sts.mapData['state']['features']
+        numbr = ""
+        for props in rval2:
+            lettr = props['properties'].get('letter')
+            if lettr is None:  continue
+            if lettr == self.curAssign:
+                numbr = props['properties'].get('number')
+        numbr += " "+self.curTeam    
+        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':numbr})
         logging.info("RVAL rtn:"+str(rval)+' : '+str(rval2))
     
     def delMarker(self):
@@ -620,8 +628,18 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         self.feature2['properties'].get('title') == self.curTeam: # both folder and Team match
                             logging.info("Marker ID:"+self.feature2['id']+" of team: "+self.curTeam)
                             rval3 = self.sts.delMarker(self.feature2['id'])
+                            rval2 = self.sts.mapData['state']['features']
+                            numbr = ""
+                            for props in rval2:
+                                lettr = props['properties'].get('letter')
+                                if lettr is None:  continue
+                                if lettr == self.curAssign:
+                                    numbr = props['properties'].get('number')
+                            print("NUMBER:"+str(numbr)+":"+str(self.curTeam)+":")
+                            numbr = numbr.replace(self.curTeam,"")       # remove team from assignment  
+                            print("NUMBER2:"+str(numbr))
                             rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign, \
-                                                properties={'number':" "})
+                                        properties={'number':numbr})
                             logging.info("RTN of Delete:"+str(rval3)+str(rval2))
                             break
         ##print("RestDel:"+json.dumps(rval3,indent=2))
@@ -772,16 +790,16 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                self.BEEP()
                return
         elif op=='Crop':    
-            if not self.sts.crop(selFeature,editorFeature):
+            if not self.sts.crop(selFeature,editorFeature,deleteBoundary=True):
                self.BEEP()
                return
         else:
             logging.error('Unknown geometry operation "'+str(op)+'" specified.  No geometry operation performed.')
 
     def BEEP(self):
-        for n in range(3):
+        for n in range(2):
             winsound.Beep(2500, 100)  ## BEEP, 2500Hz for 1 second
-            time.sleep(0.25)
+            #time.sleep(0.25)
 
     def incidentButtonClicked(self):
         # if a map was already open, ask for confirmation first
@@ -982,7 +1000,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         #print("count:"+str(self.ui.tableWidget_TmAs.rowCount()))
         for ix in range(self.ui.tableWidget_TmAs.rowCount()):      # Look for existing Team entry in table
             if self.ui.Team.text() == self.ui.tableWidget_TmAs.item(ix,0).text():  # update
-                ifnd = 1   # set found in table, may be on the map, too
+                ifnd = 1       # set found in table, may be on the map, too
                 irow = ix      # why do I need this equivalence??
                 if (self.ui.tableWidget_TmAs.item(ix,1).text() == "IC" and \
                     self.ui.tableWidget_TmAs.item(ix,2).text() != "LE") or \
