@@ -56,7 +56,7 @@ import random
 import configparser
 import argparse
 from datetime import datetime
-import winsound
+# import winsound
 
 
 sartopo_python_min_version="1.1.2"
@@ -773,33 +773,46 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     
     def doOperClicked(self):
         # eventually, we can use STSFeatureComboBox to allow autocomplete on each feature name;
-        #  that will also do an immediate cache refresh when the fileds are opened; until then,
+        #  that will also do an immediate cache refresh when the fields are opened; until then,
         #  we can force an immediate refresh now, when the button is clicked.
         self.sts.refresh(forceImmediate=True)
         op=self.ui.geomOpButtonGroup.checkedButton().text()
-        selFeature=self.ui.selFeature.text()
-        editorFeature=self.ui.editorFeature.text()
+        selFeatureTitle=self.ui.selFeature.text()
+        ## check that the shapes exist
+        selFeature=self.sts.getFeature(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        if not selFeature:
+            logging.warning(op+' operation failed: Selected feature "'+selFeatureTitle+'" not found.')
+            inform_user_about_issue(op+' operation failed:\n\nSelected feature "'+selFeatureTitle+'" not found.')
+            return
+        editorFeatureTitle=self.ui.editorFeature.text()
+        editorFeature=self.sts.getFeature(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        if not editorFeature:
+            logging.warning(op+' operation failed: Editor feature "'+editorFeatureTitle+'" not found.')
+            inform_user_about_issue(op+' operation failed:\n\nEditor feature "'+editorFeatureTitle+'" not found.')
+            return
         logging.info("%s shape %s with feature %s"%(op,selFeature,editorFeature))
-        ## check that the shapes exist; otherwise BEEP
         if op=='Cut':
             if not self.sts.cut(selFeature,editorFeature):
-               self.BEEP()
+               logging.warning(op+' operation failed.')
+               inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
         elif op=='Expand':
             if not self.sts.expand(selFeature,editorFeature):
-               self.BEEP()
+               logging.warning(op+' operation failed.')
+               inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
         elif op=='Crop':    
             if not self.sts.crop(selFeature,editorFeature,deleteBoundary=True):
-               self.BEEP()
+               logging.warning(op+' operation failed.')
+               inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
         else:
             logging.error('Unknown geometry operation "'+str(op)+'" specified.  No geometry operation performed.')
 
-    def BEEP(self):
-        for n in range(2):
-            winsound.Beep(2500, 100)  ## BEEP, 2500Hz for 1 second
-            #time.sleep(0.25)
+    # def BEEP(self):
+    #     for n in range(2):
+    #         winsound.Beep(2500, 100)  ## BEEP, 2500Hz for 1 second
+    #         #time.sleep(0.25)
 
     def incidentButtonClicked(self):
         # if a map was already open, ask for confirmation first

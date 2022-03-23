@@ -1292,7 +1292,7 @@ class SartopoSession():
     # getFeatures - attempts to get data from the local cache (self.madData); refreshes and tries again if necessary
     #   determining if a refresh is necessary:
     #   - if the requested feature/s is/are not in the cache, and it has been longer than syncInterval since the last refresh,
-    #      then do a new refresh; otherwise return [False]
+    #      then do a new refresh; otherwise return an empty list []
     #   - if the requested feature/s IS/ARE in the cache, do we need to do a refresh anyway?  Only if forceRefresh is True.
     def getFeatures(self,
             featureClass=None,
@@ -1329,7 +1329,7 @@ class SartopoSession():
                     pk=prop.keys()
                 else:
                     logging.error('getFeatures: "properties" does not exist or is not a dict:'+str(feature))
-                    return [False]
+                    return []
                 c=prop['class']
                 # logging.info('checking class='+c+'  id='+feature['id'])
                 if feature['id']==id:
@@ -1373,13 +1373,13 @@ class SartopoSession():
                 # question: do we want to try a refresh and try one more time?
                 logging.info('getFeatures: No features match the specified criteria.')
                 logging.info('  (was looking for featureClass='+str(featureClass)+'  title='+str(title)+'  id='+str(id)+')')
-                return [False]
+                return []
             if titleMatchCount>1:
                 if allowMultiTitleMatch:
                     return rval
                 else:
                     logging.warning('getFeatures: More than one feature matches the specified title.')
-                    return [False]
+                    return []
             else:
                 return rval
 
@@ -1408,7 +1408,7 @@ class SartopoSession():
                 return r[0]
             elif len(r)<1:
                 logging.warning('getFeature: no match')
-                return -1
+                return False
             else:
                 msg='getFeature: more than one match found while looking for feature:'
                 if featureClass:
@@ -1419,7 +1419,7 @@ class SartopoSession():
                     msg+=' id='+str(id)
                 logging.warning(msg)
                 logging.info(str(r))
-                return -1
+                return False
         else:
             logging.error('getFeature: return from getFeatures was not a list: '+str(r))
 
