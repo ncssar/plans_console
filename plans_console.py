@@ -779,13 +779,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         op=self.ui.geomOpButtonGroup.checkedButton().text()
         selFeatureTitle=self.ui.selFeature.text()
         ## check that the shapes exist
-        selFeature=self.sts.getFeature(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        selFeature=self.sts.getFeature(title=selFeatureTitle,letterOnly=True,featureClassExcludeList=['Folder','OperationalPeriod'])
         if not selFeature:
             logging.warning(op+' operation failed: Selected feature "'+selFeatureTitle+'" not found.')
             inform_user_about_issue(op+' operation failed:\n\nSelected feature "'+selFeatureTitle+'" not found.')
             return
         editorFeatureTitle=self.ui.editorFeature.text()
-        editorFeature=self.sts.getFeature(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        editorFeature=self.sts.getFeature(title=editorFeatureTitle,letterOnly=True,featureClassExcludeList=['Folder','OperationalPeriod'])
         if not editorFeature:
             logging.warning(op+' operation failed: Editor feature "'+editorFeatureTitle+'" not found.')
             inform_user_about_issue(op+' operation failed:\n\nEditor feature "'+editorFeatureTitle+'" not found.')
