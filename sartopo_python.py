@@ -217,21 +217,6 @@ class SartopoSession():
         self.syncing=False
         if not self.setupSession():
             raise STSException
-        # check for objects with title name:#
-        print("At TITLE processing")
-        self.cutCount = 0
-        xinfo = self.mapData['state']['features'] 
-        for props in xinfo:
-            titl = props['properties'].get('title')
-            if titl is None: continue
-            parts = titl.split(":")
-            if len(parts) != 2: continue   # skip cause no ":" or too many pieces
-            part2 = parts[1].split()       # separate off team number if it exists
-            chk = part2[0]
-            if chk.isnumeric():
-                if int(chk) > self.cutCount:
-                    self.cutCount = int(chk)   # when loop completes we have the highest number used 
-
         
     def setupSession(self):
         # set a flag: is this an internet session?
@@ -1348,13 +1333,20 @@ class SartopoSession():
                 if featureClass is None and c not in featureClassExcludeList:
                     if 'title' in pk:
                         if letterOnly:
-                            if prop['title'].split()[0]==title: # since assignments title may include number (not desired for edits) 
-                                titleMatchCount+=1
-                                rval.append(feature)
+                            s=prop['title'].split()
+                            # avoid exception when title exists but is blank
+                            if len(s)>0:
+                                if s[0]==title: # since assignments title may include number (not desired for edits) 
+                                    titleMatchCount+=1
+                                    rval.append(feature)
                         else:        
                             if prop['title'].rstrip()==title: # since assignments without number will still have a space after letter
                                 titleMatchCount+=1
                                 rval.append(feature)
+                            elif 'letter' in pk: # if the title wasn't a match, try the letter if it exists
+                                if prop.get('letter','').rstrip()==title:
+                                    titleMatchCount+=1
+                                    rval.append(feature)
                     else:
                         logging.error('getFeatures: no title key exists:'+str(feature))
                 else:
@@ -1569,10 +1561,42 @@ class SartopoSession():
         logging.info('\n     '+str(len(points))+' points: '+str(points)+'\n --> '+str(len(out))+' points: '+str(out))
         return out
 
+    # getUsedSuffixList - get a list of integers of all used suffixes for the
+    #   specified base title
+    #   ex: if features exist in the cache with titles 'a','a:1','a:3','a:stuff','other'
+    #   then getUsedSuffixList('a') should return [1,3]
+    def getUsedSuffixList(self,base):
+        # build list of all titles (or letters as appropriate) from the cache
+        #  try 'letter' first; if not found, use 'title'; default to 'NO-TITLE'
+        allTitles=[]
+        for f in self.mapData['state']['features']:
+            title='NO-TITLE'
+            p=f.get('properties')
+            if p:
+                title=p.get('letter')
+                if not title:
+                    title=p.get('title')
+            allTitles.append(title)
+        # extract the list of used suffixes
+        suffixStrings=[x.split(':')[-1] for x in allTitles if x.startswith(base+':')]
+        rval=[int(x) for x in suffixStrings if x.isnumeric()] # only positive integers, as integers
+        logging.info('getUsedSuffixList: base='+str(base)+'  rval='+str(rval))
+        return rval
+
+    # getNextAvailableSuffix - get the next available suffix given a list of used titles; limit at 100
+    def getNextAvailableSuffix(self,usedSuffixList):
+        keepLooking=True
+        suffix=1
+        while keepLooking and suffix<100:
+            if suffix not in usedSuffixList:
+                keepLooking=False
+            else:
+                suffix+=1
+        return suffix
+
     # removeSpurs - self-intersecting polygons can be caused by single-point
     #   'spurs': a,b,c,d,c,e,f  where c,d,c is the spur.  Change a sequence
     #   like this to a,b,c,e,f.
-
     def removeSpurs(self,points):
         # logging.info('removeSpurs called')
         # ls=LineString(points)
@@ -1604,14 +1628,12 @@ class SartopoSession():
     #  the arguments (target, cutter) can be name (string), id (string), or feature (json)
 
     def cut(self,target,cutter,deleteCutter=True,useResultNameSuffix=True):
-        ## keep a cut object counter self.cutCount
-        ##  review all objects for name:# when program starts; increment for each created shape
         if isinstance(target,str): # if string, find feature by name; if id, find feature by id
             targetStr=target
             if len(target)==36: # id
                 targetShape=self.getFeature(id=target)
             else:
-                targetShape=self.getFeature(title=target,letterOnly=True,featureClassExcludeList=['Folder','OperationalPeriod'])
+                targetShape=self.getFeature(title=target,featureClassExcludeList=['Folder','OperationalPeriod'])
         else:
             targetShape=target
             targetStr='NO TITLE'
@@ -1641,7 +1663,7 @@ class SartopoSession():
             if len(cutter)==36: # id
                 cutterShape=self.getFeature(id=cutter)
             else:
-                cutterShape=self.getFeature(title=cutter,letterOnly=True,featureClassExcludeList=['Folder','OperationalPeriod'])
+                cutterShape=self.getFeature(title=cutter,featureClassExcludeList=['Folder','OperationalPeriod'])
         else:
             cutterShape=cutter
             cutterStr='NO TITLE'
@@ -1688,6 +1710,18 @@ class SartopoSession():
         # collect resulting feature ids to return as the return value
         rids=[]
 
+        # use the unsiffixed name as the base (everything before colon-followed-by-integer)
+        #  so that a cut of a:2 would produce a:3 rather than a:2:1
+        if tc=='Assignment':
+            base=tp['letter']
+        else:
+            base=tp['title']
+        # accomodate base names that include colon
+        baseParse=base.split(':')
+        if len(baseParse)>1 and baseParse[-1].isnumeric():
+            base=':'.join(baseParse[:-1])
+        usedSuffixList=self.getUsedSuffixList(base)
+
         if isinstance(result,GeometryCollection): # polygons, linestrings, or both
             try:
                 result=MultiPolygon(result)
@@ -1708,12 +1742,12 @@ class SartopoSession():
                 logging.warning('cut: target shape not found; operation aborted.')
                 return False
             for r in result[1:]:
-                self.cutCount+=1
-                suffix = self.cutCount
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
-                        title=title+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        title=base+':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addPolygon(list(r.exterior.coords),
                         title=title,
                         stroke=tp['stroke'],
@@ -1727,7 +1761,9 @@ class SartopoSession():
                 elif tc=='Assignment':
                     letter=tp['letter']
                     if useResultNameSuffix:
-                        letter=letter+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        letter=base+':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addAreaAssignment(list(r.exterior.coords),
                         number=tp['number'],
                         letter=letter,
@@ -1762,12 +1798,12 @@ class SartopoSession():
                 logging.warning('cut: target shape not found; operation aborted.')
                 return False
             for r in result[1:]:
-                self.cutCount+=1
-                suffix = self.cutCount
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
-                        title=title+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        title+=':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addLine(list(r.coords),
                         title=title,
                         color=tp['stroke'],
@@ -1780,7 +1816,9 @@ class SartopoSession():
                 elif tc=='Assignment':
                     letter=tp['letter']
                     if useResultNameSuffix:
-                        letter=letter+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        letter+=':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addLineAssignment(list(r.coords),
                         number=tp['number'],
                         letter=letter,
@@ -1817,7 +1855,7 @@ class SartopoSession():
             if len(target)==36: # id
                 targetShape=self.getFeature(id=target)
             else:
-                targetShape=self.getFeature(title=target,letterOnly=True,featureClassExcludeList=['Folder','OperationalPeriod'])
+                targetShape=self.getFeature(title=target,featureClassExcludeList=['Folder','OperationalPeriod'])
         else:
             targetShape=target
             targetStr='NO TITLE'
@@ -1843,7 +1881,7 @@ class SartopoSession():
             if len(p2)==36: # id
                 p2Shape=self.getFeature(id=p2)
             else:
-                p2Shape=self.getFeature(title=p2,letterOnly=True,featureClassExcludeList=['Folder','OperationalPeriod'])
+                p2Shape=self.getFeature(title=p2,featureClassExcludeList=['Folder','OperationalPeriod'])
         else:
             p2Shape=p2
             p2Str='NO TITLE'
@@ -2046,7 +2084,7 @@ class SartopoSession():
             if len(target)==36: # id
                 targetShape=self.getFeature(id=target)
             else:
-                targetShape=self.getFeature(title=target,letterOnly=True,featureClassExcludeList=['Folder','OperationalPeriod'])
+                targetShape=self.getFeature(title=target,featureClassExcludeList=['Folder','OperationalPeriod'])
         else:
             targetShape=target
             targetStr='NO TITLE'
@@ -2079,7 +2117,7 @@ class SartopoSession():
             if len(boundary)==36: # id
                 boundaryShape=self.getFeature(id=boundary)
             else:
-                boundaryShape=self.getFeature(title=boundary,letterOnly=True,featureClassExcludeList=['Folder','OperationalPeriod'])
+                boundaryShape=self.getFeature(title=boundary,featureClassExcludeList=['Folder','OperationalPeriod'])
         else:
             boundaryShape=boundary
             boundaryStr='NO TITLE'
@@ -2143,6 +2181,18 @@ class SartopoSession():
         tc=tp['class'] # Shape or Assignment
         tfid=tp.get('folderId',None)
 
+        # use the unsiffixed name as the base (everything before colon-followed-by-integer)
+        #  so that a cut of a:2 would produce a:3 rather than a:2:1
+        if tc=='Assignment':
+            base=tp['letter']
+        else:
+            base=tp['title']
+        # accomodate base names that include colon
+        baseParse=base.split(':')
+        if len(baseParse)>1 and baseParse[-1].isnumeric():
+            base=':'.join(baseParse[:-1])
+        usedSuffixList=self.getUsedSuffixList(base)
+
         # collect resulting feature ids to return as the return value
         rids=[]
 
@@ -2166,12 +2216,12 @@ class SartopoSession():
                 logging.warning('crop: target shape not found; operation aborted.')
                 return False
             for r in result[1:]:
-                self.cutCount+=1
-                suffix = self.cutCount
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
-                        title=title+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        title=base+':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addPolygon(list(r.exterior.coords),
                         title=title,
                         stroke=tp['stroke'],
@@ -2185,7 +2235,9 @@ class SartopoSession():
                 elif tc=='Assignment':
                     letter=tp['letter']
                     if useResultNameSuffix:
-                        letter=letter+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        letter=base+':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addAreaAssignment(list(r.exterior.coords),
                         number=tp['number'],
                         letter=letter,
@@ -2222,8 +2274,6 @@ class SartopoSession():
                 logging.warning('crop: target shape not found; operation aborted.')
                 return False
             for r in result[1:]:
-                self.cutCount+=1
-                suffix = self.cutCount
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
