@@ -608,7 +608,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if lettr is None:  continue
             if lettr == self.curAssign:
                 numbr = props['properties'].get('number')
-        numbr += " "+self.curTeam    
+        if numbr=='':
+            numbr=self.curTeam
+        else:
+            numbr += " "+self.curTeam    
         rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':numbr})
         logging.info("RVAL rtn:"+str(rval)+' : '+str(rval2))
     
@@ -985,8 +988,19 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.save_data()
 
     def assignTab_OK_clicked(self):
+        self.curAssign = self.ui.Assign.text()
+        logging.info('t1')
+        a=self.sts.getFeatures(featureClass='Assignment',title=self.curAssign,letterOnly=True,allowMultiTitleMatch=True)
+        logging.info('getFeatures:'+str(a))
+        if len(a)>1:
+            msg='Multiple assignments have the letters "'+self.curAssign+'" - no operation performed.  Remedy that situation and try again.'
+            inform_user_about_issue(msg)
+            logging.warning(msg)
+            return
         #print("Ok button clicked, team is:"+self.ui.Team.text())
+        logging.info('t2a')
         rval = self.sts.getFeatures("Assignment")     # get assignments
+        logging.info('t2b')
         ifnd = 1                                        # flag for found valid Assignment
         ## location code are IC for command post (for type LE, leave marker on map, but at (lon-0.5deg) )
         ##                   TR for in transit
@@ -1072,7 +1086,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(self.ui.Assign.text()))    
             self.ui.tableWidget_TmAs.setItem(irow, 2, QtWidgets.QTableWidgetItem(self.ui.comboBox.currentText()))
             self.curTeam = tok[ix]
-            self.curAssign = self.ui.Assign.text()
             self.curType = self.ui.comboBox.currentText()
             if self.ui.Med.isChecked(): self.medval = " X"
             else: self.medval = " "    #  need at least a space so that it is not empty
@@ -1085,6 +1098,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.calcLatLon_center()              # use self.ui.Assign.text() to find shape
         # set marker type (in addMarker) based on Med or if type=LE
             if (self.curAssign != "IC" and self.curAssign != "TR") or self.curType == "LE":
+                logging.info('t3')
                 self.addMarker()          # uses self.ui.Team, medval
 
         # clear fields

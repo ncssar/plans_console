@@ -1330,7 +1330,9 @@ class SartopoSession():
                     else:
                         rval.append(feature)
                         break
-                if featureClass is None and c not in featureClassExcludeList:
+                if id is None and (c==featureClass or (featureClass is None and c not in featureClassExcludeList)):
+                    if title is None:
+                        rval.append(feature)
                     if 'title' in pk:
                         if letterOnly:
                             s=prop['title'].split()
@@ -1340,7 +1342,7 @@ class SartopoSession():
                                     titleMatchCount+=1
                                     rval.append(feature)
                         else:        
-                            if prop['title'].rstrip()==title: # since assignments without number will still have a space after letter
+                            if prop['title'].rstrip()==title: # since assignments without number could still have a space after letter
                                 titleMatchCount+=1
                                 rval.append(feature)
                             elif 'letter' in pk: # if the title wasn't a match, try the letter if it exists
@@ -1349,17 +1351,6 @@ class SartopoSession():
                                     rval.append(feature)
                     else:
                         logging.error('getFeatures: no title key exists:'+str(feature))
-                else:
-                    if c==featureClass and id is None:
-                        if title is None:
-                            rval.append(feature)
-                        else:
-                            if 'title' in pk:
-                                if prop['title']==title:
-                                    titleMatchCount+=1
-                                    rval.append(feature) # return the entire json object
-                            else:
-                                logging.error('getFeatures: no title key exists:'+str(feature))
             if len(rval)==0:
                 # question: do we want to try a refresh and try one more time?
                 logging.info('getFeatures: No features match the specified criteria.')
