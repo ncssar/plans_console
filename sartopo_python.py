@@ -417,7 +417,7 @@ class SartopoSession():
                 logging.info('New map request failed.  See the log for details.')
                 return False
 
-
+        
         # logging.info("API version:"+str(self.apiVersion))
         # sync needs to be done here instead of in the caller, so that
         #  edit functions can have access to the full json
@@ -434,6 +434,7 @@ class SartopoSession():
             self.start()
 
         return True
+
 
     def sendUserdata(self,activeLayers=[['mbt',1]],center=[-120,39],zoom=13):
         j={
@@ -1284,13 +1285,14 @@ class SartopoSession():
     # getFeatures - attempts to get data from the local cache (self.madData); refreshes and tries again if necessary
     #   determining if a refresh is necessary:
     #   - if the requested feature/s is/are not in the cache, and it has been longer than syncInterval since the last refresh,
-    #      then do a new refresh; otherwise return [False]
+    #      then do a new refresh; otherwise return an empty list []
     #   - if the requested feature/s IS/ARE in the cache, do we need to do a refresh anyway?  Only if forceRefresh is True.
     def getFeatures(self,
             featureClass=None,
             title=None,
             id=None,
             featureClassExcludeList=[],
+            letterOnly=False,
             allowMultiTitleMatch=False,
             since=0,
             timeout=False,
@@ -1322,7 +1324,7 @@ class SartopoSession():
                     pk=prop.keys()
                 else:
                     logging.error('getFeatures: "properties" does not exist or is not a dict:'+str(feature))
-                    return [False]
+                    return []
                 c=prop['class']
                 # logging.info('checking class='+c+'  id='+feature['id'])
                 if feature['id']==id:
@@ -1338,35 +1340,38 @@ class SartopoSession():
                     else:
                         rval.append(feature)
                         break
-                if featureClass is None and c not in featureClassExcludeList:
+                if id is None and (c==featureClass or (featureClass is None and c not in featureClassExcludeList)):
+                    if title is None:
+                        rval.append(feature)
                     if 'title' in pk:
-                        if prop['title'].rstrip()==title: # since assignments without number will still have a space after letter
-                            titleMatchCount+=1
-                            rval.append(feature)
+                        if letterOnly:
+                            s=prop['title'].split()
+                            # avoid exception when title exists but is blank
+                            if len(s)>0:
+                                if s[0]==title: # since assignments title may include number (not desired for edits) 
+                                    titleMatchCount+=1
+                                    rval.append(feature)
+                        else:        
+                            if prop['title'].rstrip()==title: # since assignments without number could still have a space after letter
+                                titleMatchCount+=1
+                                rval.append(feature)
+                            elif 'letter' in pk: # if the title wasn't a match, try the letter if it exists
+                                if prop.get('letter','').rstrip()==title:
+                                    titleMatchCount+=1
+                                    rval.append(feature)
                     else:
                         logging.error('getFeatures: no title key exists:'+str(feature))
-                else:
-                    if c==featureClass and id is None:
-                        if title is None:
-                            rval.append(feature)
-                        else:
-                            if 'title' in pk:
-                                if prop['title']==title:
-                                    titleMatchCount+=1
-                                    rval.append(feature) # return the entire json object
-                            else:
-                                logging.error('getFeatures: no title key exists:'+str(feature))
             if len(rval)==0:
                 # question: do we want to try a refresh and try one more time?
                 logging.info('getFeatures: No features match the specified criteria.')
                 logging.info('  (was looking for featureClass='+str(featureClass)+'  title='+str(title)+'  id='+str(id)+')')
-                return [False]
+                return []
             if titleMatchCount>1:
                 if allowMultiTitleMatch:
                     return rval
                 else:
                     logging.warning('getFeatures: More than one feature matches the specified title.')
-                    return [False]
+                    return []
             else:
                 return rval
 
@@ -1377,6 +1382,7 @@ class SartopoSession():
             title=None,
             id=None,
             featureClassExcludeList=[],
+            letterOnly=False,
             allowMultiTitleMatch=False,
             since=0,
             timeout=False,
@@ -1386,6 +1392,7 @@ class SartopoSession():
             title=title,
             id=id,
             featureClassExcludeList=featureClassExcludeList,
+            letterOnly=letterOnly,
             allowMultiTitleMatch=allowMultiTitleMatch,
             since=since,
             timeout=timeout,
@@ -1395,7 +1402,7 @@ class SartopoSession():
                 return r[0]
             elif len(r)<1:
                 logging.warning('getFeature: no match')
-                return -1
+                return False
             else:
                 msg='getFeature: more than one match found while looking for feature:'
                 if featureClass:
@@ -1406,7 +1413,7 @@ class SartopoSession():
                     msg+=' id='+str(id)
                 logging.warning(msg)
                 logging.info(str(r))
-                return -1
+                return False
         else:
             logging.error('getFeature: return from getFeatures was not a list: '+str(r))
 
@@ -1555,10 +1562,42 @@ class SartopoSession():
         logging.info('\n     '+str(len(points))+' points: '+str(points)+'\n --> '+str(len(out))+' points: '+str(out))
         return out
 
+    # getUsedSuffixList - get a list of integers of all used suffixes for the
+    #   specified base title
+    #   ex: if features exist in the cache with titles 'a','a:1','a:3','a:stuff','other'
+    #   then getUsedSuffixList('a') should return [1,3]
+    def getUsedSuffixList(self,base):
+        # build list of all titles (or letters as appropriate) from the cache
+        #  try 'letter' first; if not found, use 'title'; default to 'NO-TITLE'
+        allTitles=[]
+        for f in self.mapData['state']['features']:
+            title='NO-TITLE'
+            p=f.get('properties')
+            if p:
+                title=p.get('letter')
+                if not title:
+                    title=p.get('title')
+            allTitles.append(title)
+        # extract the list of used suffixes
+        suffixStrings=[x.split(':')[-1] for x in allTitles if x.startswith(base+':')]
+        rval=[int(x) for x in suffixStrings if x.isnumeric()] # only positive integers, as integers
+        logging.info('getUsedSuffixList: base='+str(base)+'  rval='+str(rval))
+        return rval
+
+    # getNextAvailableSuffix - get the next available suffix given a list of used titles; limit at 100
+    def getNextAvailableSuffix(self,usedSuffixList):
+        keepLooking=True
+        suffix=1
+        while keepLooking and suffix<100:
+            if suffix not in usedSuffixList:
+                keepLooking=False
+            else:
+                suffix+=1
+        return suffix
+
     # removeSpurs - self-intersecting polygons can be caused by single-point
     #   'spurs': a,b,c,d,c,e,f  where c,d,c is the spur.  Change a sequence
     #   like this to a,b,c,e,f.
-
     def removeSpurs(self,points):
         # logging.info('removeSpurs called')
         # ls=LineString(points)
@@ -1672,6 +1711,18 @@ class SartopoSession():
         # collect resulting feature ids to return as the return value
         rids=[]
 
+        # use the unsiffixed name as the base (everything before colon-followed-by-integer)
+        #  so that a cut of a:2 would produce a:3 rather than a:2:1
+        if tc=='Assignment':
+            base=tp['letter']
+        else:
+            base=tp['title']
+        # accomodate base names that include colon
+        baseParse=base.split(':')
+        if len(baseParse)>1 and baseParse[-1].isnumeric():
+            base=':'.join(baseParse[:-1])
+        usedSuffixList=self.getUsedSuffixList(base)
+
         if isinstance(result,GeometryCollection): # polygons, linestrings, or both
             try:
                 result=MultiPolygon(result)
@@ -1691,13 +1742,13 @@ class SartopoSession():
             if rids==[]:
                 logging.warning('cut: target shape not found; operation aborted.')
                 return False
-            suffix=0
             for r in result[1:]:
-                suffix+=1
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
-                        title=title+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        title=base+':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addPolygon(list(r.exterior.coords),
                         title=title,
                         stroke=tp['stroke'],
@@ -1711,7 +1762,9 @@ class SartopoSession():
                 elif tc=='Assignment':
                     letter=tp['letter']
                     if useResultNameSuffix:
-                        letter=letter+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        letter=base+':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addAreaAssignment(list(r.exterior.coords),
                         number=tp['number'],
                         letter=letter,
@@ -1745,13 +1798,13 @@ class SartopoSession():
             if rids==[]:
                 logging.warning('cut: target shape not found; operation aborted.')
                 return False
-            suffix=0
             for r in result[1:]:
-                suffix+=1
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
-                        title=title+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        title+=':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addLine(list(r.coords),
                         title=title,
                         color=tp['stroke'],
@@ -1764,7 +1817,9 @@ class SartopoSession():
                 elif tc=='Assignment':
                     letter=tp['letter']
                     if useResultNameSuffix:
-                        letter=letter+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        letter+=':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addLineAssignment(list(r.coords),
                         number=tp['number'],
                         letter=letter,
@@ -2142,6 +2197,18 @@ class SartopoSession():
         tc=tp['class'] # Shape or Assignment
         tfid=tp.get('folderId',None)
 
+        # use the unsiffixed name as the base (everything before colon-followed-by-integer)
+        #  so that a cut of a:2 would produce a:3 rather than a:2:1
+        if tc=='Assignment':
+            base=tp['letter']
+        else:
+            base=tp['title']
+        # accomodate base names that include colon
+        baseParse=base.split(':')
+        if len(baseParse)>1 and baseParse[-1].isnumeric():
+            base=':'.join(baseParse[:-1])
+        usedSuffixList=self.getUsedSuffixList(base)
+
         # collect resulting feature ids to return as the return value
         rids=[]
 
@@ -2164,13 +2231,13 @@ class SartopoSession():
             if rids==[]:
                 logging.warning('crop: target shape not found; operation aborted.')
                 return False
-            suffix=0
             for r in result[1:]:
-                suffix+=1
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:
-                        title=title+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        title=base+':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addPolygon(list(r.exterior.coords),
                         title=title,
                         stroke=tp['stroke'],
@@ -2184,7 +2251,9 @@ class SartopoSession():
                 elif tc=='Assignment':
                     letter=tp['letter']
                     if useResultNameSuffix:
-                        letter=letter+':'+str(suffix)
+                        suffix=self.getNextAvailableSuffix(usedSuffixList)
+                        letter=base+':'+str(suffix)
+                        usedSuffixList.append(suffix)
                     rids.append(self.addAreaAssignment(list(r.exterior.coords),
                         number=tp['number'],
                         letter=letter,
@@ -2220,9 +2289,7 @@ class SartopoSession():
             if rids==[]:
                 logging.warning('crop: target shape not found; operation aborted.')
                 return False
-            suffix=0
             for r in result[1:]:
-                suffix+=1
                 if tc=='Shape':
                     title=tp['title']
                     if useResultNameSuffix:

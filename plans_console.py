@@ -56,7 +56,7 @@ import random
 import configparser
 import argparse
 from datetime import datetime
-import winsound
+# import winsound
 
 
 sartopo_python_min_version="1.1.2"
@@ -393,24 +393,25 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.reloaded = False
         self.incidentURL=None
         self.debriefURL=None
-        [i,d,n]=self.preview_saved_data()
-        if not self.args.norestore:
-            if not (i or d or n):
-                logging.info('Saved session file contained no useful data; not offering to restore')
-            else:
-                iTxt='Incident map = '+i
-                dTxt='No debrief map specified\n   (DMG failed or was not used)'
-                if d:
-                    dTxt='Debrief map = '+d+'\n   (DMG sync will resume if restored)'
-                nSuffix=''
-                if n!=1:
-                    nSuffix='s'
-                nTxt=str(n)+' radiolog record'+nSuffix
-                if ask_user_to_confirm('Should the session be restored?\n\n'+iTxt+'\n'+dTxt+'\n'+nTxt,parent=self):
-                # name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
-                # if "y" in name1.lower():
-                    self.load_data()
-                    self.reloaded = True
+        if os.path.exists('save_plans_console.txt'):
+            [i,d,n]=self.preview_saved_data()
+            if not self.args.norestore:
+                if not (i or d or n):
+                    logging.info('Saved session file contained no useful data; not offering to restore')
+                else:
+                    iTxt='Incident map = '+i
+                    dTxt='No debrief map specified\n   (DMG failed or was not used)'
+                    if d:
+                        dTxt='Debrief map = '+d+'\n   (DMG sync will resume if restored)'
+                    nSuffix=''
+                    if n!=1:
+                        nSuffix='s'
+                    nTxt=str(n)+' radiolog record'+nSuffix
+                    if ask_user_to_confirm('Should the session be restored?\n\n'+iTxt+'\n'+dTxt+'\n'+nTxt,parent=self):
+                    # name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
+                    # if "y" in name1.lower():
+                        self.load_data()
+                        self.reloaded = True
         if not self.args.nourl and not self.reloaded:
             name1=self.args.mapID
             if name1:
@@ -601,7 +602,18 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
                                 self.curAssign,clr,markr,None,self.folderId)
         ## also add team number to assignment
-        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':self.curTeam})
+        rval2 = self.sts.mapData['state']['features']
+        numbr = ""
+        for props in rval2:
+            lettr = props['properties'].get('letter')
+            if lettr is None:  continue
+            if lettr == self.curAssign:
+                numbr = props['properties'].get('number')
+        if numbr=='':
+            numbr=self.curTeam
+        else:
+            numbr += " "+self.curTeam    
+        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':numbr})
         logging.info("RVAL rtn:"+str(rval)+' : '+str(rval2))
     
     def delMarker(self):
@@ -620,8 +632,18 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         self.feature2['properties'].get('title') == self.curTeam: # both folder and Team match
                             logging.info("Marker ID:"+self.feature2['id']+" of team: "+self.curTeam)
                             rval3 = self.sts.delMarker(self.feature2['id'])
+                            rval2 = self.sts.mapData['state']['features']
+                            numbr = ""
+                            for props in rval2:
+                                lettr = props['properties'].get('letter')
+                                if lettr is None:  continue
+                                if lettr == self.curAssign:
+                                    numbr = props['properties'].get('number')
+                            print("NUMBER:"+str(numbr)+":"+str(self.curTeam)+":")
+                            numbr = numbr.replace(self.curTeam,"")       # remove team from assignment  
+                            print("NUMBER2:"+str(numbr))
                             rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign, \
-                                                properties={'number':" "})
+                                        properties={'number':numbr})
                             logging.info("RTN of Delete:"+str(rval3)+str(rval2))
                             break
         ##print("RestDel:"+json.dumps(rval3,indent=2))
@@ -755,33 +777,46 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     
     def doOperClicked(self):
         # eventually, we can use STSFeatureComboBox to allow autocomplete on each feature name;
-        #  that will also do an immediate cache refresh when the fileds are opened; until then,
+        #  that will also do an immediate cache refresh when the fields are opened; until then,
         #  we can force an immediate refresh now, when the button is clicked.
         self.sts.refresh(forceImmediate=True)
         op=self.ui.geomOpButtonGroup.checkedButton().text()
-        selFeature=self.ui.selFeature.text()
-        editorFeature=self.ui.editorFeature.text()
+        selFeatureTitle=self.ui.selFeature.text()
+        ## check that the shapes exist
+        selFeature=self.sts.getFeature(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        if not selFeature:
+            logging.warning(op+' operation failed: Selected feature "'+selFeatureTitle+'" not found.')
+            inform_user_about_issue(op+' operation failed:\n\nSelected feature "'+selFeatureTitle+'" not found.')
+            return
+        editorFeatureTitle=self.ui.editorFeature.text()
+        editorFeature=self.sts.getFeature(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        if not editorFeature:
+            logging.warning(op+' operation failed: Editor feature "'+editorFeatureTitle+'" not found.')
+            inform_user_about_issue(op+' operation failed:\n\nEditor feature "'+editorFeatureTitle+'" not found.')
+            return
         logging.info("%s shape %s with feature %s"%(op,selFeature,editorFeature))
-        ## check that the shapes exist; otherwise BEEP
         if op=='Cut':
             if not self.sts.cut(selFeature,editorFeature):
-               self.BEEP()
+               logging.warning(op+' operation failed.')
+               inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
         elif op=='Expand':
             if not self.sts.expand(selFeature,editorFeature):
-               self.BEEP()
+               logging.warning(op+' operation failed.')
+               inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
         elif op=='Crop':    
-            if not self.sts.crop(selFeature,editorFeature):
-               self.BEEP()
+            if not self.sts.crop(selFeature,editorFeature,deleteBoundary=True):
+               logging.warning(op+' operation failed.')
+               inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
         else:
             logging.error('Unknown geometry operation "'+str(op)+'" specified.  No geometry operation performed.')
 
-    def BEEP(self):
-        for n in range(3):
-            winsound.Beep(2500, 100)  ## BEEP, 2500Hz for 1 second
-            time.sleep(0.25)
+    # def BEEP(self):
+    #     for n in range(2):
+    #         winsound.Beep(2500, 100)  ## BEEP, 2500Hz for 1 second
+    #         #time.sleep(0.25)
 
     def incidentButtonClicked(self):
         # if a map was already open, ask for confirmation first
@@ -954,6 +989,17 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.save_data()
 
     def assignTab_OK_clicked(self):
+        self.curAssign = self.ui.Assign.text()
+        a=self.sts.getFeatures(featureClass='Assignment',title=self.curAssign,letterOnly=True,allowMultiTitleMatch=True)
+        # logging.info('getFeatures:'+str(a))
+        if self.curAssign not in ['RM','IC','TR'] and len(a)!=1:
+            if len(a)==0:
+                msg='No assignments with the specified letters "'+self.curAssign+'" were found - no operation performed.'
+            else:
+                msg='Multiple assignments have the letters "'+self.curAssign+'" - no operation performed.  Remedy that situation and try again.'
+            inform_user_about_issue(msg)
+            logging.warning(msg)
+            return
         #print("Ok button clicked, team is:"+self.ui.Team.text())
         rval = self.sts.getFeatures("Assignment")     # get assignments
         ifnd = 1                                        # flag for found valid Assignment
@@ -982,7 +1028,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         #print("count:"+str(self.ui.tableWidget_TmAs.rowCount()))
         for ix in range(self.ui.tableWidget_TmAs.rowCount()):      # Look for existing Team entry in table
             if self.ui.Team.text() == self.ui.tableWidget_TmAs.item(ix,0).text():  # update
-                ifnd = 1   # set found in table, may be on the map, too
+                ifnd = 1       # set found in table, may be on the map, too
                 irow = ix      # why do I need this equivalence??
                 if (self.ui.tableWidget_TmAs.item(ix,1).text() == "IC" and \
                     self.ui.tableWidget_TmAs.item(ix,2).text() != "LE") or \
@@ -1041,7 +1087,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(self.ui.Assign.text()))    
             self.ui.tableWidget_TmAs.setItem(irow, 2, QtWidgets.QTableWidgetItem(self.ui.comboBox.currentText()))
             self.curTeam = tok[ix]
-            self.curAssign = self.ui.Assign.text()
             self.curType = self.ui.comboBox.currentText()
             if self.ui.Med.isChecked(): self.medval = " X"
             else: self.medval = " "    #  need at least a space so that it is not empty
