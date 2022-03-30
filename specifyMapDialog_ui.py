@@ -15,7 +15,7 @@ class Ui_SpecifyMapDialog(object):
     def setupUi(self, SpecifyMapDialog):
         SpecifyMapDialog.setObjectName("SpecifyMapDialog")
         SpecifyMapDialog.setWindowModality(QtCore.Qt.ApplicationModal)
-        SpecifyMapDialog.resize(475, 408)
+        SpecifyMapDialog.resize(475, 421)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -256,7 +256,7 @@ class Ui_SpecifyMapDialog(object):
         self.radioButton_2.setText(_translate("SpecifyMapDialog", "sartopo.com"))
         self.otherButton.setText(_translate("SpecifyMapDialog", "Other"))
         self.domainAndPortOtherField.setPlaceholderText(_translate("SpecifyMapDialog", "myServer:8080"))
-        self.mapIDGroupBox.setTitle(_translate("SpecifyMapDialog", "Map ID"))
+        self.mapIDGroupBox.setTitle(_translate("SpecifyMapDialog", "Existing Map ID"))
         self.mapIDField.setPlaceholderText(_translate("SpecifyMapDialog", "A1B2C"))
         self.label_4.setText(_translate("SpecifyMapDialog", "(3-5 characters)"))
         self.mapURLLabel.setText(_translate("SpecifyMapDialog", "Map URL:"))

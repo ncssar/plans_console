@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>475</width>
-    <height>408</height>
+    <height>421</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -288,7 +288,7 @@
             </font>
            </property>
            <property name="title">
-            <string>Map ID</string>
+            <string>Existing Map ID</string>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout">
             <item>

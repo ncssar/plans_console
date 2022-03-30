@@ -75,7 +75,7 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
                 self.ui.otherButton.click()
                 self.ui.domainAndPortOtherField.setText(defaultDomainAndPort)
         if name:
-            self.ui.mapIDGroupBox.setTitle(str(name)+' Map ID')
+            # self.ui.mapIDGroupBox.setTitle(str(name)+' Map ID')
             self.ui.mapURLLabel.setText(str(name)+' Map URL:')
             self.setWindowTitle('Specify '+name+' Map')
         if headerText:
@@ -116,7 +116,7 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
                     font-size:'''+str(pix[22])+'''px;
                 }
                 QGroupBox{
-                    border:'''+str(pix[1])+'''px solid darkgray;
+                    border:'''+str(pix[1])+'''px solid #888;
                     border-radius:'''+str(pix[4])+'''px;
                     margin-top:'''+str(pix[10])+'''px;
                     padding:'''+str(pix[3])+'''px;
@@ -156,11 +156,11 @@ class SpecifyMapDialog(QDialog,Ui_SpecifyMapDialog):
         val=self.ui.mapSourceButtonGroup.checkedButton().text()
         if val=='New Map':
             self.ui.mapIDGroupBox.setEnabled(False)
-            self.ui.mapIDGroupBox.setStyleSheet('QGroupBox:title {color: gray;}')
+            self.ui.mapIDGroupBox.setStyleSheet('QGroupBox:title {color: gray;} QGroupBox {border-color: #CCC;}')
             self.newMap=True
         else:
             self.ui.mapIDGroupBox.setEnabled(True)
-            self.ui.mapIDGroupBox.setStyleSheet('QGroupBox:title {color: black;}')
+            self.ui.mapIDGroupBox.setStyleSheet('QGroupBox:title {color: black;} QGroupBox {border-color: #888;}')
             self.newMap=False
             self.ui.mapIDField.setFocus()
         self.urlChanged()
