@@ -393,24 +393,25 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.reloaded = False
         self.incidentURL=None
         self.debriefURL=None
-        [i,d,n]=self.preview_saved_data()
-        if not self.args.norestore:
-            if not (i or d or n):
-                logging.info('Saved session file contained no useful data; not offering to restore')
-            else:
-                iTxt='Incident map = '+i
-                dTxt='No debrief map specified\n   (DMG failed or was not used)'
-                if d:
-                    dTxt='Debrief map = '+d+'\n   (DMG sync will resume if restored)'
-                nSuffix=''
-                if n!=1:
-                    nSuffix='s'
-                nTxt=str(n)+' radiolog record'+nSuffix
-                if ask_user_to_confirm('Should the session be restored?\n\n'+iTxt+'\n'+dTxt+'\n'+nTxt,parent=self):
-                # name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
-                # if "y" in name1.lower():
-                    self.load_data()
-                    self.reloaded = True
+        if os.path.exists('save_plans_console.txt'):
+            [i,d,n]=self.preview_saved_data()
+            if not self.args.norestore:
+                if not (i or d or n):
+                    logging.info('Saved session file contained no useful data; not offering to restore')
+                else:
+                    iTxt='Incident map = '+i
+                    dTxt='No debrief map specified\n   (DMG failed or was not used)'
+                    if d:
+                        dTxt='Debrief map = '+d+'\n   (DMG sync will resume if restored)'
+                    nSuffix=''
+                    if n!=1:
+                        nSuffix='s'
+                    nTxt=str(n)+' radiolog record'+nSuffix
+                    if ask_user_to_confirm('Should the session be restored?\n\n'+iTxt+'\n'+dTxt+'\n'+nTxt,parent=self):
+                    # name1, done1 = QtWidgets.QInputDialog.getText(self, 'Input Dialog','Should the session be restored?')
+                    # if "y" in name1.lower():
+                        self.load_data()
+                        self.reloaded = True
         if not self.args.nourl and not self.reloaded:
             name1=self.args.mapID
             if name1:
@@ -989,18 +990,18 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def assignTab_OK_clicked(self):
         self.curAssign = self.ui.Assign.text()
-        logging.info('t1')
         a=self.sts.getFeatures(featureClass='Assignment',title=self.curAssign,letterOnly=True,allowMultiTitleMatch=True)
-        logging.info('getFeatures:'+str(a))
-        if len(a)>1:
-            msg='Multiple assignments have the letters "'+self.curAssign+'" - no operation performed.  Remedy that situation and try again.'
+        # logging.info('getFeatures:'+str(a))
+        if self.curAssign not in ['RM','IC','TR'] and len(a)!=1:
+            if len(a)==0:
+                msg='No assignments with the specified letters "'+self.curAssign+'" were found - no operation performed.'
+            else:
+                msg='Multiple assignments have the letters "'+self.curAssign+'" - no operation performed.  Remedy that situation and try again.'
             inform_user_about_issue(msg)
             logging.warning(msg)
             return
         #print("Ok button clicked, team is:"+self.ui.Team.text())
-        logging.info('t2a')
         rval = self.sts.getFeatures("Assignment")     # get assignments
-        logging.info('t2b')
         ifnd = 1                                        # flag for found valid Assignment
         ## location code are IC for command post (for type LE, leave marker on map, but at (lon-0.5deg) )
         ##                   TR for in transit
@@ -1098,7 +1099,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.calcLatLon_center()              # use self.ui.Assign.text() to find shape
         # set marker type (in addMarker) based on Med or if type=LE
             if (self.curAssign != "IC" and self.curAssign != "TR") or self.curType == "LE":
-                logging.info('t3')
                 self.addMarker()          # uses self.ui.Team, medval
 
         # clear fields

@@ -313,7 +313,7 @@ class DebriefMapGenerator(QObject):
             self.defaultDomainAndPort=None
             if hasattr(self.parent,'defaultDomainAndPort'):
                 self.defaultDomainAndPort=self.parent.defaultDomainAndPort
-            self.debriefMapDialog=SpecifyMapDialog(self,'Debrief','Create New Map, or Use Existing Map?',self.defaultDomainAndPort,enableNewMap=True,newDefault=True)
+            self.debriefMapDialog=SpecifyMapDialog(self,'Debrief','Debrief Map:\nCreate New Map, or Use Existing Map?',self.defaultDomainAndPort,enableNewMap=True,newDefault=True)
             if self.debriefMapDialog.exec(): # force modal
                 if '.com' in self.debriefMapDialog.dap:
                     if not ask_user_to_confirm('Internet sites are not recommended for the debrief map.  The debrief map should be hosted on the local node or an intranet server running CalTopo Desktop, if at all possible.\n\nDMG makes a lot of network requests; an internet debrief map could result in poor performace for others on the same network.\n\nUse an internet debrief map anyway?'):
@@ -1656,14 +1656,20 @@ class DebriefMapGenerator(QObject):
         if isinstance(fi,dict):
             a=fi
             p=a['properties']
-            t=p.get('title','').upper().rstrip() # assignments with letter but not number could end in space
+            # correct spacing issues with title:
+            # - assignments with letter but not number could end in space (apparently a caltopo issue)
+            # - 'number' field edited by plans console could have leading space
+            t=p.get('title','').upper().rstrip().replace('  ','')
             id=a['id']
         else: #string
             if len(fi)==36: # id
                 id=fi
                 a=self.sts1.getFeature(id=id)
                 p=a['properties']
-                t=p.get('title','').upper().rstrip() # assignments with letter but not number could end in space
+                # correct spacing issues with title:
+                # - assignments with letter but not number could end in space (apparently a caltopo issue)
+                # - 'number' field edited by plans console could have leading space
+                t=p.get('title','').upper().rstrip().replace('  ','')
             else: # non-id string was specified
                 logging.error('addOuting was called with a non-ID string; skipping')
                 return False
@@ -1677,6 +1683,20 @@ class DebriefMapGenerator(QObject):
 
         # restart handling: only add a new outing if there is not already an outing
         #  that matches sid and title
+
+        # multiple-team handling e.g. 'AA 101 102 103' - three teams assigned to AA
+        # recursivley call addOuting for each team (need to adjust the feature dict first)
+        numberSplit=p['number'].lstrip().split()
+        if len(numberSplit)>1:
+            logging.info('addOuting multiple teams: '+str(numberSplit)+' are working this assignment: calling addOuting once for each team...')
+            for number in numberSplit:
+                singleTeamFeature=copy.deepcopy(fi)
+                singleTeamFeature['properties']['number']=number
+                title=p['letter'].rstrip()+' '+number
+                singleTeamFeature['properties']['title']=title
+                logging.info('addOuting multiple teams: calling addOuting for team '+number+' (assignment "'+title+'")')
+                self.addOuting(singleTeamFeature)
+            return # return here, so that addOuting is not processed for the original multi-team assignment
 
         logging.info(' checking to see if this outing (title="'+t+'" id='+str(id)+') already exists...')
         alreadyExists=False
@@ -2130,7 +2150,7 @@ class DebriefMapGenerator(QObject):
                         logging.info('  done processing modified feature.')
             if action=='re-import':
                 # when re-importing, delete the previous entry from tids, utids, cids of all outings, and from corr
-                self.deletedFeatureCallback(sid)
+                self.deletedFeatureCallback(sid,c)
         else: # Q1 no
             if c!='Assignment': # don't show a message for assignments, since addOuting will determine if it needs to be added
                 logging.info(' no correspondence entry found; adding the feature to the debrief map')
@@ -2544,9 +2564,10 @@ class DebriefMapGenerator(QObject):
             match=False
             for ot in self.dmd['outings'].keys():
                 o=self.dmd['outings'][ot]
-                if o['sid']==sid and ot==st: # the title is current
+                if o['sid']==sid and ot==st: # the title is current; previous outing boundaries will not be edited
+                    # TBD: should the outing boundary NOT be edited if the outing has clues or tracks?
                     match=True
-                    logging.info('  assignment geometry was edited: applying the same edit to corresponding debrief map boundary that has the same title "'+st+'" as the edited feature (to preserve previous outing boundaries)')
+                    logging.info('  assignment geometry was edited: applying the same edit only to corresponding debrief map boundary that has the same title "'+st+'" as the edited feature (to preserve previous outing boundaries)')
                     self.sts2.editFeature(id=o['bid'],geometry=sg)
                     self.addOutingLogEntry(ot,'Geometry edited for assignment boundary')
                     break
