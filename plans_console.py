@@ -989,7 +989,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.save_data()
 
     def assignTab_OK_clicked(self):
-        self.curAssign = self.ui.Assign.text()
+        self.curAssign = self.ui.Assign.text().upper()
         a=self.sts.getFeatures(featureClass='Assignment',title=self.curAssign,letterOnly=True,allowMultiTitleMatch=True)
         # logging.info('getFeatures:'+str(a))
         if self.curAssign not in ['RM','IC','TR'] and len(a)!=1:
@@ -1007,15 +1007,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         ##                   TR for in transit
         ##                   RM to remove a team from the table
         ##                   Assignment name 
-        if self.ui.Assign.text() != "IC" and self.ui.Assign.text() != "TR" \
-           and self.ui.Assign.text() != "RM" : ## chk to see if assignment exists (ignore IC, TR, RM)
+        if self.curAssign not in ['RM','IC','TR']: ## chk to see if assignment exists (ignore IC, TR, RM)
           ifnd = 0
           for self.feature in rval:
             ##
             ##   number and title appear synonymous
             ##
             ##print("ZZZZ:"+str(self.feature["properties"].get("letter")))  # search for new assignment
-            if str(self.feature["properties"].get("letter")) == self.ui.Assign.text():   # find assignment on map
+            if str(self.feature["properties"].get("letter",'').upper()) == self.curAssign:   # find assignment on map
                 ##print("Geo:"+str(self.feature.get("geometry")))
                 ifnd = 1     # found the desired assignment on the map, so continue
                 break
@@ -1050,7 +1049,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.ui.comboBox.setCurrentIndex(indx)
                 if self.ui.tableWidget_TmAs.item(ix,3).text() == ' X':  # also check Med setting
                     self.ui.Med.setChecked(True)
-        if self.ui.Assign.text() == "RM":     # want to completely remove team
+        if self.curAssign == "RM":     # want to completely remove team
             if ifnd == 1:               # want to remove; presently in table AND on map
                 self.curTeam = self.ui.Team.text()
                 self.delMarker()        # uses curTeam to find
@@ -1071,7 +1070,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         ##  ifnd=1  in table and on map          - update/moving
         ##  ifnd=2  in table but not on map      - add to map (except IC or TR)
         # usually won't be assignment IC nor TR
-        if ifnd == 0 and (self.ui.Assign.text() == "IC" or self.ui.Assign.text() == "TR") and \
+        if ifnd == 0 and (self.curAssign in ['IC','TR']) and \
                           self.ui.comboBox.currentText() != "LE":
             pass # beep
             return
@@ -1084,7 +1083,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         for ix in range(cntComma):
             if ifnd == 0: self.ui.tableWidget_TmAs.insertRow(0)
             self.ui.tableWidget_TmAs.setItem(irow, 0, QtWidgets.QTableWidgetItem(tok[ix]))
-            self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(self.ui.Assign.text()))    
+            self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(self.curAssign))    
             self.ui.tableWidget_TmAs.setItem(irow, 2, QtWidgets.QTableWidgetItem(self.ui.comboBox.currentText()))
             self.curTeam = tok[ix]
             self.curType = self.ui.comboBox.currentText()

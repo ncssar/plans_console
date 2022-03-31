@@ -2067,7 +2067,7 @@ class SartopoSession():
         if isinstance(points[0],tuple):
             points=list(map(list,points))
         # logging.info('fourify called:\npoints='+str(points)+'\norigPoints='+str(origPoints))
-        if len(points[0])==4: # it's already a four-element list
+        if len(points[0])==4 and len(points[-1])==4: # it's already a four-element list
             return points
         # logging.info('fourify: '+str(len(points))+' points: '+str(points[0:3])+' ... '+str(points[-3:]))
         # logging.info('orig: '+str(len(origPoints))+' points: '+str(origPoints[0:3])+' ... '+str(origPoints[-3:]))
