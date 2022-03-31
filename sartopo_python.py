@@ -1569,6 +1569,7 @@ class SartopoSession():
     def getUsedSuffixList(self,base):
         # build list of all titles (or letters as appropriate) from the cache
         #  try 'letter' first; if not found, use 'title'; default to 'NO-TITLE'
+        # logging.info('getUsedSuffixList called: base='+str(base))
         allTitles=[]
         for f in self.mapData['state']['features']:
             title='NO-TITLE'
@@ -1577,7 +1578,9 @@ class SartopoSession():
                 title=p.get('letter')
                 if not title:
                     title=p.get('title')
-            allTitles.append(title)
+            if title: # title could be None at this point
+                allTitles.append(title)
+        # logging.info('  allTitles='+str(allTitles))
         # extract the list of used suffixes
         suffixStrings=[x.split(':')[-1] for x in allTitles if x.startswith(base+':')]
         rval=[int(x) for x in suffixStrings if x.isnumeric()] # only positive integers, as integers
@@ -2063,6 +2066,9 @@ class SartopoSession():
     # fourify - try to use four-element-vertex data from original data; called by
     #  geometry operations during resulting shape creation / editing
     def fourify(self,points,origPoints):
+        # no use trying to fourify if the orig points list is not all four-element points
+        if len(origPoints[0])!=4 or len(origPoints[-1])!=4:
+            return points
         # make sure both are lists of lists, since points may initially be a list of tuples
         if isinstance(points[0],tuple):
             points=list(map(list,points))
@@ -2149,11 +2155,12 @@ class SartopoSession():
         boundaryType=cg['type']
         if boundaryType=='Polygon':
             cgc=cg['coordinates'][0]
-            cgc=self.removeSpurs(cgc)
-            # boundaryGeom=Polygon(cgc).buffer(beyond) # Shapely object
             boundaryGeom=self.buffer2(Polygon(cgc),beyond)
+        elif boundaryType=='LineString':
+            cgc=self.twoify(cg['coordinates'])
+            boundaryGeom=LineString(cgc).buffer(beyond)
         else:
-            logging.warning('crop: boundary feature '+boundaryStr+' is not a polygon: '+boundaryType)
+            logging.warning('crop: boundary feature '+boundaryStr+' is not a polygon or line: '+boundaryType)
             return False
         # logging.info('crop: boundaryGeom:'+str(boundaryGeom))
         if drawSizedBoundary:

@@ -610,7 +610,7 @@ class DebriefMapGenerator(QObject):
             for outingName in outings:
                 appTrackCount=len([atid for atid in self.dmd['appTracks'] if self.dmd['appTracks'][atid][1]==outingName])
                 o=self.dmd['outings'][outingName]
-                trackCountText=str(len(o['tids']))
+                trackCountText=str(len(o['tids'])+len(o['utids']))
                 if appTrackCount>0:
                     trackCountText+=' + '+str(appTrackCount)
                 self.dd.ui.tableWidget.setItem(row,0,QTableWidgetItem(outingName))
@@ -2062,6 +2062,7 @@ class DebriefMapGenerator(QObject):
                 bid=self.dmd['outings'][outingName]['bid']
                 if bid is not None:
                     logging.info('  Outing '+outingName+': cropping '+str(len(utids))+' uncropped track(s):'+str(utids))
+                    cleanedUtids=[]
                     for utid in utids:
                         logging.info('   cropping '+utid)
                         # since newly created features are immediately added to the local cache,
@@ -2073,6 +2074,7 @@ class DebriefMapGenerator(QObject):
                         # logging.info('crop return value:'+str(croppedTrackLines))
                         if croppedTrackLines:
                             self.dmd['outings'][outingName]['tids'].append(croppedTrackLines)
+                            cleanedUtids.append(utid)
                         # cropped track line(s) should correspond to the source map line, 
                         #  not the source map assignment; source map line id will be
                         #  the corr key whose val is the utid; also remove the utid
@@ -2088,7 +2090,9 @@ class DebriefMapGenerator(QObject):
                         else:
                             logging.warning('    corresponding source map line id could not be determined (source line id list:'+str(slidList)+')')
                         # assignments[a]['utids'].remove(utid)
-                    self.dmd['outings'][outingName]['utids']=[] # don't modify the list during iteration over the list!
+                    # if it wasn't cropped successfully, leave it in utids
+                    for cleanedUtid in cleanedUtids:
+                        self.dmd['outings'][outingName]['utids'].remove(cleanedUtid) # don't modify the list during iteration over the list!
                     # self.writeDmdFile()
                 else:
                     logging.info('  Outing '+outingName+' has '+str(len(self.dmd['outings'][outingName]['utids']))+' uncropped tracks, but the boundary has not been imported yet; skipping.')
