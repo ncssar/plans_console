@@ -632,20 +632,17 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         self.feature2['properties'].get('title') == self.curTeam: # both folder and Team match
                             logging.info("Marker ID:"+self.feature2['id']+" of team: "+self.curTeam)
                             rval3 = self.sts.delMarker(self.feature2['id'])
-                            rval2 = self.sts.mapData['state']['features']
-                            numbr = ""
-                            for props in rval2:
-                                lettr = props['properties'].get('letter')
-                                if lettr is None:  continue
-                                if lettr == self.curAssign:
-                                    numbr = props['properties'].get('number')
-                            print("NUMBER:"+str(numbr)+":"+str(self.curTeam)+":")
-                            numbr = numbr.replace(self.curTeam,"")       # remove team from assignment  
-                            print("NUMBER2:"+str(numbr))
-                            rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign, \
-                                        properties={'number':numbr})
-                            logging.info("RTN of Delete:"+str(rval3)+str(rval2))
-                            break
+
+        # remove the team number from any assignments that contain it
+        assignmentsWithThisNumber=[f for f in self.sts.getFeatures('Assignment') if self.curTeam in f['properties'].get('number','')]
+        for a in assignmentsWithThisNumber:
+            n=a['properties']['number']
+            # logging.info('changing assigment "'+a['properties']['title']+'": old number = "'+n+'"')
+            nList=n.split()
+            nList.remove(self.curTeam)
+            n=' '.join(nList)
+            # logging.info('  new number = "'+n+'"')
+            self.sts.editFeature(id=a['id'],properties={'number':n})
         ##print("RestDel:"+json.dumps(rval3,indent=2))
               
 ##   APPEARS to not be used
