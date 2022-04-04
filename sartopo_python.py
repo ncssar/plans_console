@@ -373,15 +373,16 @@ class SartopoSession():
         self.sendUserdata() # to get session cookies, in case this client has not connected in a long time
 
         # new map requested
-        # 1. send a POST request to /map - payload = 
+        # 1. send a POST request to /map - payload (tested on CTD 4225; won't work with <4221) =
         if self.mapID=='[NEW]':
             j={}
-            j['accountId']=accountId
-            j['lockMapCfg']='true'
-            j['name']='dmg'
-            j['lat']=39
-            j['lon']=-120
-            j['state']=json.dumps({
+            j['properties']={
+                'mapConfig':json.dumps({'activeLayers':[['mbt',1]]}),
+                'cfgLocked':True,
+                'title':'new',
+                'mode':'sar' # 'cal' for recreation, 'sar' for SAR
+            }
+            j['state']={
                 'type':'FeatureCollection',
                 'features':[
                     # At least one feature must exist to set the 'updated' field of the map;
@@ -397,13 +398,12 @@ class SartopoSession():
                         'type':'Feature',
                         'properties':{
                             'creator':accountId,
-                            'title':'DMGNewMapDummyMarker',
+                            'title':'NewMapDummyMarker',
                             'class':'Marker'
                         }
                     }
                 ]
-            })
-            j['config']=json.dumps({'activeLayers':[['mbt',1]]})
+            }
             # logging.info('dap='+str(self.domainAndPort))
             # logging.info('payload='+str(json.dumps(j,indent=3)))
             r=self.sendRequest('post','[NEW]',j,domainAndPort=self.domainAndPort)
@@ -786,8 +786,7 @@ class SartopoSession():
         url=prefix+domainAndPort+mid+apiUrlEnd
         wrapInJsonKey=True
         if newMap:
-            url=prefix+domainAndPort+'/map'
-            wrapInJsonKey=False
+            url=prefix+domainAndPort+'/api/v1/acct/'+accountId+'/CollaborativeMap' # works for CTD 4221 and up
         if '/since/' not in url:
             logging.info("sending "+str(type)+" to "+url)
         if type=="post":
@@ -849,80 +848,107 @@ class SartopoSession():
             self.syncPause=False
             return False
 
-        if newMap or r.status_code!=200:
+        if r.status_code!=200:
             logging.info("response code = "+str(r.status_code))
 
         if newMap:
-            # on CTD 4214, new map request should return 3xx response (redirect); if allow_redirects=False is
+            # for CTD 4221 and newer, and internet, a new map request should return 200, and the response data
+            #  should contain the new map ID in response['result']['id']
+            # for CTD 4214, a new map request should return 3xx response (redirect); if allow_redirects=False is
             #  in the response, the redirect target will appear as the 'Location' response header.
-            # for CTD 4221 and internet, new map request should return 200, and the response data
-            #  should contain the new map ID
-            if url.endswith('/map'):
-                if 300<=r.status_code<=399:
-                    # logging.info("response headers:"+str(json.dumps(dict(r.headers),indent=3)))
-                    newUrl=r.headers.get('Location',None)
+            if r.status_code==200:
+                try:
+                    rj=r.json()
+                except:
+                    logging.error('New map request failed: response had do decodable json:'+str(r.status_code)+':'+r.text)
+                    self.syncPause=False
+                    return False
+                else:
+                    rjr=rj.get('result')
+                    newUrl=None
+                    if rjr:
+                        newUrl=rjr['id']
                     if newUrl:
                         logging.info('New map URL:'+newUrl)
                         self.syncPause=False
                         return newUrl
                     else:
-                        logging.info('No new map URL was returned in the response header.')
+                        logging.error('No new map URL was returned in the response json:'+str(r.status_code)+':'+json.dumps(rj))
                         self.syncPause=False
                         return False
-                else:
-                    logging.info('Unexpected response from new map request:'+str(r.status_code)+':'+r.text)
-                    return False
             else:
-                if r.status_code==200:
-                    logging.info('200 response from new map request:'+r.text)
-                    return False
-                else:
-                    logging.info('Unexpected response from new map request:'+str(r.status_code)+':'+r.text)
-                    return False
-
-
-        if returnJson:
-            # logging.info('response:'+str(r))
-            try:
-                rj=r.json()
-            except:
-                logging.error("sendRequest: response had no decodable json:"+str(r))
+                logging.error('New map request failed:'+str(r.status_code)+':'+r.text)
                 self.syncPause=False
                 return False
-            else:
-                if 'status' in rj and rj['status'].lower()!='ok':
-                    logging.warning('response status other than "ok":  '+str(rj))
+
+            # old redirect method worked with CTD 4214:
+            # if url.endswith('/map'):
+            #     if 300<=r.status_code<=399:
+            #         # logging.info("response headers:"+str(json.dumps(dict(r.headers),indent=3)))
+            #         newUrl=r.headers.get('Location',None)
+            #         if newUrl:
+            #             logging.info('New map URL:'+newUrl)
+            #             self.syncPause=False
+            #             return newUrl
+            #         else:
+            #             logging.info('No new map URL was returned in the response header.')
+            #             self.syncPause=False
+            #             return False
+            #     else:
+            #         logging.info('Unexpected response from new map request:'+str(r.status_code)+':'+r.text)
+            #         return False
+            # else:
+            #     if r.status_code==200:
+            #         logging.info('200 response from new map request:'+r.text)
+            #         return False
+            #     else:
+            #         logging.info('Unexpected response from new map request:'+str(r.status_code)+':'+r.text)
+            #         return False
+
+
+        else:
+            if returnJson:
+                # logging.info('response:'+str(r))
+                try:
+                    rj=r.json()
+                except:
+                    logging.error("sendRequest: response had no decodable json:"+str(r))
                     self.syncPause=False
-                    return rj
-                if returnJson=="ID":
-                    id=None
-                    if 'result' in rj and 'id' in rj['result']:
-                        id=rj['result']['id']
-                    elif 'id' in rj:
-                        id=rj['id']
-                    elif not rj['result']['state']['features']:  # response if no new info
+                    return False
+                else:
+                    if 'status' in rj and rj['status'].lower()!='ok':
+                        logging.warning('response status other than "ok":  '+str(rj))
                         self.syncPause=False
-                        return 0
-                    elif 'result' in rj and 'id' in rj['result']['state']['features'][0]:
-                        id=rj['result']['state']['features'][0]['id']
-                    else:
-                        logging.info("sendRequest: No valid ID was returned from the request:")
-                        logging.info(json.dumps(rj,indent=3))
-                    self.syncPause=False
-                    return id
-                if returnJson=="ALL":
-                    # since CTD 4221 returns 'title' as an empty string for all assignments,
-                    #  set 'title' to <letter><space><number> for all assignments here
-                    # this code looks fairly resource intensive; for a map with 50 assignments, initial sync
-                    #  is about 6.5% slower with this if clause than without, but it would be good to profile
-                    #  memory consumption too - is this calling .keys() and creating new lists each time?
-                    #  maybe better to wrap it all in try/except, but, would that iterate over all features?
-                    if 'result' in rj.keys() and 'state' in rj['result'].keys() and 'features' in rj['result']['state'].keys():
-                        alist=[f for f in rj['result']['state']['features'] if 'properties' in f.keys() and 'class' in f['properties'].keys() and f['properties']['class'].lower()=='assignment']
-                        for a in alist:
-                            a['properties']['title']=a['properties']['letter']+' '+a['properties']['number']
-                    self.syncPause=False
-                    return rj
+                        return rj
+                    if returnJson=="ID":
+                        id=None
+                        if 'result' in rj and 'id' in rj['result']:
+                            id=rj['result']['id']
+                        elif 'id' in rj:
+                            id=rj['id']
+                        elif not rj['result']['state']['features']:  # response if no new info
+                            self.syncPause=False
+                            return 0
+                        elif 'result' in rj and 'id' in rj['result']['state']['features'][0]:
+                            id=rj['result']['state']['features'][0]['id']
+                        else:
+                            logging.info("sendRequest: No valid ID was returned from the request:")
+                            logging.info(json.dumps(rj,indent=3))
+                        self.syncPause=False
+                        return id
+                    if returnJson=="ALL":
+                        # since CTD 4221 returns 'title' as an empty string for all assignments,
+                        #  set 'title' to <letter><space><number> for all assignments here
+                        # this code looks fairly resource intensive; for a map with 50 assignments, initial sync
+                        #  is about 6.5% slower with this if clause than without, but it would be good to profile
+                        #  memory consumption too - is this calling .keys() and creating new lists each time?
+                        #  maybe better to wrap it all in try/except, but, would that iterate over all features?
+                        if 'result' in rj.keys() and 'state' in rj['result'].keys() and 'features' in rj['result']['state'].keys():
+                            alist=[f for f in rj['result']['state']['features'] if 'properties' in f.keys() and 'class' in f['properties'].keys() and f['properties']['class'].lower()=='assignment']
+                            for a in alist:
+                                a['properties']['title']=a['properties']['letter']+' '+a['properties']['number']
+                        self.syncPause=False
+                        return rj
         self.syncPause=False
         
     def addFolder(self,
