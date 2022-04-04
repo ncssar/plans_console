@@ -242,6 +242,9 @@ class DebriefMapGenerator(QObject):
         self.pc=self.parent.__class__.__name__=='PlansConsole'
         self.debriefURL=''
         self.startupBox=None
+        self.excludedFolderIDs=[]
+        self.excludedFolderTitles=['scratch','aTEAMS','Tracks to location']
+        self.excludedFolderTitles=[x.lower() for x in self.excludedFolderTitles] # all lowercase, for comparison later
 
         # do not register the callbacks until after the initial processing; that way we
         #  can be sure to process existing assignments first
@@ -2142,13 +2145,19 @@ class DebriefMapGenerator(QObject):
         # - geometryUpdateCallback
         # this function is probably called from a sync thread:
         #  can't create a timer or do some GUI operations from here, etc.
-        self.updateLinkLights(debriefLink=10)
         p=f['properties']
         c=p['class']
         t=p.get('title','').rstrip() # assignments with letter but not number could end in space
         sid=f['id']
 
         logging.info('newFeatureCallback: class='+c+'  title='+t+'  id='+sid+'  syncing='+str(self.sts1.syncing))
+        if c=='Folder':
+            if t.lower() in self.excludedFolderTitles:
+                self.excludedFolderIDs.append(sid)
+            return
+        elif p.get('folderId','') in self.excludedFolderIDs:
+            return
+        self.updateLinkLights(debriefLink=10)
         if c=='AppTrack':
             self.dmd['appTracks'][sid]=[t,None,f['geometry']['coordinates'][-1][3]]
             self.checkForUnclaimedAppTracks(sid)
@@ -2385,6 +2394,28 @@ class DebriefMapGenerator(QObject):
         sgt=self.sts1.getFeature(id=sid)['geometry']['type']
         logging.info('propertyUpdateCallback called for '+sc+':'+st)
         # determine which target-map feature, if any, corresponds to the edited source-map feature
+        if sc=='Folder':
+            if st.lower() in self.excludedFolderTitles:
+                if sid not in self.excludedFolderIDs:
+                    self.excludedFolderIDs.append(sid)
+            else:
+                if sid in self.excludedFolderIDs:
+                    self.excludedFolderIDs.remove(sid)
+            return
+        else:
+            if sp.get('folderId','') in self.excludedFolderIDs: # in an excluded folder
+                tidList=self.dmd['corr'].get(sid,[])
+                for tid in tidList:
+                    if self.sts2.getFeature(id=tid):
+                        self.sts2.delFeature(id=tid)
+                if tidList:
+                    del self.dmd['corr'][sid]
+            else: # not in an excluded folder
+                if sc in ['Shape','Marker'] and sid not in self.dmd['corr'].keys():
+                    # We want to call newFeatureCallback, but f may only have properties and not geometry
+                    #  since that's all that caltopo sends in the since responses.  So, get the entire
+                    #  feature from the source map.
+                    self.newFeatureCallback(self.sts1.getFeature(id=sid))
         if sc=='AppTrack' and sid in self.dmd['appTracks'].keys():
             self.dmd['appTracks'][sid][0]=st
             self.checkForUnclaimedAppTracks(sid)
