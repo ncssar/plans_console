@@ -2159,7 +2159,18 @@ class DebriefMapGenerator(QObject):
             return
         self.updateLinkLights(debriefLink=10)
         if c=='AppTrack':
-            self.dmd['appTracks'][sid]=[t,None,f['geometry']['coordinates'][-1][3]]
+            fg=f['geometry']
+            fgt=fg['type']
+            # single-point apptracks may have been converted by the caltopo engine to Point geometry
+            #  these should arguably not even be imported, but we will import them as a part of the
+            #  record, until/unless there is a clear reason to omit them
+            if fgt=='LineString':
+                self.dmd['appTracks'][sid]=[t,None,f['geometry']['coordinates'][-1][3]]
+            elif fgt=='Point':
+                self.dmd['appTracks'][sid]=[t,None,f['geometry']['coordinates'][3]]
+            else:
+                logging.error('Unexpected AppTrack geometry type "'+str(fgt)+'"; not adding to the debrief map')
+                return
             self.checkForUnclaimedAppTracks(sid)
             self.appTracksDialogRedrawFlag=True
             self.updateLinkLights()
