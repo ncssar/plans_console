@@ -143,10 +143,13 @@ def genLpix(ldpi):
         lpix[ptSize]=floor((ldpi*ptSize)/72)
     return lpix
 
-def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
+def ask_user_to_confirm(question: str, yesLabel=None, noLabel=None, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
-    buttons = QMessageBox.StandardButton(QMessageBox.Yes | QMessageBox.No)
-    box = QMessageBox(icon, title, question, buttons, parent, opts)
+    box = QMessageBox(icon, title, question, QMessageBox.NoButton, parent, opts)
+    yesLabel=yesLabel or 'Yes'
+    noLabel=noLabel or 'No'
+    yesButton=box.addButton(yesLabel,QMessageBox.YesRole)
+    box.addButton(noLabel,QMessageBox.NoRole)
     # determine logical pixel equivalents: take prom parent if possible, so that the messagebox uses the same DPI as the spawning window
     if hasattr(parent,'lpix'):
         lpix=parent.lpix
@@ -163,7 +166,8 @@ def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Ques
     box.show()
     QCoreApplication.processEvents()
     box.raise_()
-    return box.exec_() == QMessageBox.Yes
+    box.exec_()
+    return box.clickedButton()==yesButton
 
 def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
@@ -894,6 +898,7 @@ class DebriefMapGenerator(QObject):
         outingFeatureIds+=alltids
         # add feature(s) now for any unfinished apptracks associated with this outing
         appTracksIDList=[id for id in self.dmd['appTracks'].keys() if self.dmd['appTracks'][id][1]==outingName]
+        allTrackTitles=[self.dmd['appTracks'][t][0] for t in appTracksIDList] # keep a list of titles of all associated lines and apptracks to check for duplicates
         appTracksFeaturesUncropped=[] # used for legend generation
         appTracksFeaturesCropped=[] # sent in the PDF request
         cropDegrees=self.dmd['outings'][outingName].get('crop',self.cropDegrees)
@@ -991,6 +996,7 @@ class DebriefMapGenerator(QObject):
         for trackList in self.dmd['outings'][outingName]['tids']:
             # assumption: all lines in the same tid list have the same title/stroke/opacity/weight
             t0p=self.sts2.getFeature(id=trackList[0])['properties']
+            allTrackTitles.append(t0p['title'])
             # determine the incident map feature creator
             sidList=[x for x in self.dmd['corr'].keys() if trackList[0] in self.dmd['corr'][x]]
             creator=t0p.get('creator',None) # use debrief feature creator by default
@@ -1021,6 +1027,22 @@ class DebriefMapGenerator(QObject):
                 'stroke-width':atfp['stroke-width'],
                 'creator':creator
             })
+
+        # show message if there are tracks and/or apptracks with duplicate names
+        if len(allTrackTitles)!=len(set(allTrackTitles)):
+            msg='Duplicate track names found for outing '+outingName
+            logging.warning(msg)
+            msg+=':\n'
+            for t in allTrackTitles:
+                if allTrackTitles.count(t)>1:
+                    msg+='\n'+t
+            msg+='\n\nTo avoid duplicate track(s) in the PDF, you should CANCEL now, then edit the INCIDENT map using one of these methods:\n'
+            msg+='  a) delete the unwanted track(s)\n'
+            msg+='  b) move the unwanted track(s) to an excluded folder such as "scratch"\n'
+            msg+='  c) edit name(s) to make the track names unique\n\n'
+            msg+='Or, you can generate the PDF anyway with the duplicate track(s).'
+            if not ask_user_to_confirm(msg,yesLabel='Generate PDF Anyway',noLabel='Cancel'):
+                return
 
         if size[0]==11: # landscape
             lgx=w/100 # legend grid x
@@ -2414,14 +2436,11 @@ class DebriefMapGenerator(QObject):
                     self.excludedFolderIDs.remove(sid)
             return
         else:
-            if sp.get('folderId','') in self.excludedFolderIDs: # in an excluded folder
-                tidList=self.dmd['corr'].get(sid,[])
-                for tid in tidList:
-                    if self.sts2.getFeature(id=tid):
-                        self.sts2.delFeature(id=tid)
-                if tidList:
-                    del self.dmd['corr'][sid]
-            else: # not in an excluded folder
+            if sp.get('folderId','') in self.excludedFolderIDs:
+                # moved to an excluded folder: take all the steps as if it were deleted from source map
+                self.deletedFeatureCallback(sid,sc)
+            else:
+                # not currently in an excluded folder (moved to non-excluded folder and/or other properties changed)
                 if sc in ['Shape','Marker'] and sid not in self.dmd['corr'].keys():
                     # We want to call newFeatureCallback, but f may only have properties and not geometry
                     #  since that's all that caltopo sends in the since responses.  So, get the entire
@@ -2696,7 +2715,7 @@ class DebriefMapGenerator(QObject):
         # logging.info(str(dmd['corr'].keys()))
         # logging.info('dmd:\n'+str(json.dumps(self.dmd,indent=3)))
         if className=='AppTrack':
-            # was it finished (converted to shape), or just plain deleted?
+            # was it finished (converted to shape with the same id), or just plain deleted?
             if self.sts1.getFeature('Shape',id=sid):
                 self.dmd['appTracks'][sid][1]=(self.dmd['appTracks'][sid][1] or '')+'[FINISHED]'
             else:
