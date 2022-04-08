@@ -1359,7 +1359,17 @@ class DebriefMapGenerator(QObject):
                     logging.info(outingName+' : PDF generated : '+r+' - opening in new browser tab...')
                     # full URL including prefix is needed to use the correct system default browser
                     #  otherwise it may try Internet Explorer
-                    webbrowser.open_new_tab(prefix+printDomainAndPort+'/p/'+r)
+                    pdfURL=prefix+printDomainAndPort+'/p/'+r
+                    webbrowser.open_new_tab(pdfURL) # this is a non-blocking call
+                    # downloading with requetsts, from https://www.scivision.dev/python-switch-urlretrieve-requests-timeout/
+                    pdfLeafName=outingName.replace(' ','')+'_'+datetime.now().strftime("%H%M")+'_'+r+'.pdf'
+                    pdfFullPath=os.path.join('.',pdfLeafName)
+                    with open(pdfFullPath,'wb') as pdfFile:
+                        logging.info(outingName+' : downloading PDF to '+pdfFullPath)
+                        r2=self.sts2.s.get(pdfURL,allow_redirects=True)
+                        if r2.status_code!=200:
+                            raise ConnectionError('Could not download generated PDF {}\nerror code: {}'.format(pdfURL, r2.status_code))
+                        pdfFile.write(r2.content)
                     self.dmd['outings'][outingName]['PDF']=[r,tsNow]
                     self.setPDFButton(row,'done')
                     self.writeDmdFile()
