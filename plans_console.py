@@ -73,28 +73,36 @@ from sartopo_python import SartopoSession # import before logging to avoid usele
 import sys
 import logging
 
+import common # variables shared across multiple modules
+
 # log filename should be <top-level-module-name>.log
-logfile=os.path.splitext(os.path.basename(sys.path[0]))[0]+'.log'
+# logfile=os.path.splitext(os.path.basename(sys.path[0]))[0]+'.log'
+common.pcDir='C:\\PlansConsole'
+common.pcLogDir=os.path.join(common.pcDir,'Logs')
+common.logfile=os.path.join(common.pcLogDir,'plans_console.log')
+
+if not os.path.isdir(common.pcLogDir):
+    os.makedirs(common.pcLogDir)
 
 cleanShutdownText='Plans Console shutdown requested'
 # cleanShutdownText should appear in the last five lines of the previous
 #  log file if it was a clean shutdown; if not, copy the file
 #  with a unique filename before starting the new log; use seek instead
 #  of readlines to reduce time and memory consumption for large log files
-if os.path.exists(logfile):
+if os.path.exists(common.logfile):
     save=False
-    if os.path.getsize(logfile)>1024:
-        with open(logfile,'rb') as f:
+    if os.path.getsize(common.logfile)>1024:
+        with open(common.logfile,'rb') as f:
             f.seek(-1025,2) # 1kB before the file's end
             tail=f.read(1024).decode()
         if cleanShutdownText not in tail:
             save=True
     else: # tiny file; read the whole file to see if clean shutdown line exists
-        with open(logfile,'r') as f:
+        with open(common.logfile,'r') as f:
             if cleanShutdownText not in f.read():
                 save=True
     if save:
-        shutil.copyfile(logfile,os.path.splitext(logfile)[0]+'.aborted.'+datetime.fromtimestamp(os.path.getmtime(logfile)).strftime('%Y-%m-%d-%H-%M-%S')+'.log')
+        shutil.copyfile(common.logfile,os.path.splitext(common.logfile)[0]+'.aborted.'+datetime.fromtimestamp(os.path.getmtime(common.logfile)).strftime('%Y-%m-%d-%H-%M-%S')+'.log')
 
 # print by default; let the caller change this if needed
 # (note, caller would need to clear all handlers first,
@@ -108,7 +116,7 @@ logging.basicConfig(
     datefmt='%H:%M:%S',
     format='%(asctime)s [%(module)s:%(lineno)d:%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler(logfile,'w'),
+        logging.FileHandler(common.logfile,'w'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -284,6 +292,30 @@ sys.excepthook = handle_exception
 def sortByTitle(item):
     return item["properties"]["title"]
 
+# Working directory structure 4-8-22:
+#  C:\PlansConsole
+#     |
+#     |-- Logs
+#     |     |-- plans_console.log
+#     |     |-- [plans_console.log.err[.1-5]]
+#     |     |-- [plans_console_aborted.<date><time>.log]
+#     |
+#     |-- Config
+#     |     |-- plans_console.cfg
+#     |     |-- plans_console.rc
+#     |     |-- sts.ini
+#     |
+#     |-- save_plans_console.txt
+#     |
+#     |-- Debrief
+#           |-- JSON
+#           |    |-- <incidentMapID>_<debriefMapID>.json
+#           |
+#           |-- Maps
+#                |-- <outingName>_<time>_<pdfID>.pdf
+#                       (files also written to optional second PDF directory
+#                        such as Z:\DebriefMaps, specified in plans_console.cfg)
+
 class PlansConsole(QDialog,Ui_PlansConsole):
     def __init__(self,parent):
         QDialog.__init__(self)
@@ -291,9 +323,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
         self.ldpi=1 # font size calculations (see moveEvent)
         self.parent=parent
-        self.stsconfigpath='../sts.ini'
-        self.rcFileName="plans_console.rc"
-        self.configFileName="./local/plans_console.cfg"
+        self.pcConfigDir=os.path.join(common.pcDir,'Config')
+        self.stsconfigpath=os.path.join(self.pcConfigDir,'sts.ini')
+        self.rcFileName=os.path.join(self.pcConfigDir,'plans_console.rc')
+        self.configFileName=os.path.join(self.pcConfigDir,'plans_console.cfg')
+        self.pcDataFileName=os.path.join(common.pcDir,'save_plans_console.txt')
 
         self.ui=Ui_PlansConsole()
         self.ui.setupUi(self)
@@ -393,7 +427,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.reloaded = False
         self.incidentURL=None
         self.debriefURL=None
-        if os.path.exists('save_plans_console.txt'):
+        if os.path.exists(self.pcDataFileName):
             [i,d,n]=self.preview_saved_data()
             if not self.args.norestore:
                 if not (i or d or n):
@@ -713,9 +747,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # self.watchedDir="Z:\\"
         
         # configFile=QFile(self.configFileName)
-        config=configparser.ConfigParser()
-        config.read(self.configFileName)
-        if 'Plans_console' not in config.sections():
+        self.config=configparser.ConfigParser()
+        self.config.read(self.configFileName)
+        if 'Plans_console' not in self.config.sections():
 
         # if not configFile.open(QFile.ReadOnly|QFile.Text):
         #     warn=QMessageBox(QMessageBox.Warning,"Error","Cannot read configuration file " + self.configFileName + "; using default settings. "+configFile.errorString(),
@@ -736,7 +770,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             return
 
         # read individual settings, with defaults
-        cpc=config['Plans_console']
+        cpc=self.config['Plans_console']
         self.watchedDir=cpc.get('watchedDir','"Z:\\"')
         self.accountName=cpc.get('accountName',None)
         self.defaultDomainAndPort=cpc.get('defaultDomainAndPort',None)
@@ -927,12 +961,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             maps['debriefURL']=self.debriefURL
         alld = json.dumps([maps,{'csv':self.watchedFile+'%'+self.offsetFileName+ \
                                              '%'+str(self.csvFiles)}, rowx, rowy])
-        fid = open("save_plans_console.txt",'w')
+        fid = open(self.pcDataFileName,'w')
         fid.write(alld)
         fid.close()
 
     def preview_saved_data(self):
-        with open('save_plans_console.txt','r') as fid:
+        with open(self.pcDataFileName,'r') as fid:
             alld=fid.read()
             l=json.loads(alld)
             incidentURL = l[0]['incidentURL']
@@ -942,7 +976,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def load_data(self):
         # logging.info("In load data")
-        fid = open("save_plans_console.txt",'r')
+        fid = open(self.pcDataFileName,'r')
         alld = fid.read()
         l = json.loads(alld)
         logging.info("Get:"+str(l))

@@ -83,7 +83,9 @@ sys.excepthook = handle_exception
 # so if this is being called from plans console, use the already-opened
 #  logfile plans-console.log
 # but if this is being run directly, use dmg.log
-logfile=os.path.splitext(os.path.basename(sys.path[0]))[0]+'.log'
+import common
+if not common.logfile:
+    common.logfile=os.path.splitext(os.path.basename(sys.path[0]))[0]+'.log'
 
 # To redefine basicConfig, per stackoverflow.com/questions/12158048
 # Remove all handlers associated with the root logger object.
@@ -91,8 +93,8 @@ logfile=os.path.splitext(os.path.basename(sys.path[0]))[0]+'.log'
 errlogdepth=5
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
-if os.path.isfile(logfile):
-    os.remove(logfile)
+if os.path.isfile(common.logfile):
+    os.remove(common.logfile)
 logging.basicConfig(
     level=logging.INFO,
     datefmt='%H:%M:%S',
@@ -102,7 +104,7 @@ logging.basicConfig(
         #  to get deleted and overwritten when the threads end; so
         #  instead set it to append here, and take care of deleting it
         #  or rotating it at the top level
-        logging.FileHandler(logfile,'a'),
+        logging.FileHandler(common.logfile,'a'),
         # logging.FileHandler(self.fileNameBase+'_bg.log','w'),
         logging.StreamHandler(sys.stdout)
     ]
@@ -121,19 +123,19 @@ class CustomHandler(logging.StreamHandler):
             #  rotate the error log files in preparation for copying of the current log
             if not errlog:                    
                 for n in range(errlogdepth-1,0,-1):
-                    src=logfile+'.err.'+str(n)
-                    dst=logfile+'.err.'+str(n+1)
+                    src=common.logfile+'.err.'+str(n)
+                    dst=common.logfile+'.err.'+str(n+1)
                     if os.path.isfile(src):
                         os.replace(src,dst)
-                src=logfile+'.err'
-                dst=logfile+'.err.1'
+                src=common.logfile+'.err'
+                dst=common.logfile+'.err.1'
                 if os.path.isfile(src):
                     os.replace(src,dst)
                 errlog=True
             # if this session has had any error/critical records, copy to error log file
             #  (regardless of the current record's level)
             if errlog:
-                shutil.copyfile(logfile,logfile+'.err')
+                shutil.copyfile(common.logfile,common.logfile+'.err')
 
 logging.root.addHandler(CustomHandler())
 
@@ -330,7 +332,7 @@ class DebriefMapGenerator(QObject):
                         inform_user_about_issue('New map creation on internet sites is not supported.  Use an existing internet map, or use localhost or an intranet server instead.')
                         return
                     logging.info('new map requested')
-                    configpath='../sts.ini'
+                    configpath='../sts.ini' # default; overridden when defined in plans console
                     account=None
                     self.debriefDomainAndPort=self.debriefMapDialog.dap
                     if self.pc:
@@ -375,7 +377,7 @@ class DebriefMapGenerator(QObject):
                 'Debrief Map:\n\nConnecting to '+self.debriefURL+'\n\nPlease wait...')
             box.setStandardButtons(QMessageBox.NoButton)
             box.show()
-            configpath='../sts.ini'
+            configpath='../sts.ini' # default - overridden when defined in plans console
             account=None
             if self.pc:
                 configpath=self.parent.stsconfigpath
@@ -445,6 +447,37 @@ class DebriefMapGenerator(QObject):
         # self.debriefMapID=debriefMapID # must already be a saved map
         self.fileNameBase=self.sourceMapID+'_'+self.debriefMapID
         self.dmdFileName='dmg_'+self.fileNameBase+'.json'
+        self.debriefDir='.' # default
+        self.pdfDir='.' # default
+        self.dmdDir='.' # default
+        if self.pc:
+            self.debriefDir=os.path.join(common.pcDir,'Debrief')
+            self.dmdDir=os.path.join(self.debriefDir,'JSON')
+            self.pdfDir=os.path.join(self.debriefDir,'Maps')
+            if not os.path.isdir(self.dmdDir):
+                os.makedirs(self.dmdDir)
+            self.dmdFileName=os.path.join(self.dmdDir,self.dmdFileName)
+            try:
+                cd=self.parent.config['Debrief']
+                self.pdfDir=cd.get('pdfDir',self.pdfDir)
+                self.pdfDir2=cd.get('pdfDir2')
+            except:
+                logging.warning('Debrief section was not found / could not be read from '+self.parent.configFileName+'; generated PDF files will be written to the default directory '+self.pdfDir)
+        if not os.path.isdir(self.pdfDir):
+            try:
+                logging.info("Creating PDF dir "+self.pdfDir)
+                os.makedirs(self.pdfDir)
+            except:
+                failedDir=self.pdfDir
+                self.pdfDir='.'
+                logging.error("ERROR creating PDF directory "+failedDir+"; generated PDFs will be written to the default directory '"+self.pdfDir+"'.")
+        if self.pdfDir2 and not os.path.isdir(self.pdfDir2):
+            try:
+                logging.info("Creating second PDF dir "+self.pdfDir2)
+                os.makedirs(self.pdfDir2)
+            except:
+                logging.error("ERROR creating second PDF directory "+self.pdfDir2+"; new PDF copy to that location will still be attempted for each generated PDF.")
+
         # assignmentsFileName=fileNameBase+'_assignments.json'
 
         # different logging level for different modules:
@@ -1363,13 +1396,20 @@ class DebriefMapGenerator(QObject):
                     webbrowser.open_new_tab(pdfURL) # this is a non-blocking call
                     # downloading with requetsts, from https://www.scivision.dev/python-switch-urlretrieve-requests-timeout/
                     pdfLeafName=outingName.replace(' ','')+'_'+datetime.now().strftime("%H%M")+'_'+r+'.pdf'
-                    pdfFullPath=os.path.join('.',pdfLeafName)
+                    pdfFullPath=os.path.join(self.pdfDir,pdfLeafName)
                     with open(pdfFullPath,'wb') as pdfFile:
                         logging.info(outingName+' : downloading PDF to '+pdfFullPath)
                         r2=self.sts2.s.get(pdfURL,allow_redirects=True)
                         if r2.status_code!=200:
                             raise ConnectionError('Could not download generated PDF {}\nerror code: {}'.format(pdfURL, r2.status_code))
                         pdfFile.write(r2.content)
+                    # copy to second directory if specified
+                    if self.pdfDir2:
+                        if os.path.isdir(self.pdfDir2):
+                            shutil.copyfile(pdfFullPath,os.path.join(self.pdfDir2,pdfLeafName))
+                            logging.info('PDF copied to second PDF directory '+self.pdfDir2)
+                        else:
+                            logging.warning('Second PDF directory was specified, but the directory does not exist; proceeding without making a second copy of the PDF: '+self.pdfDir2)
                     self.dmd['outings'][outingName]['PDF']=[r,tsNow]
                     self.setPDFButton(row,'done')
                     self.writeDmdFile()
