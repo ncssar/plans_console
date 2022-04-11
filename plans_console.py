@@ -399,13 +399,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         logging.info('args:'+str(self.args))
 
         self.readConfigFile()
-        if self.watchedDir and not os.path.isdir(self.watchedDir):
-            err=QMessageBox(QMessageBox.Critical,"Error","Specified directory to be watched does not exist:\n \n  "+self.watchedDir+"\n \nAborting.",
-                            QMessageBox.Close,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
-            err.show()
-            err.raise_()
-            err.exec_()
-            exit(-1)
 
         self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
         self.ui.debriefLinkLight.setStyleSheet(BG_GRAY)
@@ -550,6 +543,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.dmg.dd.ui.debriefMapField.setText(self.debriefURL)
             self.ui.debriefMapField.setText(self.debriefURL)
             QTimer.singleShot(1000,self.debriefButtonClicked) # raise again
+        else:
+            QTimer.singleShot(1000,self.debriefButtonClicked) # no reason not to start dmg anyway - TMG/SDL 4-9-22
+
 
         
     def createSTS(self):

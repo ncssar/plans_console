@@ -450,6 +450,7 @@ class DebriefMapGenerator(QObject):
         self.debriefDir='.' # default
         self.pdfDir='.' # default
         self.dmdDir='.' # default
+        self.pdfDir2=None # default
         if self.pc:
             self.debriefDir=os.path.join(common.pcDir,'Debrief')
             self.dmdDir=os.path.join(self.debriefDir,'JSON')
