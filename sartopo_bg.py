@@ -6,6 +6,7 @@ import os
 import sys
 import json
 import shutil
+import string
 import copy
 from datetime import datetime
 import webbrowser
@@ -1806,7 +1807,8 @@ class DebriefMapGenerator(QObject):
 
         # multiple-team handling e.g. 'AA 101 102 103' - three teams assigned to AA
         # recursivley call addOuting for each team (need to adjust the feature dict first)
-        numberSplit=p['number'].lstrip().split()
+        numberSplit=re.split('[ ,]',p['number'].strip()) # parse on space or comma
+        numberSplit=[t for t in numberSplit if not set(t)<=set(string.punctuation)] # remove tokens that are only punctuation
         if len(numberSplit)>1:
             logging.info('addOuting multiple teams: '+str(numberSplit)+' are working this assignment: calling addOuting once for each team...')
             for number in numberSplit:
