@@ -2111,25 +2111,29 @@ class DebriefMapGenerator(QObject):
         gc=g['coordinates']
         logging.info('creating clue \''+t+'\' in default folder')
         clueID=self.sts2.addMarker(gc[1],gc[0],title=t,symbol='clue',description=p['description'])
-        aid=p['assignmentId']
-        # what outing owns the clue?
-        # Q: are there any outings whose sid matches the clue's assignmentId?
-        #  YES: do any of those outings have the same title as the incident sid?
-        #    YES: use that one!
-        #    NO: just use the first one
-        #  NO: do not attribute the clue to any outing; save it to dmd['unclaimedTracks']
-        outingNames=[name for name in self.dmd['outings'] if self.dmd['outings'][name]['sid']==aid]
-        if outingNames:
-            exactMatches=[name for name in outingNames if self.sts1.getFeature(id=aid)['properties']['title']==name]
-            if exactMatches:
-                outingName=exactMatches[0]
+        aid=p.get('assignmentId')
+        if aid:
+            # what outing (if any) owns the clue?
+            # Q: are there any outings whose sid matches the clue's assignmentId?
+            #  YES: do any of those outings have the same title as the incident sid?
+            #    YES: use that one!
+            #    NO: just use the first one
+            #  NO: do not attribute the clue to any outing; save it to dmd['unclaimedClues']
+            outingNames=[name for name in self.dmd['outings'] if self.dmd['outings'][name]['sid']==aid]
+            if outingNames:
+                exactMatches=[name for name in outingNames if self.sts1.getFeature(id=aid)['properties']['title']==name]
+                if exactMatches:
+                    outingName=exactMatches[0]
+                else:
+                    outingName=outingNames[0]
+                self.dmd['outings'][outingName]['cids'].append(clueID)
+                self.addOutingLogEntry(outingName,'Clue added: '+t)
             else:
-                outingName=outingNames[0]
-            self.dmd['outings'][outingName]['cids'].append(clueID)
-            self.addOutingLogEntry(outingName,'Clue added: '+t)
+                logging.info('  The assignment that owns the clue does not have any outing in the dmd dictionary.  The clue will be imported as an unclaimed clue for now.')
+                self.dmd['unclaimedClues'][clueID]=aid
         else:
-            logging.info('  The assignment that owns the clue does not have any outing in the dmd dictionary.  The clue will be imported as an unclaimed clue for now.')
-            self.dmd['unclaimedClues'][clueID]=aid
+            logging.info('  The clue is not owned by any assignment.  The clue will be imported as an unclaimed clue for now.')
+            self.dmd['unclaimedClues'][clueID]='NONE'
         self.addCorrespondence(f['id'],clueID)
 
     def cropUncroppedTracks(self):
