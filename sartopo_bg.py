@@ -2560,21 +2560,38 @@ class DebriefMapGenerator(QObject):
                     #  matters is dmd (and the debrief table).  So, just go with the first outing that has a matching sid,
                     #  and live with the ambiguity for now - the worst that could happen is that the clue appears in the
                     #  'clue' column for the wrong outing.  It would be nice to find a way to specify this sometime.
-                    aid=sp['assignmentId']
-                    if otList:
-                        ot1=otList[0]
+                    aid=sp.get('assignmentId')
+                    osid=None # outing source ID of assignment - default None
+                    ot1=None # previous outing name
+                    ot2=None # new outing name
+                    if otList: # it was previously assigned
+                        ot1=otList[0] # previous outing name
                         osid=self.dmd['outings'][ot1]['sid']
-                        if osid!=aid:
-                            ot2List=[t for t in self.dmd['outings'].keys() if self.dmd['outings'][t]['sid']==aid]
-                            if ot2List:
-                                ot2=ot2List[0]
-                                self.dmd['outings'][ot1]['cids'].remove(tid)
-                                self.dmd['outings'][ot2]['cids'].append(tid)
-                                logText='Moved clue: '+st+': '+ot1+' --> '+ot2
-                                self.writeDmdPause=True
-                                self.addOutingLogEntry(ot1,logText)
-                                self.writeDmdPause=False
-                                self.addOutingLogEntry(ot2,logText) # writes dmd file and sets redraw flag
+                    ot2List=[t for t in self.dmd['outings'].keys() if self.dmd['outings'][t]['sid']==aid]
+                    if ot2List: # it has been set to an outing
+                        ot2=ot2List[0]
+                    # logging.info('aid='+str(aid))
+                    # logging.info('osid='+str(osid))
+                    # logging.info('ot1='+str(ot1))
+                    # logging.info('ot2='+str(ot2))
+                    if osid!=aid:
+                        if ot1 and ot2: # moved from one outing to another
+                            self.dmd['outings'][ot1]['cids'].remove(tid)
+                            self.dmd['outings'][ot2]['cids'].append(tid)
+                            logText='Moved clue: '+st+': '+ot1+' --> '+ot2
+                            self.writeDmdPause=True
+                            self.addOutingLogEntry(ot1,logText)
+                            self.writeDmdPause=False
+                            self.addOutingLogEntry(ot2,logText) # writes dmd file and sets redraw flag
+                        elif ot2: # moved from unclaimed to an outing
+                            del self.dmd['unclaimedClues'][tid]
+                            self.dmd['outings'][ot2]['cids'].append(tid)
+                            logText='Claimed previously unassociated clue: '+st
+                            self.addOutingLogEntry(ot2,logText)
+                        else: # moved from an outing to unclaimed
+                            self.dmd['outings'][ot1]['cids'].remove(tid)
+                            self.dmd['unclaimedClues'][tid]='NONE'
+
                 elif sc=='Assignment': # this may be dead code - assignments don't appear in corr
                     tp['title']=st
                 else:
