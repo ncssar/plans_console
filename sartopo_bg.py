@@ -296,6 +296,7 @@ class DebriefMapGenerator(QObject):
             'ended':'Syncing has ENDED, due to shutdown or due to fatal exception.  Check the log file to find out why.  Data in the debrief table below may be out of date.  Click the Play button to restart sync.'
         }
         self.debriefHeaderTextPart2='\n\nDebrief data (tracks from returning searchers) should be imported to the INCIDENT map.  The DEBRIEF map is automatically updated and should not need to be directly edited.'
+        self.debriefHeaderTextPart2+='\n\nUnfinished AppTracks (indicated after a plus sign in track counts below) will NOT show up in the SARTopo debrief map, but they WILL show up with a dashed line in generated PDFs.  Click the AppTracks button for details.'
 
         # determine / create SartopoSession objects
         #  process the target session first, since nocb definition checks for it
