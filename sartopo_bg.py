@@ -1,4 +1,3 @@
-from sartopo_python import SartopoSession
 import logging
 import re
 import time
@@ -24,6 +23,12 @@ from specifyMap import SpecifyMapDialog
 from debrief_ui import Ui_DebriefDialog
 from debriefOptionsDialog_ui import Ui_DebriefOptionsDialog
 from appTracksDialog_ui import Ui_AppTracksDialog
+
+import sys
+sartopo_python_dir='../sartopo_python/sartopo_python'
+if os.path.isdir(sartopo_python_dir):
+    sys.path.insert(1,sartopo_python_dir)
+from sartopo_python import SartopoSession
 
 LINK_LIGHT_STYLES={
     -1:"background-color:#bb0000;", # red - no link / link error

@@ -67,10 +67,14 @@ sartopo_python_min_version="1.1.2"
 #    print("ABORTING: installed sartopo_python version "+str(sartopo_python_installed_version)+ \
 #          " is less than minimum required version "+sartopo_python_min_version)
 #    exit()
+import sys
+sartopo_python_dir='../sartopo_python/sartopo_python'
+if os.path.isdir(sartopo_python_dir):
+    sys.path.insert(1,sartopo_python_dir)
 from sartopo_python import SartopoSession # import before logging to avoid useless numpy-not-installed message
 
 # start logging early, to catch any messages during import of modules
-import sys
+
 import logging
 
 import common # variables shared across multiple modules
@@ -423,13 +427,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if os.path.exists(self.pcDataFileName):
             [i,d,n]=self.preview_saved_data()
             if not self.args.norestore:
-                if not (i or d or n):
+                if not (i and n): # i and n are necessary; d is not
                     logging.info('Saved session file contained no useful data; not offering to restore')
                 else:
-                    iTxt='Incident map = '+i
+                    iTxt='Incident map = '+str(i)
                     dTxt='No debrief map specified\n   (DMG failed or was not used)'
                     if d:
-                        dTxt='Debrief map = '+d+'\n   (DMG sync will resume if restored)'
+                        dTxt='Debrief map = '+str(d)+'\n   (DMG sync will resume if restored)'
                     nSuffix=''
                     if n!=1:
                         nSuffix='s'
@@ -483,6 +487,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
 
         if self.watchedDir:
+            logging.info('watched dir:'+str(self.watchedDir))
             self.ui.notYet=QMessageBox(QMessageBox.Information,"Waiting...","No valid radiolog file was found.\nRe-scanning every few seconds...",
                         QMessageBox.Abort,self,Qt.WindowTitleHint|Qt.WindowCloseButtonHint|Qt.Dialog|Qt.MSWindowsFixedSizeDialogHint|Qt.WindowStaysOnTopHint)
             self.ui.notYet.setStyleSheet("background-color: lightgray")
@@ -497,11 +502,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.rescanTimer.start(2000)     # do not start rescan timer if this is a reload
             else:
                 self.ui.notYet.close()           # we have csv file in reload
+        else:
+            logging.info('No watched dir specified.')
                   
         self.refreshTimer=QTimer(self)
         self.refreshTimer.timeout.connect(self.refresh)
         self.refreshTimer.timeout.connect(self.updateClock)
         self.refreshTimer.start(3000)
+        self.print_refresh = 0
 
         self.since={}
         self.since["Folder"]=0
@@ -742,6 +750,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # specify defaults here
         # self.watchedDir="Z:\\"
         
+        logging.info(' Reading config file '+self.configFileName)
         # configFile=QFile(self.configFileName)
         self.config=configparser.ConfigParser()
         self.config.read(self.configFileName)
@@ -906,12 +915,19 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     #  - process each new line
     #    - add a row to the appropriate panel's table    
     def refresh(self):
+        if self.print_refresh == 20:
+            logging.info("Refreshing...")
+            self.print_refresh = 0
+        self.print_refresh += 1
         if self.watchedDir and self.csvFiles!=[]:
             newEntries=self.readWatchedFile()
             if newEntries:
                 ix = 0
                 for entry in newEntries:
-                    logging.info("In loop: %s"% entry)                   
+                    logging.info("In loop: %s"% entry)
+                    #14: get rid of any elements after 10 (e.g. 11 = operator ID - not needed here)
+                    if len(entry)>10:
+                        entry=entry[:10]                 
                     if len(entry)==10:
                         if self.forceRescan == 1:
                             logging.info("AT force rescan")
@@ -929,8 +945,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         self.setRowColor(self.ui.tableWidget,0,newColor)
                         self.totalRows = self.ui.tableWidget.rowCount()
                         logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
+                    else:
+                        logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
 ## save data
-                self.save_data()                
+                self.save_data()            
+                self.forceRescan = 0
 
     def save_data(self):
         # logging.info("In savedata")
@@ -1168,7 +1187,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     def readDir(self):
         logging.info("in readDir")
         f=glob.glob(self.watchedDir+"\\*.csv")
-        logging.info("Files: %s"%f)
+        # logging.info("Files: %s"%f)
         f=[x for x in f if not regex.match('.*_clueLog.csv$',x)]
         f=[x for x in f if not regex.match('.*_fleetsync.csv$',x)]
         f=[x for x in f if not regex.match('.*_bak[123456789].csv$',x)]
