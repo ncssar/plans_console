@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1205</width>
-    <height>571</height>
+    <width>1203</width>
+    <height>564</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -73,6 +73,11 @@ QComboBox{
        </column>
        <column>
         <property name="text">
+         <string>Location</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
          <string>Status</string>
         </property>
        </column>
@@ -103,6 +108,9 @@ QComboBox{
            <height>200</height>
           </size>
          </property>
+         <attribute name="horizontalHeaderDefaultSectionSize">
+          <number>60</number>
+         </attribute>
          <column>
           <property name="text">
            <string>Team</string>
@@ -158,11 +166,32 @@ QComboBox{
             <widget class="QLabel" name="label">
              <property name="font">
               <font>
-               <pointsize>12</pointsize>
+               <pointsize>10</pointsize>
               </font>
              </property>
              <property name="text">
               <string>Asgmt</string>
+             </property>
+             <property name="textFormat">
+              <enum>Qt::PlainText</enum>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="label_5">
+             <property name="font">
+              <font>
+               <pointsize>7</pointsize>
+              </font>
+             </property>
+             <property name="text">
+              <string>rm,ic,tr</string>
+             </property>
+             <property name="textFormat">
+              <enum>Qt::PlainText</enum>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
              </property>
             </widget>
            </item>
@@ -220,22 +249,37 @@ QComboBox{
              </item>
              <item>
               <property name="text">
-               <string>K9A</string>
+               <string>GROUND</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>Gnd</string>
+               <string>GROUND_1</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>UTV</string>
+               <string>DOG_AREA</string>
               </property>
              </item>
              <item>
               <property name="text">
-               <string>K9T</string>
+               <string>DOG_HRD</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>DOG_TRAIL</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>OHV</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>AIR</string>
               </property>
              </item>
              <item>
@@ -442,7 +486,7 @@ QComboBox{
               </property>
               <property name="font">
                <font>
-                <pointsize>12</pointsize>
+                <pointsize>8</pointsize>
                </font>
               </property>
               <property name="text">
@@ -466,7 +510,7 @@ QComboBox{
               </property>
               <property name="font">
                <font>
-                <pointsize>12</pointsize>
+                <pointsize>8</pointsize>
                </font>
               </property>
               <property name="text">

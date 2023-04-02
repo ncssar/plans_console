@@ -1,12 +1,13 @@
 # #############################################################################
 #
-#  Plans_console.py - watch a radiolog .csv file that is being written by
+#  Plans_console.py - watch a radiolog.csv file that is being written by
 #    the full radiolog program, presumably running on a different computer
 #    writing to a shared drive that this program can see.  Also, enable the
-#    placement of Markers for Teams when at an assignment.
+#    placement of Markers for Teams when at an assignment, edit shapes and 
+#    assignments and create debrief maps for faster access.
 #
 #   developed for Nevada County Sheriff's Search and Rescue
-#
+#   requires sartopo_python and several other python libs
 #
 #   Attribution, feedback, bug reports and feature requests are appreciated
 #
@@ -16,6 +17,7 @@
 #-----------------------------------------------------------------------------
 #  8/7/2020   SDL         Initial released
 #  6/16/2021  SDL         added cut/expand/crop interface
+#  2022       TMG         upgraded the UI and added the debrief map
 #
 # #############################################################################
 #
@@ -55,6 +57,7 @@ import json
 import random
 import configparser
 import argparse
+from shapely.geometry import Polygon
 from datetime import datetime
 # import winsound
 
@@ -153,6 +156,7 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
 
 from plans_console_ui import Ui_PlansConsole
 from sartopo_bg import *
+logging.info('PID:'+str(os.getpid()))
 
 def genLpix(ldpi):
     if ldpi<10:
@@ -356,6 +360,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.debriefY=None
         self.debriefW=None
         self.debriefH=None
+        self.fidMed = None
+        self.fidLE = None
+        self.sentMsg = []
         self.color = ["#ffff00", "#cccccc"]
                      
         self.loadRcFile()
@@ -389,7 +396,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.setGeometry(int(self.x),int(self.y),int(self.w),int(self.h))
 
         parser=argparse.ArgumentParser()
-        parser.add_argument('mapID',nargs='?',default=None) # optional incident map ID (#abcd or $abcd for now)
+        parser.add_argument('mapID',nargs='?',default=None)        # optional incident map ID (#abcd or $abcd for now)
         parser.add_argument('debriefMapID',nargs='?',default=None) # optional debrief map ID (#abcd or $abcd for now)
         parser.add_argument('-sd','--syncdump',action='store_true',
                 help='write a sync dump file containing every "since" response; for debug only; results in a LOT of files'),
@@ -457,7 +464,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.incidentMapDialog.exec() # force modal
                 self.incidentURL=self.incidentMapDialog.url
                 self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
-        self.folderId=None
         self.sts=None
         self.dmg=None # DebriefMapGenerator instance
         self.link=-1
@@ -510,6 +516,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.refreshTimer.timeout.connect(self.updateClock)
         self.refreshTimer.start(3000)
         self.print_refresh = 0
+        self.update_TmAs = 0
+        self.flag_TmAs_getobj = False
+        self.flag_TmAs_Ok = False
 
         self.since={}
         self.since["Folder"]=0
@@ -547,6 +556,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     self.debriefURL="http://192.168.1.20:8080/m/"+name2
         
         if self.debriefURL:
+            print("BUTTON PUSH FORCED")
             self.debriefButtonClicked()
             self.dmg.dd.ui.debriefMapField.setText(self.debriefURL)
             self.ui.debriefMapField.setText(self.debriefURL)
@@ -600,6 +610,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if self.link>-1:
             logging.info('Successfully connected.')
             self.ui.incidentLinkLight.setStyleSheet(BG_GREEN)
+            if not self.reloaded:  
+                self.getObjects()
             self.tryAgain=False
         else:
             logging.info('Connection failed.')
@@ -616,29 +628,74 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             else:
                 self.tryAgain=False
 
+    def getObjects(self):   # run when the map has NOT been reloaded
+        pass                # look at map to get features to load into the assignent table
+        print("Loading assignment table from map")
+        #  get Medical marker information
+        medMarkers=[f for f in self.sts.getFeatures('Marker') if f['properties'].get('marker-symbol','') == 'medevac-site']
+        #  get assignments with teams(s) assigned
+        assignmentsWithNumber=[f for f in self.sts.getFeatures('Assignment') if f['properties'].get('number','') != '']
+        #   Need to parsse title to get assignemnt and each team #
+        l = []   # init list of entried
+        for a in assignmentsWithNumber:
+            s = a['properties']['title'].split(' ')
+            scnt = len(s)
+            #$#if self.flag == 1:
+            #$#    scnt = min(scnt,2)
+            for k in range(0, scnt-1):
+                if s[k+1].isdigit():
+                    x = a['properties']['resourceType']
+                else:
+                    x = 'LE'
+                Med = False    
+                for m in medMarkers:
+                    if m['properties']['title'] == s[k+1] and m['properties']['description'] == s[0]:
+                       Med = True          #  will get Medical info from the Marker
+                if Med: self.medval = " X"
+                else: self.medval = " "    #  need at least a space so that it is not empty
+ 
+                l.append([s[k+1], s[0], x, self.medval])
+                l.sort(key = lambda g: g[0], reverse = True)   # sort by 1st element, team #
+
+        for el in l:
+                   self.ui.tableWidget_TmAs.insertRow(0)
+                   self.ui.tableWidget_TmAs.setItem(0, 0, QtWidgets.QTableWidgetItem(el[0]))
+                   self.ui.tableWidget_TmAs.setItem(0, 1, QtWidgets.QTableWidgetItem(el[1]))    
+                   self.ui.tableWidget_TmAs.setItem(0, 2, QtWidgets.QTableWidgetItem(el[2]))
+                   self.ui.tableWidget_TmAs.setItem(0, 3, QtWidgets.QTableWidgetItem(el[3]))
+
+        #     set type to Unk if not type is unknown from map info
+
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
         logging.info('addMarker folders:'+str(folders))
         fid=False
         for folder in folders:
-            if folder["properties"]["title"]=="aTEAMS":
-                fid=folder["id"]
-        if not fid:
-            fid=self.sts.addFolder("aTEAMS")
-        self.folderId=fid
+            if folder["properties"]["title"]=="Medical":
+                self.fidMed=folder["id"]
+            if folder["properties"]["title"]=="LE":
+                self.fidLE=folder["id"]
+        if not self.fidMed:
+            self.fidMed = self.sts.addFolder("Medical")
+        if not self.fidLE:
+            self.fidLE = self.sts.addFolder("LE")
         ## icons
         if self.medval == " X":
             markr = "medevac-site"     # medical +
             clr = "FF0000"
-        elif self.curType == "LE": # law enforcement
+            rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
+                                    self.curAssign,clr,markr,None,self.fidMed)
+        elif self.curType == "LE":     # law enforcement
             markr = "icon-ERJ4011P-24-0.5-0.5-ff"     # red dot with blue circle
             clr = "FF0000"           
+            rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
+                                    self.curAssign,clr,markr,None,self.fidLE)
         else:
-            markr = "hiking"       # default 
-            clr = "FFFF00"
+            pass #X# don't place marker for searcher
+            #X# markr = "hiking"       # default 
+            #X# clr = "FFFF00"
+            rval = "X"   # place holder
         logging.info("In addMarker:"+self.curTeam)    
-        rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
-                                self.curAssign,clr,markr,None,self.folderId)
         ## also add team number to assignment
         rval2 = self.sts.mapData['state']['features']
         numbr = ""
@@ -650,8 +707,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if numbr=='':
             numbr=self.curTeam
         else:
-            numbr += " "+self.curTeam    
-        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':numbr})
+            numbr += " "+self.curTeam  #  set the team# and resource from table entry  
+        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':numbr, \
+                                   'resourceType':self.curType})
         logging.info("RVAL rtn:"+str(rval)+' : '+str(rval2))
     
     def delMarker(self):
@@ -659,28 +717,34 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         ##print("Folders:"+json.dumps(rval))
         fid = None
         for self.feature2 in rval:
-            if self.feature2['properties'].get("title") == 'aTEAMS':   # find aTeams Match                
+            if self.feature2['properties'].get("title") == 'LE':   # find LE Match                
                 fid=self.feature2.get("id")
                 rval2 = self.sts.getFeatures("Marker")
-                logging.info("title:"+str(fid))
+                logging.info("id:"+str(fid))
                 ##print("Marker:"+json.dumps(rval2))                  
                 # get Markers
                 for self.feature2 in rval2:
                     if self.feature2['properties'].get('folderId') == fid and \
-                        self.feature2['properties'].get('title') == self.curTeam: # both folder and Team match
+                        self.feature2['properties'].get('title').upper() == self.curTeam.upper(): # both folder and Team match
                             logging.info("Marker ID:"+self.feature2['id']+" of team: "+self.curTeam)
                             rval3 = self.sts.delMarker(self.feature2['id'])
 
         # remove the team number from any assignments that contain it
-        assignmentsWithThisNumber=[f for f in self.sts.getFeatures('Assignment') if self.curTeam in f['properties'].get('number','')]
+        assignmentsWithThisNumber=[f for f in self.sts.getFeatures('Assignment') if self.curTeam.upper() in f['properties'].get('number','').upper()]
         for a in assignmentsWithThisNumber:
             n=a['properties']['number']
-            # logging.info('changing assigment "'+a['properties']['title']+'": old number = "'+n+'"')
-            nList=n.split()
-            nList.remove(self.curTeam)
+            pe=a['properties']['previousEfforts']
+            logging.info('changing assignment "'+a['properties']['title']+'": old number = "'+n+'"')
+            nList=n.upper().split()
+            if self.curTeam.upper() in nList:
+                nList.remove(self.curTeam.upper())
+            else:
+                return
             n=' '.join(nList)
-            # logging.info('  new number = "'+n+'"')
-            self.sts.editFeature(id=a['id'],properties={'number':n})
+            logging.info('  new number = "'+n+'"')
+            pe += ' T'+self.curTeam+datetime.now().strftime("-%d%b%y_%H%M")                # append info to previousEfforts field
+            self.sts.editFeature(id=a['id'],properties={'number':n,'previousEfforts':pe})  # removes team# from assignment
+###@@@@###            
         ##print("RestDel:"+json.dumps(rval3,indent=2))
               
 ##   APPEARS to not be used
@@ -811,7 +875,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.rescanTimer.stop()
 
     
-    def doOperClicked(self):
+    def doOperClicked(self):  # map editor functions
         # eventually, we can use STSFeatureComboBox to allow autocomplete on each feature name;
         #  that will also do an immediate cache refresh when the fields are opened; until then,
         #  we can force an immediate refresh now, when the button is clicked.
@@ -820,12 +884,20 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         selFeatureTitle=self.ui.selFeature.text()
         ## check that the shapes exist
         selFeature=self.sts.getFeature(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        if selFeature == -1:
+            logging.warning(op+' operation failed: Selected feature "'+selFeatureTitle+'" has an issue.')
+            inform_user_about_issue(op+' operation failed:\n\nThere are more than one feature with the name "'+selFeatureTitle+'"')
+            return
         if not selFeature:
-            logging.warning(op+' operation failed: Selected feature "'+selFeatureTitle+'" not found.')
+            logging.warning(op+' operation failed: Selected feature "'+selFeatureTitle+'" has an issue.')
             inform_user_about_issue(op+' operation failed:\n\nSelected feature "'+selFeatureTitle+'" not found.')
             return
         editorFeatureTitle=self.ui.editorFeature.text()
         editorFeature=self.sts.getFeature(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        if editorFeature == -1:
+            logging.warning(op+' operation failed: Editor feature "'+selFeatureTitle+'" has an issue.')
+            inform_user_about_issue(op+' operation failed:\n\nThere are more than one feature with the name "'+editorFeatureTitle+'"')
+            return
         if not editorFeature:
             logging.warning(op+' operation failed: Editor feature "'+editorFeatureTitle+'" not found.')
             inform_user_about_issue(op+' operation failed:\n\nEditor feature "'+editorFeatureTitle+'" not found.')
@@ -919,6 +991,36 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             logging.info("Refreshing...")
             self.print_refresh = 0
         self.print_refresh += 1
+        if self.update_TmAs == 4:
+            while self.flag_TmAs_Ok:    # wait until Ok button operation is complete
+                pass
+            self.flag_TmAs_getobj = True
+            logging.info("Refreshing...")
+            self.update_TmAs = 0
+            rC = self.ui.tableWidget_TmAs.rowCount()
+            for i in range(rC-1,-1,-1):  # appears to clear table when run in reverse
+                self.curAssign = self.ui.tableWidget_TmAs.item(i,1).text().upper()
+                if self.curAssign not in ["TR", "IC"]:   # keep these entries; they do not have assignments on map
+                    self.ui.tableWidget_TmAs.removeRow(i)
+            self.getObjects()
+            self.flag_TmAs_getobj = False
+            ## look for multiple entries for a given team. If so, pop up a warning
+            fnd = []
+            resend = []
+            for itm in range(self.ui.tableWidget_TmAs.rowCount()):    
+                d = self.ui.tableWidget_TmAs.item(itm, 0).text()
+                if d.upper() not in fnd:              # add team# to queue on first appearance
+                    fnd.append(d.upper())
+                else:
+                    resend.append(d.upper())
+                    if d.upper() not in self.sentMsg:   # only put up message once
+                       self.sentMsg.append(d.upper())
+                       msg = 'Team '+str(d)+' is in multiple assignments'
+                       inform_user_about_issue(msg, title="Warning")
+            for itm in self.sentMsg:
+                if itm not in resend:
+                    self.sentMsg.remove(itm)         # if team# count has been corrected, elim from sentMsg
+        self.update_TmAs += 1
         if self.watchedDir and self.csvFiles!=[]:
             newEntries=self.readWatchedFile()
             if newEntries:
@@ -939,7 +1041,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         self.ui.tableWidget.setItem(0, 0, QtWidgets.QTableWidgetItem(time))
                         self.ui.tableWidget.setItem(0, 1, QtWidgets.QTableWidgetItem(callsign))    
                         self.ui.tableWidget.setItem(0, 2, QtWidgets.QTableWidgetItem(msg))    
-                        self.ui.tableWidget.setItem(0, 3, QtWidgets.QTableWidgetItem(status))    
+                        self.ui.tableWidget.setItem(0, 3, QtWidgets.QTableWidgetItem(radioLoc))    
+                        self.ui.tableWidget.setItem(0, 4, QtWidgets.QTableWidgetItem(status))    
                         prevColor=self.ui.tableWidget.item(0,1).background().color().name()
                         newColor=stateColorDict.get(prevColor,self.color[0])
                         self.setRowColor(self.ui.tableWidget,0,newColor)
@@ -951,19 +1054,20 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.save_data()            
                 self.forceRescan = 0
 
-    def save_data(self):
+    def save_data(self):  
         # logging.info("In savedata")
         data1 = {}
         rowx = {}
         rowy = {}
-        for itm in range(self.ui.tableWidget.rowCount()):
+        for itm in range(self.ui.tableWidget.rowCount()): # data for radiolog table
             data1['time'] = self.ui.tableWidget.item(itm, 0).text()
             data1['callsign'] = self.ui.tableWidget.item(itm, 1).text()
             data1['msg'] = self.ui.tableWidget.item(itm, 2).text()
-            data1['status'] = self.ui.tableWidget.item(itm, 3).text()
+            data1['radioLoc'] = self.ui.tableWidget.item(itm, 3).text()
+            data1['status'] = self.ui.tableWidget.item(itm, 4).text()
             data1['color'] = self.ui.tableWidget.item(itm,1).background().color().name()
             rowx['rowA'+str(itm)] = data1.copy()
-        for itm2 in range(self.ui.tableWidget_TmAs.rowCount()):
+        for itm2 in range(self.ui.tableWidget_TmAs.rowCount()): # data for team assignment table 
             data1.update({'team': self.ui.tableWidget_TmAs.item(itm2, 0).text()})
             data1.update({'assign': self.ui.tableWidget_TmAs.item(itm2, 1).text()})
             data1.update({'type': self.ui.tableWidget_TmAs.item(itm2, 2).text()})
@@ -989,7 +1093,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             n=len(l[2])
         return [incidentURL,debriefURL,n]
 
-    def load_data(self):
+    def load_data(self):  # loading radiolog data table and assignments table
         # logging.info("In load data")
         fid = open(self.pcDataFileName,'r')
         alld = fid.read()
@@ -1004,7 +1108,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.tableWidget.setItem(irow, 0, QtWidgets.QTableWidgetItem(l[2][key]['time']))
             self.ui.tableWidget.setItem(irow, 1, QtWidgets.QTableWidgetItem(l[2][key]['callsign']))
             self.ui.tableWidget.setItem(irow, 2, QtWidgets.QTableWidgetItem(l[2][key]['msg']))
-            self.ui.tableWidget.setItem(irow, 3, QtWidgets.QTableWidgetItem(l[2][key]['status']))
+            self.ui.tableWidget.setItem(irow, 3, QtWidgets.QTableWidgetItem(l[2][key]['radioLoc']))
+            self.ui.tableWidget.setItem(irow, 4, QtWidgets.QTableWidgetItem(l[2][key]['status']))
             self.setRowColor(self.ui.tableWidget,irow,l[2][key]['color'])
             irow = irow + 1
         irow = 0    
@@ -1034,7 +1139,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 ## save data
         self.save_data()
 
-    def assignTab_OK_clicked(self):
+    def assignTab_OK_clicked(self):   # add, delete, modify entry
+        if self.sts == None:
+            msg = "Not connected to map"
+            inform_user_about_issue(msg)
+            return              # skip as not connected
+        while self.flag_TmAs_getobj:    # wait until getObject operation is complete
+            pass
+        self.flag_TmAs_Ok = True
         self.curAssign = self.ui.Assign.text().upper()
         a=self.sts.getFeatures(featureClass='Assignment',title=self.curAssign,letterOnly=True,allowMultiTitleMatch=True)
         # logging.info('getFeatures:'+str(a))
@@ -1045,14 +1157,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 msg='Multiple assignments have the letters "'+self.curAssign+'" - no operation performed.  Remedy that situation and try again.'
             inform_user_about_issue(msg)
             logging.warning(msg)
+            self.flag_TmAs_Ok = False
             return
         #print("Ok button clicked, team is:"+self.ui.Team.text())
         rval = self.sts.getFeatures("Assignment")     # get assignments
-        ifnd = 1                                        # flag for found valid Assignment
-        ## location code are IC for command post (for type LE, leave marker on map, but at (lon-0.5deg) )
-        ##                   TR for in transit
-        ##                   RM to remove a team from the table
-        ##                   Assignment name 
+        ifnd = 1                                      # flag for found valid Assignment
+        ## location codes are IC for command post (for type LE, leave marker on map, but at (lon-0.5deg) )
+        ##                    TR for in transit
+        ##                    RM to remove a team from the table
+        ##                    Assignment name 
         if self.curAssign not in ['RM','IC','TR']: ## chk to see if assignment exists (ignore IC, TR, RM)
           ifnd = 0
           for self.feature in rval:
@@ -1067,27 +1180,29 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if self.ui.Team.text() == "" or ifnd == 0:  # error - checking select below when entry does not exist
             pass  # beepX1
             logging.error("Issue with Assign inputs: "+str(self.ui.Team.text())+" : "+str(ifnd))
+            self.flag_TmAs_Ok = False
             return
-        ifnd = 0                      # flag for found of existing Team assignment
+        ifnd = 0                                    # flag for found existing Team assignment
         irow = 0
         #print("count:"+str(self.ui.tableWidget_TmAs.rowCount()))
         for ix in range(self.ui.tableWidget_TmAs.rowCount()):      # Look for existing Team entry in table
-            if self.ui.Team.text() == self.ui.tableWidget_TmAs.item(ix,0).text():  # update
-                ifnd = 1       # set found in table, may be on the map, too
-                irow = ix      # why do I need this equivalence??
-                if (self.ui.tableWidget_TmAs.item(ix,1).text() == "IC" and \
-                    self.ui.tableWidget_TmAs.item(ix,2).text() != "LE") or \
-                    self.ui.tableWidget_TmAs.item(ix,1).text() == "TR":  # in transit
-                     ifnd = 2        # means came from IC (except type LE) or TR, so s/b no marker on map now
+            if self.ui.Team.text().upper() == self.ui.tableWidget_TmAs.item(ix,0).text().upper():  # update
+                ifnd = 1             # set found in table, may be on the map, too
+                irow = ix            # why do I need this equivalence??
+                if (self.ui.tableWidget_TmAs.item(ix,1).text().upper() == "IC" and \
+                    self.ui.tableWidget_TmAs.item(ix,2).text().upper() != "LE") or \
+                    self.ui.tableWidget_TmAs.item(ix,1).text().upper() == "TR":  # in transit
+                     ifnd = 2        # means came from IC (except type LE) or TR, so s/b no marker/assignment on map now
                 #get old marker location to remove 
                 #rm marker (NOTE, if was at IC (except type LE) or TR there will not be a marker)
                 #if to-assignment is IC or TR do not add marker
                 #new marker
                 break
         if self.ui.comboBox.currentText() == "Select": 
-            if ifnd == 0:                 # does not exist in table
+            if ifnd == 0:               # does not exist in table
                 pass  # beepX1
                 logging.info("Issue with Assign inputs2")
+                self.flag_TmAs_Ok = False
                 return
             else:
                 indx = self.ui.comboBox.findText(self.ui.tableWidget_TmAs.item(ix,2).text())
@@ -1095,7 +1210,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.ui.comboBox.setCurrentIndex(indx)
                 if self.ui.tableWidget_TmAs.item(ix,3).text() == ' X':  # also check Med setting
                     self.ui.Med.setChecked(True)
-        if self.curAssign == "RM":     # want to completely remove team
+        if self.curAssign == "RM":      # want to completely remove team
             if ifnd == 1:               # want to remove; presently in table AND on map
                 self.curTeam = self.ui.Team.text()
                 self.delMarker()        # uses curTeam to find
@@ -1103,14 +1218,16 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.ui.tableWidget_TmAs.removeRow(irow)
             # clear fields
             if ifnd == 0:    # entry not found in table
-                pass  #  beep
+                pass         #  beep
             else:
                 self.ui.Team.setText("")
                 self.ui.Assign.setText("")
                 self.ui.comboBox.setCurrentIndex(0)
+                print("X2")
                 self.ui.Med.setChecked(False)
 ## save data
             self.save_data()    
+            self.flag_TmAs_Ok = False
             return
         ##  ifnd=0  not in table and not on map  - add team and marker
         ##  ifnd=1  in table and on map          - update/moving
@@ -1119,14 +1236,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if ifnd == 0 and (self.curAssign in ['IC','TR']) and \
                           self.ui.comboBox.currentText() != "LE":
             pass # beep
+            self.flag_TmAs_Ok = False
             return
         ###if ifnd == 0: self.ui.tableWidget_TmAs.insertRow(0)
-        if ifnd == 1:                             # moving so remove present loc on map
+        if ifnd == 1:                                 # moving so remove present loc on map
             self.curTeam = self.ui.tableWidget_TmAs.item(irow,0).text()
-            self.delMarker()        # uses curTeam to find
+            self.delMarker()                          # uses curTeam to find
         cntComma = self.ui.Team.text().count(',')+1   # add 1 for first element
         tok = self.ui.Team.text().split(',')
-        for ix in range(cntComma):
+        for ix in range(cntComma):     # go thru list of teams that may be in the assignment
             if ifnd == 0: self.ui.tableWidget_TmAs.insertRow(0)
             self.ui.tableWidget_TmAs.setItem(irow, 0, QtWidgets.QTableWidgetItem(tok[ix]))
             self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(self.curAssign))    
@@ -1135,46 +1253,44 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.curType = self.ui.comboBox.currentText()
             if self.ui.Med.isChecked(): self.medval = " X"
             else: self.medval = " "    #  need at least a space so that it is not empty
-            self.ui.tableWidget_TmAs.setItem(0, 3, QtWidgets.QTableWidgetItem(self.medval))
+            self.ui.tableWidget_TmAs.setItem(irow, 3, QtWidgets.QTableWidgetItem(self.medval))
+            if self.curAssign.upper() in ["IC", "TR"]: # there is no map location for teams at IC or in transit
+                self.ui.tableWidget_TmAs.setItem(irow, 3, QtWidgets.QTableWidgetItem(" "))
+                break
         # find center of shape in latField and lonField float
-            if self.curType == "LE" and self.curAssign == "IC":    # moving LE to 'IC' (away)
-                self.lonField = self.NCSO[1]+random.uniform(-1.0, 1.0)*0.001  # temp location; randomly adjust
+            if self.curType == "LE" and self.curAssign.upper() == "IC":                 # moving LE to 'IC' (away)
+                self.lonField = self.NCSO[1]+random.uniform(-1.0, 1.0)*0.001    # temp location; randomly adjust
                 self.latField = self.NCSO[0]+random.uniform(-1.0, 1.0)*0.001    # +/-0.001 deg lat and long
             else:   
                 self.calcLatLon_center()              # use self.ui.Assign.text() to find shape
         # set marker type (in addMarker) based on Med or if type=LE
             if (self.curAssign != "IC" and self.curAssign != "TR") or self.curType == "LE":
-                self.addMarker()          # uses self.ui.Team, medval
+                self.addMarker()       # uses self.ui.Team, medval
 
         # clear fields
         self.ui.Team.setText("")
         self.ui.Assign.setText("")
         self.ui.comboBox.setCurrentIndex(0)
+        print("X3")
         self.ui.Med.setChecked(False)
 ## save data            
         self.save_data()
+        self.flag_TmAs_Ok = False
         
     def calcLatLon_center(self):
-        logging.info("iN LATLOG")
+        logging.info("in LATLOG")
         loc = self.feature['geometry'].get("coordinates")   # of an assignment
         loc_lat = 0
         loc_long = 0
         ipt = 0
         lenloc = len(loc)
-        if type(loc[0][0]) is list:    # polygon is list of list
-            loc = loc[0]  
-            ipt = 1                 # skip 1st pt of polygon since it is repeated
-            lenloc = len(loc) - 1
-            for loca in loc:
-              if ipt == 1:
-                  ipt = 0
-                  continue            # skip 1st pt
-              loc_lat = loc_lat + loca[1]
-              loc_long = loc_long + loca[0]
-            avg_lat = loc_lat/lenloc
-            avg_lon = loc_long/lenloc
+        if type(loc[0][0]) is list:     # polygon is list of list
+            p = Polygon(loc[0])                # make shapely Polygon
+            mid = p.representative_point()     # get point in shape (shapely)
+            avg_lat = list(mid.coords)[0][1]   # convert shapely object back to tuple in list
+            avg_lon = list(mid.coords)[0][0]
         else:    # line
-            loca = loc[int(lenloc/2)]   # use its mid point
+            loca = loc[int(lenloc/2)]          # use its mid point
             avg_lat = loca[1]
             avg_lon = loca[0]
         logging.info("Loc-lat:"+str(avg_lat)+" loc-long:"+str(avg_lon))
@@ -1198,7 +1314,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def readWatchedFile(self):
         newEntries=[]
-        for line in Pygtail(self.watchedFile,offset_file=self.offsetFileName):
+        for line in Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False):
             newEntries.append(line.split(','))
         return newEntries
                 
@@ -1300,10 +1416,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             #     d[name]=str(screen.property(name))
             # logging.info('dict:\n'+json.dumps(d,indent=3))
 
+
             self.setStyleSheet('''
                 *{
                     font-size:'''+str(pix[12])+'''px;
                 }
+                self.ui.setupUi.label_5{
+                    font-size:'''+str(pix[6])+'''px;
+                }    
                 QDialog{
                     padding:'''+str(pix[6])+'''px;
                 }
@@ -1339,6 +1459,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     spacing:'''+str(pix[8])+'''px;
                 }
                 ''')
+            self.ui.label.setStyleSheet("padding-top: 0px; padding-bottom: 0px;")
+            self.ui.label_5.setStyleSheet("font-size: "+str(pix[8])+"px; padding-top: 0px; padding-bottom: 0px;")
+            self.ui.incidentButton.setStyleSheet("font-size: "+str(pix[9])+"px;")
+            self.ui.debriefButton.setStyleSheet("font-size: "+str(pix[9])+"px;")
             # now set the sizes that don't respond to stylesheets for whatever reason
             self.ui.incidentLinkLight.setFixedWidth(pix[18])
             self.ui.debriefLinkLight.setFixedWidth(pix[18])
@@ -1356,17 +1480,18 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def resizeTableColumns(self):
         ldpi=self.ldpi
-        # set fixed width for first, second, fourth columns;
+        # set fixed width for first, second, fourth, fifth columns;
         #  set the third column to expand as the layout is resized
-        self.ui.tableWidget.setColumnWidth(0, int(100*(ldpi/96)))
+        self.ui.tableWidget.setColumnWidth(0, int(50*(ldpi/96)))
         self.ui.tableWidget.setColumnWidth(1, int(100*(ldpi/96)))
         self.ui.tableWidget.horizontalHeader().setSectionResizeMode(2,1)
-        self.ui.tableWidget.setColumnWidth(3, int(150*(ldpi/96)))
+        self.ui.tableWidget.setColumnWidth(3, int(110*(ldpi/96)))
+        self.ui.tableWidget.setColumnWidth(4, int(150*(ldpi/96)))
 
         self.ui.tableWidget_TmAs.setColumnWidth(0, int(50*(ldpi/96)))
-        self.ui.tableWidget_TmAs.setColumnWidth(1, int(100*(ldpi/96)))
-        self.ui.tableWidget_TmAs.setColumnWidth(2, int(75*(ldpi/96)))
-        self.ui.tableWidget_TmAs.setColumnWidth(3, int(60*(ldpi/96)))
+        self.ui.tableWidget_TmAs.setColumnWidth(1, int(60*(ldpi/96)))
+        self.ui.tableWidget_TmAs.setColumnWidth(2, int(100*(ldpi/96)))
+        self.ui.tableWidget_TmAs.setColumnWidth(3, int(50*(ldpi/96)))
 
     def closeEvent(self,event):  # to save RC file
         if not ask_user_to_confirm("Exit Plans Console?", icon=QMessageBox.Warning, parent = self):
