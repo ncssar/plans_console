@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\Users\steve\Documents\python\plans_console-master\plans_console.ui'
+# Form implementation generated from reading ui file 'plans_console.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.6
 #
@@ -139,6 +139,7 @@ class Ui_PlansConsole(object):
         self.comboBox.setStyleSheet("")
         self.comboBox.setEditable(False)
         self.comboBox.setObjectName("comboBox")
+        self.comboBox.addItem("")
         self.comboBox.addItem("")
         self.comboBox.addItem("")
         self.comboBox.addItem("")
@@ -398,7 +399,8 @@ class Ui_PlansConsole(object):
         self.comboBox.setItemText(5, _translate("PlansConsole", "DOG_TRAIL"))
         self.comboBox.setItemText(6, _translate("PlansConsole", "OHV"))
         self.comboBox.setItemText(7, _translate("PlansConsole", "AIR"))
-        self.comboBox.setItemText(8, _translate("PlansConsole", "LE"))
+        self.comboBox.setItemText(8, _translate("PlansConsole", "WATER"))
+        self.comboBox.setItemText(9, _translate("PlansConsole", "LE"))
         self.label_4.setText(_translate("PlansConsole", "Med"))
         self.OKbut.setText(_translate("PlansConsole", "Ok"))
         self.mapsGroup.setTitle(_translate("PlansConsole", "Maps"))

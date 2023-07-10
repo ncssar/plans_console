@@ -18,6 +18,7 @@
 #  8/7/2020   SDL         Initial released
 #  6/16/2021  SDL         added cut/expand/crop interface
 #  2022       TMG         upgraded the UI and added the debrief map
+#  7/8/2023   SDL         changed Med icon to not display team# on the map
 #
 # #############################################################################
 #
@@ -460,6 +461,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 else:    
                     self.incidentURL="http://192.168.1.20:8080/m/"+name1
             else:
+                if not ask_user_to_confirm('If the map is at sartopo.com it must be in the NCSSAR account.\n  Continue?',parent=self):
+                    pass   # abort
+                    print("Exiting")
+                    exit()
                 self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.defaultDomainAndPort)
                 self.incidentMapDialog.exec() # force modal
                 self.incidentURL=self.incidentMapDialog.url
@@ -517,6 +522,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.refreshTimer.start(3000)
         self.print_refresh = 0
         self.update_TmAs = 0
+        self.update_Tm = 0
         self.flag_TmAs_getobj = False
         self.flag_TmAs_Ok = False
 
@@ -556,7 +562,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     self.debriefURL="http://192.168.1.20:8080/m/"+name2
         
         if self.debriefURL:
-            print("BUTTON PUSH FORCED")
             self.debriefButtonClicked()
             self.dmg.dd.ui.debriefMapField.setText(self.debriefURL)
             self.ui.debriefMapField.setText(self.debriefURL)
@@ -600,7 +605,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                         cacheDumpFile=cacheDumpFile,
                                         useFiddlerProxy=True)
             else:
-                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,syncDumpFile=syncDumpFile,cacheDumpFile=cacheDumpFile,useFiddlerProxy=True)
+                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,syncDumpFile=syncDumpFile,cacheDumpFile=cacheDumpFile,useFiddlerProxy=True, syncTimeout=30)
             self.link=self.sts.apiVersion
         except Exception as e:
             logging.warning('Exception during createSTS:\n'+str(e))
@@ -649,7 +654,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     x = 'LE'
                 Med = False    
                 for m in medMarkers:
-                    if m['properties']['title'] == s[k+1] and m['properties']['description'] == s[0]:
+                    #if m['properties']['title'] == s[k+1] and m['properties']['description'] == s[0]:   #OLD team# was displayed on the map
+                    if m['properties']['title'] == ' ' and m['properties']['description'] == s[k+1]+s[0]:
                        Med = True          #  will get Medical info from the Marker
                 if Med: self.medval = " X"
                 else: self.medval = " "    #  need at least a space so that it is not empty
@@ -683,8 +689,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if self.medval == " X":
             markr = "medevac-site"     # medical +
             clr = "FF0000"
-            rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
-                                    self.curAssign,clr,markr,None,self.fidMed)
+            #rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam,self.curAssign, \  # OLD team# was displayed on the map
+            rval=self.sts.addMarker(self.latField,self.lonField,' ',self.curTeam+self.curAssign, \
+                                            clr,markr,None,self.fidMed)
         elif self.curType == "LE":     # law enforcement
             markr = "icon-ERJ4011P-24-0.5-0.5-ff"     # red dot with blue circle
             clr = "FF0000"           
@@ -714,12 +721,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     
     def delMarker(self):
         rval = self.sts.getFeatures("Folder")     # get Folders
+        rval2 = self.sts.getFeatures("Marker")
         ##print("Folders:"+json.dumps(rval))
         fid = None
         for self.feature2 in rval:
-            if self.feature2['properties'].get("title") == 'LE':   # find LE Match                
+            if self.feature2['properties'].get("title") == 'LE':   # find LE folder Match                
                 fid=self.feature2.get("id")
-                rval2 = self.sts.getFeatures("Marker")
                 logging.info("id:"+str(fid))
                 ##print("Marker:"+json.dumps(rval2))                  
                 # get Markers
@@ -746,7 +753,16 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.sts.editFeature(id=a['id'],properties={'number':n,'previousEfforts':pe})  # removes team# from assignment
 ###@@@@###            
         ##print("RestDel:"+json.dumps(rval3,indent=2))
-              
+        # check for Medical marker and also remove
+        if self.ui.Med.isChecked(): 
+            pass # remove marker from map and from Medical folder
+            for md in rval:
+                if md['properties'].get("title") == 'Medical': # find Medical folder match
+                    fid = md.get('id')
+                    for md in rval2:      # match both folder and Team
+                        if md['properties'].get('folderId') == fid and md['properties'].get('title').upper() == self.curTeam.upper():
+                            rval4 = self.sts.delMarker(md['id'])
+             
 ##   APPEARS to not be used
     def updateFeatureList(self,featureClass,filterFolderId=None):
         # unfiltered feature list should be kept as an object;
@@ -987,8 +1003,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     #  - process each new line
     #    - add a row to the appropriate panel's table    
     def refresh(self):
+        if self.update_Tm == 200:    # 10 minutes
+            logging.info("Calling rescan timeout...")
+            self.update_Tm = 0
+            self.rescan()
+        self.update_Tm += 1
         if self.print_refresh == 20:
-            logging.info("Refreshing...")
+            logging.info("Refreshing print...")
             self.print_refresh = 0
         self.print_refresh += 1
         if self.update_TmAs == 4:
@@ -1037,17 +1058,20 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
                         time,tf,callsign,msg,radioLoc,status,epoch,d1,d2,d3=entry
-                        self.ui.tableWidget.insertRow(0)
-                        self.ui.tableWidget.setItem(0, 0, QtWidgets.QTableWidgetItem(time))
-                        self.ui.tableWidget.setItem(0, 1, QtWidgets.QTableWidgetItem(callsign))    
-                        self.ui.tableWidget.setItem(0, 2, QtWidgets.QTableWidgetItem(msg))    
-                        self.ui.tableWidget.setItem(0, 3, QtWidgets.QTableWidgetItem(radioLoc))    
-                        self.ui.tableWidget.setItem(0, 4, QtWidgets.QTableWidgetItem(status))    
-                        prevColor=self.ui.tableWidget.item(0,1).background().color().name()
-                        newColor=stateColorDict.get(prevColor,self.color[0])
-                        self.setRowColor(self.ui.tableWidget,0,newColor)
-                        self.totalRows = self.ui.tableWidget.rowCount()
-                        logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
+                        if 'RADIO LOG SOFTWARE' in msg:    
+                            logging.info('Entry with RADIO LOG SOFTWARE skipped.')
+                        else:
+                            self.ui.tableWidget.insertRow(0)
+                            self.ui.tableWidget.setItem(0, 0, QtWidgets.QTableWidgetItem(time))
+                            self.ui.tableWidget.setItem(0, 1, QtWidgets.QTableWidgetItem(callsign))    
+                            self.ui.tableWidget.setItem(0, 2, QtWidgets.QTableWidgetItem(msg))    
+                            self.ui.tableWidget.setItem(0, 3, QtWidgets.QTableWidgetItem(radioLoc))    
+                            self.ui.tableWidget.setItem(0, 4, QtWidgets.QTableWidgetItem(status))    
+                            prevColor=self.ui.tableWidget.item(0,1).background().color().name()
+                            newColor=stateColorDict.get(prevColor,self.color[0])
+                            self.setRowColor(self.ui.tableWidget,0,newColor)
+                            self.totalRows = self.ui.tableWidget.rowCount()
+                            logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
 ## save data
@@ -1213,6 +1237,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if self.curAssign == "RM":      # want to completely remove team
             if ifnd == 1:               # want to remove; presently in table AND on map
                 self.curTeam = self.ui.Team.text()
+                ## if team has medical, need to remove that entry, also
                 self.delMarker()        # uses curTeam to find
             if ifnd == 1 or ifnd == 2:  # want to remove; presently only in table
                 self.ui.tableWidget_TmAs.removeRow(irow)

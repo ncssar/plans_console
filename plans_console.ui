@@ -284,6 +284,11 @@ QComboBox{
              </item>
              <item>
               <property name="text">
+               <string>WATER</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
                <string>LE</string>
               </property>
              </item>
