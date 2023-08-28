@@ -961,6 +961,7 @@ class SartopoSession():
         j={}
         j['properties']={}
         j['properties']['title']=label
+        j['properties']['folder-visibility']='visible'
         if queue:
             self.queue.setdefault('folder',[]).append(j)
             return 0
@@ -997,6 +998,7 @@ class SartopoSession():
         jp['marker-symbol']=symbol
         jp['marker-size']=size
         jp['marker-rotation']=rotation
+        jp['marker-visibility']='visible'
         jp['title']=title
         if folderId is not None:
             jp['folderId']=folderId
@@ -1391,15 +1393,15 @@ class SartopoSession():
                             s=prop['title'].split()
                             # avoid exception when title exists but is blank
                             if len(s)>0:
-                                if s[0]==title: # since assignments title may include number (not desired for edits) 
+                                if s[0].upper()==title: # since assignments title may include number (not desired for edits) 
                                     titleMatchCount+=1
                                     rval.append(feature)
                         else:        
-                            if prop['title'].rstrip()==title: # since assignments without number could still have a space after letter
+                            if prop['title'].rstrip().upper()==title: # since assignments without number could still have a space after letter
                                 titleMatchCount+=1
                                 rval.append(feature)
                             elif 'letter' in pk: # if the title wasn't a match, try the letter if it exists
-                                if prop.get('letter','').rstrip()==title:
+                                if prop.get('letter','').rstrip().upper()==title:
                                     titleMatchCount+=1
                                     rval.append(feature)
                     else:
@@ -1432,7 +1434,7 @@ class SartopoSession():
             forceRefresh=False):
         r=self.getFeatures(
             featureClass=featureClass,
-            title=title,
+            title=title.upper(),
             id=id,
             featureClassExcludeList=featureClassExcludeList,
             letterOnly=letterOnly,
@@ -1494,7 +1496,7 @@ class SartopoSession():
             geometry=None,
             timeout=None):
 
-        logging.info('editFeature called')
+        logging.info('editFeature called:'+str(properties))
         # PART 1: determine the exact id of the feature to be edited
         if id is None:
             # first, validate the arguments and adjust as needed
@@ -1513,25 +1515,31 @@ class SartopoSession():
                 title=None
             if title is not None:
                 ltKey='title'
-                ltVal=title
+                ltVal=title.upper()
             else:
                 ltKey='letter'
-                ltVal=letter
+                ltVal=letter.upper()
 
             # validation complete; first search based on letter/title, then, if needed, filter based on className if specified
             
             # it's probably quicker to filter by letter/title first, since that should only return a very small number of hits,
             #   as opposed to filtering by className first, which could return a large number of hits
+        #A#  features=[f for f in self.mapData['state']['features'] if f['properties'].get(ltKey,None)==ltVal and f['properties']['class'].lower()==className.lower()]
+         ## USING THE FOLLOWING to be able to compare strings case independently by using upper()  
+            features = []
+            for f in self.mapData['state']['features']:
+                m = f['properties'].get(ltKey,None)
+                if m != None:
+                    if m.upper() == ltVal and f['properties']['class'].lower()==className.lower():
+                        features.append(f)
 
-            features=[f for f in self.mapData['state']['features'] if f['properties'].get(ltKey,None)==ltVal and f['properties']['class'].lower()==className.lower()]
-                
             if len(features)==0:
                 logging.warning(' no feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
                 return False
             if len(features)>1:
                 logging.warning(' more than one feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
                 return False
-            feature=features[0]
+            feature=features[0]     ## matched feature
             logging.info(' feature found: '+str(feature))
 
         else:
@@ -1539,7 +1547,7 @@ class SartopoSession():
             features=[f for f in self.mapData['state']['features'] if f['id']==id]
             # logging.info(json.dumps(self.mapData,indent=3))
             if len(features)==1:
-                feature=features[0]
+                feature=features[0]     ## matched feature
                 className=feature['properties']['class']
             else:
                 logging.info('  no match!')
@@ -1562,12 +1570,15 @@ class SartopoSession():
         # }
 
         propToWrite=None
-        if properties is not None:
+
+        if properties is None:        # appears editFeature needs some properties to be specified to create a valid output feature
+            properties = feature['properties']
+        if properties is not None:    # Logic here could be amended
             keys=properties.keys()
             propToWrite=feature['properties']
             for key in keys:
                 propToWrite[key]=properties[key]
-            # write the correct title for assignments, since sartopo does not internally recalcualte it
+            # write the correct title for assignments, since sartopo does not internally recalculate it
             if className.lower()=='assignment':
                 propToWrite['title']=propToWrite['letter']+' '+propToWrite['number'].strip()
 
@@ -1758,7 +1769,7 @@ class SartopoSession():
         # collect resulting feature ids to return as the return value
         rids=[]
 
-        # use the unsiffixed name as the base (everything before colon-followed-by-integer)
+        # use the unsuffixed name as the base (everything before colon-followed-by-integer)
         #  so that a cut of a:2 would produce a:3 rather than a:2:1
         if tc=='Assignment':
             base=tp['letter']
@@ -1785,6 +1796,7 @@ class SartopoSession():
                 logging.warning('cut: target shape not found; operation aborted.')
                 return False
         elif isinstance(result,MultiPolygon):
+            ##### EDIT FEATURE is used to update the original feature information (geometry)
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}))
             if rids==[]:
                 logging.warning('cut: target shape not found; operation aborted.')

@@ -19,6 +19,7 @@
 #  6/16/2021  SDL         added cut/expand/crop interface
 #  2022       TMG         upgraded the UI and added the debrief map
 #  7/8/2023   SDL         changed Med icon to not display team# on the map
+#  8/27/2023  SDL         fixed issue with case and not finding an edited object (part of fix is in sartopo_python)
 #
 # #############################################################################
 #
@@ -60,7 +61,6 @@ import configparser
 import argparse
 from shapely.geometry import Polygon
 from datetime import datetime
-# import winsound
 
 
 sartopo_python_min_version="1.1.2"
@@ -202,7 +202,7 @@ def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Ques
     box.raise_()
     return box.exec_() == QMessageBox.Yes
 
-def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=0):
+def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=4000):
     # don't bother taking the steps to handle moving from one screen to another of different ldpi
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
     if title == "":
@@ -253,40 +253,6 @@ stateColorDict["#ff4444"]="#eeeeee"
 stateColorDict["#eeeeee"]="#ff4444"
 sys.tracebacklimit = 1000
 
-
-# ### handler for intercepting exceptions
-# def excepthook(excType, excValue, tracebackobj):
-#     """
-#     Global function to catch unhandled exceptions.
-    
-#     @param excType exception type
-#     @param excValue exception value
-#     @param tracebackobj traceback object
-#     """
-#     separator = '-' * 8
-#     logFile = "simple.log"
-#     notice = "\n"
-#     breakz = "\n"
-#     versionInfo="    0.0.1\n"
-#     timeString = time.strftime("%Y-%m-%d, %H:%M:%S")
-#     tbinfofile = io.StringIO()
-#     traceback.print_tb(tracebackobj, None, tbinfofile)
-#     tbinfofile.seek(0)
-#     tbinfo = tbinfofile.read()
-#     errmsg = '%s: %s' % (str(excType), str(excValue))
-#     sections = [separator, timeString, breakz, separator, errmsg, breakz, separator, tbinfo]
-#     msg = ''.join(sections)
-#     try:
-#         f = open(logFile, "w")
-#         f.write(msg)
-#         f.write(versionInfo)
-#         f.close()
-#     except IOError:
-#         pass
-#     logging.info("\nMessage: %s" % str(notice)+str(msg)+str(versionInfo))
-
-### replacement of system exception handler
-# sys.excepthook = excepthook
 
 # log uncaught exceptions - https://stackoverflow.com/a/16993115/3577105
 # don't try to print from inside this function, since stdout is in binary mode
@@ -679,8 +645,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         for folder in folders:
             if folder["properties"]["title"]=="Medical":
                 self.fidMed=folder["id"]
+                fid = True
             if folder["properties"]["title"]=="LE":
                 self.fidLE=folder["id"]
+                fid = True
         if not self.fidMed:
             self.fidMed = self.sts.addFolder("Medical")
         if not self.fidLE:
@@ -689,7 +657,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if self.medval == " X":
             markr = "medevac-site"     # medical +
             clr = "FF0000"
-            #rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam,self.curAssign, \  # OLD team# was displayed on the map
+            #rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam,self.curAssign, \  # OLD: team# was displayed on the map
             rval=self.sts.addMarker(self.latField,self.lonField,' ',self.curTeam+self.curAssign, \
                                             clr,markr,None,self.fidMed)
         elif self.curType == "LE":     # law enforcement
@@ -697,6 +665,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             clr = "FF0000"           
             rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
                                     self.curAssign,clr,markr,None,self.fidLE)
+            if fid:                  # temporary fix
+              time.sleep(4)          # the delay, delete and redo seems to get display of marker
+              self.delMarker()
+              rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
+                                     self.curAssign,clr,markr,None,self.fidLE)
         else:
             pass #X# don't place marker for searcher
             #X# markr = "hiking"       # default 
@@ -715,7 +688,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             numbr=self.curTeam
         else:
             numbr += " "+self.curTeam  #  set the team# and resource from table entry  
-        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign,properties={'number':numbr, \
+        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign.upper(),properties={'number':numbr, \
                                    'resourceType':self.curType})
         logging.info("RVAL rtn:"+str(rval)+' : '+str(rval2))
     
@@ -1248,7 +1221,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.ui.Team.setText("")
                 self.ui.Assign.setText("")
                 self.ui.comboBox.setCurrentIndex(0)
-                print("X2")
                 self.ui.Med.setChecked(False)
 ## save data
             self.save_data()    
@@ -1296,7 +1268,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.ui.Team.setText("")
         self.ui.Assign.setText("")
         self.ui.comboBox.setCurrentIndex(0)
-        print("X3")
         self.ui.Med.setChecked(False)
 ## save data            
         self.save_data()
