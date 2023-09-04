@@ -202,6 +202,7 @@ def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Ques
     box.raise_()
     return box.exec_() == QMessageBox.Yes
 
+##  set timeout to 4 sec
 def inform_user_about_issue(message: str, icon: QMessageBox.Icon = QMessageBox.Critical, parent: QObject = None, title="", timeout=4000):
     # don't bother taking the steps to handle moving from one screen to another of different ldpi
     opts = Qt.WindowTitleHint | Qt.WindowCloseButtonHint | Qt.Dialog | Qt.MSWindowsFixedSizeDialogHint | Qt.WindowStaysOnTopHint
@@ -261,7 +262,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     logging.critical('Uncaught exception', exc_info=(exc_type, exc_value, exc_traceback))
-    inform_user_about_issue('Uncaught exception:\n\n'+str(exc_type.__name__)+': '+str(exc_value)+'\n\nCheck log file for details including traceback.  The program will continue if possible when you close this message box.')
+    inform_user_about_issue('Uncaught exception:\n\n'+str(exc_type.__name__)+': '+str(exc_value)+'\n\nCheck log file for details including traceback.  The program will continue if possible when you close this message box.', timeout=4000)
 sys.excepthook = handle_exception
 
 def sortByTitle(item):
@@ -640,6 +641,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
+        if not folders:
+            inform_user_about_issue("Mostlikely this session is not connected to the map for write access. Check that the proper account is being used.")
+            return
         logging.info('addMarker folders:'+str(folders))
         fid=False
         for folder in folders:
@@ -666,6 +670,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
                                     self.curAssign,clr,markr,None,self.fidLE)
             if fid:                  # temporary fix
+              print("At reADD marker")
               time.sleep(4)          # the delay, delete and redo seems to get display of marker
               self.delMarker()
               rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \

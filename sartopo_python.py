@@ -853,6 +853,8 @@ class SartopoSession():
 
         if r.status_code!=200:
             logging.info("response code = "+str(r.status_code))
+            self.syncPause=False
+            return False
 
         if newMap:
             # for CTD 4221 and newer, and internet, a new map request should return 200, and the response data
