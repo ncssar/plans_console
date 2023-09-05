@@ -1800,6 +1800,10 @@ class SartopoSession():
         elif isinstance(result,MultiPolygon):
             ##### EDIT FEATURE is used to update the original feature information (geometry)
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}))
+            print("RIDS:"+str(rids))   #  #A#
+            if rids[0] == False:
+                print("PASSING False")   # #A#
+                return False  # edit did not occur, possibly due to not having write access to the map
             if rids==[]:
                 logging.warning('cut: target shape not found; operation aborted.')
                 return False

@@ -898,7 +898,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             return
         logging.info("%s shape %s with feature %s"%(op,selFeature,editorFeature))
         if op=='Cut':
+            print("AT CUT")
             if not self.sts.cut(selFeature,editorFeature):
+               print("F A I L E D")   # #A#
                logging.warning(op+' operation failed.')
                inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
