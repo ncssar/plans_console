@@ -458,8 +458,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         
         # hardcode workarounds to avoid uncaught exceptions during save_data TMG 1-18-21
         self.watchedFile='watched.csv'
+        self.watchedFile2='watched2.csv'
         self.offsetFileName='offset.csv'
+        self.offsetFileName2='offset2.csv'
         self.csvFiles=[]
+        self.csvFiles2=[]
 
 
 
@@ -964,6 +967,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         logging.info("scanning "+self.watchedDir+" for latest valid csv file...")
         self.csvFiles=[]
         self.readDir()
+        #
+        #  add section for self.csvFiles2
+        #
         if self.csvFiles!=[]:
             self.rescanTimer.stop()
             self.ui.notYet.close()
@@ -976,6 +982,18 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if os.path.isfile(self.offsetFileName):
                 os.remove(self.offsetFileName)
             logging.info("  found "+self.watchedFile)
+            self.refresh()
+        if self.csvFiles2!=[]:
+            self.rescanTimer.stop()
+            self.ui.notYet.close()
+            self.watchedFile2=self.csvFiles2[0][0]
+            # remove the pygtail offset file, if any, so pygtail will
+            #  read from the beginning even if this file has already
+            #  been read by pygtail
+            self.offsetFileName2=self.watchedFile2+".offset"+str(os.getpid())
+            if os.path.isfile(self.offsetFileName2):
+                os.remove(self.offsetFileName2)
+            logging.info("  found "+self.watchedFile2)
             self.refresh()
 
     # refresh - this is the main radiolog viewing loop
@@ -1022,8 +1040,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 if itm not in resend:
                     self.sentMsg.remove(itm)         # if team# count has been corrected, elim from sentMsg
         self.update_TmAs += 1
-        if self.watchedDir and self.csvFiles!=[]:
-            newEntries=self.readWatchedFile()
+        if (self.watchedDir and (self.csvFiles!=[] or self.csvFiles2!=[])):
+            newEntries, newEntries2=self.readWatchedFile()
+            #
+            #  add newEntries section
+            #
             if newEntries:
                 ix = 0
                 for entry in newEntries:
@@ -1038,7 +1059,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
                         time,tf,callsign,msg,radioLoc,status,epoch,d1,d2,d3=entry
-                        if 'RADIO LOG SOFTWARE' in msg:    
+                        print("MSG:"+str(msg))
+                        if 'Radio Log Software' in msg:    
                             logging.info('Entry with RADIO LOG SOFTWARE skipped.')
                         else:
                             self.ui.tableWidget.insertRow(0)
@@ -1054,6 +1076,36 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
+            if newEntries2:
+                ix = 0
+                for entry in newEntries2:
+                    logging.info("In loop: %s"% entry)
+                    #14: get rid of any elements after 10 (e.g. 11 = operator ID - not needed here)
+                    if len(entry)>8:
+                        entry=entry[:8]                 
+                    if len(entry)==8:
+                        if self.forceRescan == 1:
+                            logging.info("AT force rescan")
+                            if ix < self.totalRows:
+                                ix = ix + 1
+                                continue    # skip rows until get to new rows
+                        clueNum,msg,callsign,time,d1,d2,radioLoc,status=entry
+                        if 'Radio Log  Begins' in msg:    
+                            logging.info('Entry with Radio Log Begins skipped.')
+                        else:
+                            self.ui.tableWidget_2.insertRow(0)
+                            self.ui.tableWidget_2.setItem(0, 0, QtWidgets.QTableWidgetItem(clueNum))
+                            self.ui.tableWidget_2.setItem(0, 1, QtWidgets.QTableWidgetItem(time))    
+                            self.ui.tableWidget_2.setItem(0, 2, QtWidgets.QTableWidgetItem(radioLoc))    
+                            self.ui.tableWidget_2.setItem(0, 3, QtWidgets.QTableWidgetItem(msg))    
+                            prevColor=self.ui.tableWidget_2.item(0,1).background().color().name()
+                            newColor=stateColorDict.get(prevColor,self.color[0])
+                            self.setRowColor(self.ui.tableWidget_2,0,newColor)
+                            self.totalRows = self.ui.tableWidget_2.rowCount()
+                            logging.info("status2:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
+                    else:
+                        logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
+                        
 ## save data
                 self.save_data()            
                 self.forceRescan = 0
@@ -1063,6 +1115,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         data1 = {}
         rowx = {}
         rowy = {}
+        rowz = {}
         for itm in range(self.ui.tableWidget.rowCount()): # data for radiolog table
             data1['time'] = self.ui.tableWidget.item(itm, 0).text()
             data1['callsign'] = self.ui.tableWidget.item(itm, 1).text()
@@ -1077,13 +1130,21 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             data1.update({'type': self.ui.tableWidget_TmAs.item(itm2, 2).text()})
             data1.update({'med': self.ui.tableWidget_TmAs.item(itm2, 3).text()})
             rowy['rowB'+str(itm2)] = data1.copy()
+        for itm3 in range(self.ui.tableWidget_2.rowCount()): # data for cluelog table
+            data1.update({'clueNum': self.ui.tableWidget_2.item(itm3, 0).text()})
+            data1.update({'time': self.ui.tableWidget_2.item(itm3, 1).text()})
+            data1.update({'radioLoc': self.ui.tableWidget_2.item(itm3, 2).text()})
+            data1.update({'msg': self.ui.tableWidget_2.item(itm3, 3).text()})
+            data1.update({'color': self.ui.tableWidget_2.item(itm3,1).background().color().name()})
+            rowz['rowC'+str(itm3)] = data1.copy()
         
         maps={}
         maps['incidentURL']=self.incidentURL
         if self.dmg and self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
             maps['debriefURL']=self.debriefURL
-        alld = json.dumps([maps,{'csv':self.watchedFile+'%'+self.offsetFileName+ \
-                                             '%'+str(self.csvFiles)}, rowx, rowy])
+        alld = json.dumps([maps,{'csv':self.watchedFile+'%'+self.offsetFileName+'%'+str(self.csvFiles)+\
+                '%'+self.watchedFile2+'%'+self.offsetFileName2+'%'+str(self.csvFiles2)},\
+                rowx, rowy, rowz])     
         fid = open(self.pcDataFileName,'w')
         fid.write(alld)
         fid.close()
@@ -1105,7 +1166,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         logging.info("Get:"+str(l))
         self.incidentURL = l[0]['incidentURL']
         self.debriefURL=l[0].get('debriefURL',None)
-        self.watchedFile,self.offsetFileName, self.csvFiles = l[1]['csv'].split('%')
+        self.watchedFile,self.offsetFileName,self.csvFiles,self.watchedFile2,self.offsetFileName2,self.csvFiles2 = l[1]['csv'].split('%')
         irow = 0
         for key in l[2]:
             self.ui.tableWidget.insertRow(irow)            
@@ -1123,6 +1184,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(l[3][key]['assign']))    
             self.ui.tableWidget_TmAs.setItem(irow, 2, QtWidgets.QTableWidgetItem(l[3][key]['type']))
             self.ui.tableWidget_TmAs.setItem(irow, 3, QtWidgets.QTableWidgetItem(l[3][key]['med']))
+            irow = irow + 1
+        irow = 0
+        for key in l[4]:
+            self.ui.tableWidget_2.insertRow(irow)            
+            self.ui.tableWidget_2.setItem(irow, 0, QtWidgets.QTableWidgetItem(l[4][key]['clueNum']))
+            self.ui.tableWidget_2.setItem(irow, 1, QtWidgets.QTableWidgetItem(l[4][key]['time']))
+            self.ui.tableWidget_2.setItem(irow, 2, QtWidgets.QTableWidgetItem(l[4][key]['radioLoc']))
+            self.ui.tableWidget_2.setItem(irow, 3, QtWidgets.QTableWidgetItem(l[4][key]['msg']))
+            self.setRowColor(self.ui.tableWidget_2,irow,l[4][key]['color'])
             irow = irow + 1
         fid.close()
         
@@ -1306,20 +1376,50 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     def readDir(self):
         logging.info("in readDir")
         f=glob.glob(self.watchedDir+"\\*.csv")
+        f2 = f
         # logging.info("Files: %s"%f)
         f=[x for x in f if not regex.match('.*_clueLog.csv$',x)]
         f=[x for x in f if not regex.match('.*_fleetsync.csv$',x)]
         f=[x for x in f if not regex.match('.*_bak[123456789].csv$',x)]
+        f2=[x for x in f2 if regex.match('.*_clueLog.csv$',x)]  # get cluelog files
         f=sorted(f,key=os.path.getmtime,reverse=True)
+        f2=sorted(f2,key=os.path.getmtime,reverse=True)
+        print("############################### C L U E:"+str(f2))
         for file in f:
             l=[file,os.path.getsize(file),os.path.getmtime(file)]
             self.csvFiles.append(l)
+        for file in f2:
+            l=[file,os.path.getsize(file),os.path.getmtime(file)]
+            self.csvFiles2.append(l)
 
     def readWatchedFile(self):
         newEntries=[]
+        newEntries2=[]
         for line in Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False):
+            inStrg = False
+            for i in range(len(line)-1):  # stop b4 last char
+                if line[i] == '"' or inStrg:
+                    if line[i] == ',':
+                        line = line[:i-1]+'_'+line[i+1:]       # replace ',' in a string
+                    elif line[i] == '"' and inStrg:
+                        inStrg = False      # end of string
+                        continue 
+                    inStrg = True    
             newEntries.append(line.split(','))
-        return newEntries
+            print("new1:"+str(newEntries))
+        for line in Pygtail(self.watchedFile2, offset_file=self.offsetFileName2, copytruncate=False):
+            inStrg = False
+            for i in range(len(line)-1):  # stop b4 last char
+                if line[i] == '"' or inStrg:
+                    if line[i] == ',':
+                        line = line[:i-1]+'_'+line[i+1:]       # replace ',' in a string
+                    elif line[i] == '"' and inStrg:
+                        inStrg = False      # end of string
+                        continue 
+                    inStrg = True    
+            newEntries2.append(line.split(','))
+            print("new2:"+str(newEntries2))
+        return newEntries,newEntries2
                 
     def updateClock(self):
         self.ui.clock.display(time.strftime("%H:%M"))
@@ -1495,6 +1595,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.ui.tableWidget_TmAs.setColumnWidth(1, int(60*(ldpi/96)))
         self.ui.tableWidget_TmAs.setColumnWidth(2, int(100*(ldpi/96)))
         self.ui.tableWidget_TmAs.setColumnWidth(3, int(50*(ldpi/96)))
+
+        self.ui.tableWidget_2.setColumnWidth(0, int(100*(ldpi/96)))
+        self.ui.tableWidget_2.setColumnWidth(1, int(50*(ldpi/96)))
+        self.ui.tableWidget_2.setColumnWidth(2, int(120*(ldpi/96)))
+        self.ui.tableWidget_2.horizontalHeader().setSectionResizeMode(3,1)  
 
     def closeEvent(self,event):  # to save RC file
         if not ask_user_to_confirm("Exit Plans Console?", icon=QMessageBox.Warning, parent = self):
