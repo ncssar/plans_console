@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'plans_console.ui'
+# Form implementation generated from reading ui file 'C:\Users\steve\Documents\python\plans_console-master\plans_consoleY.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.6
 #
@@ -40,6 +40,8 @@ class Ui_PlansConsole(object):
         self.mainHorizLayout.setSizeConstraint(QtWidgets.QLayout.SetNoConstraint)
         self.mainHorizLayout.setContentsMargins(-1, -1, 0, -1)
         self.mainHorizLayout.setObjectName("mainHorizLayout")
+        self.leftVerticalLayout = QtWidgets.QVBoxLayout()
+        self.leftVerticalLayout.setObjectName("leftVerticalLayout")
         self.tableWidget = QtWidgets.QTableWidget(PlansConsole)
         self.tableWidget.setObjectName("tableWidget")
         self.tableWidget.setColumnCount(5)
@@ -55,7 +57,24 @@ class Ui_PlansConsole(object):
         item = QtWidgets.QTableWidgetItem()
         self.tableWidget.setHorizontalHeaderItem(4, item)
         self.tableWidget.verticalHeader().setVisible(False)
-        self.mainHorizLayout.addWidget(self.tableWidget)
+        self.leftVerticalLayout.addWidget(self.tableWidget)
+        self.tableWidget_2 = QtWidgets.QTableWidget(PlansConsole)
+        self.tableWidget_2.setObjectName("tableWidget_2")
+        self.tableWidget_2.setColumnCount(4)
+        self.tableWidget_2.setRowCount(0)
+        item = QtWidgets.QTableWidgetItem()
+        self.tableWidget_2.setHorizontalHeaderItem(0, item)
+        item = QtWidgets.QTableWidgetItem()
+        self.tableWidget_2.setHorizontalHeaderItem(1, item)
+        item = QtWidgets.QTableWidgetItem()
+        self.tableWidget_2.setHorizontalHeaderItem(2, item)
+        item = QtWidgets.QTableWidgetItem()
+        self.tableWidget_2.setHorizontalHeaderItem(3, item)
+        self.tableWidget_2.verticalHeader().setVisible(False)
+        self.leftVerticalLayout.addWidget(self.tableWidget_2)
+        self.leftVerticalLayout.setStretch(0, 5)
+        self.leftVerticalLayout.setStretch(1, 3)
+        self.mainHorizLayout.addLayout(self.leftVerticalLayout)
         self.rightVertLayout = QtWidgets.QVBoxLayout()
         self.rightVertLayout.setSizeConstraint(QtWidgets.QLayout.SetDefaultConstraint)
         self.rightVertLayout.setContentsMargins(-1, -1, 0, -1)
@@ -378,6 +397,14 @@ class Ui_PlansConsole(object):
         item.setText(_translate("PlansConsole", "Location"))
         item = self.tableWidget.horizontalHeaderItem(4)
         item.setText(_translate("PlansConsole", "Status"))
+        item = self.tableWidget_2.horizontalHeaderItem(0)
+        item.setText(_translate("PlansConsole", "ClueNum"))
+        item = self.tableWidget_2.horizontalHeaderItem(1)
+        item.setText(_translate("PlansConsole", "Time"))
+        item = self.tableWidget_2.horizontalHeaderItem(2)
+        item.setText(_translate("PlansConsole", "Location"))
+        item = self.tableWidget_2.horizontalHeaderItem(3)
+        item.setText(_translate("PlansConsole", "Description"))
         item = self.tableWidget_TmAs.horizontalHeaderItem(0)
         item.setText(_translate("PlansConsole", "Team"))
         item = self.tableWidget_TmAs.horizontalHeaderItem(1)
