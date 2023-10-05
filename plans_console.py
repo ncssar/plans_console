@@ -61,6 +61,9 @@ import configparser
 import argparse
 from shapely.geometry import Polygon
 from datetime import datetime
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+import subprocess
 
 
 sartopo_python_min_version="1.1.2"
@@ -166,6 +169,7 @@ def genLpix(ldpi):
     for ptSize in [1,2,3,4,6,8,9,10,11,12,14,16,18,22,24,36,48]:
         lpix[ptSize]=math.floor((ldpi*ptSize)/72)
     return lpix
+
 
 def ask_user_to_confirm(question: str, icon: QMessageBox.Icon = QMessageBox.Question, parent: QObject = None, title = "Please Confirm") -> bool:
     # don't bother taking the steps to handle moving from one screen to another of different ldpi
@@ -320,6 +324,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.curAssign = ""
         self.curType = ""
         self.totalRows = 0
+        self.totalRows2 = 0
         self.x = self.xd
         self.y = self.yd
         self.w = self.wd
@@ -331,7 +336,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.fidMed = None
         self.fidLE = None
         self.sentMsg = []
-        self.color = ["#ffff00", "#cccccc"]
+        self.color = ["#ffff00", "#cccccc"]  # yellow, gray80
                      
         self.loadRcFile()
 
@@ -530,7 +535,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     self.debriefURL="http://localhost:8080/m/"+name2[1:]     # remove the $
                 else:    
                     self.debriefURL="http://192.168.1.20:8080/m/"+name2
-        
+
+
+##### Temporarily removing debrief - using for printing
+        ''' 
         if self.debriefURL:
             self.debriefButtonClicked()
             self.dmg.dd.ui.debriefMapField.setText(self.debriefURL)
@@ -538,9 +546,91 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             QTimer.singleShot(1000,self.debriefButtonClicked) # raise again
         else:
             QTimer.singleShot(1000,self.debriefButtonClicked) # no reason not to start dmg anyway - TMG/SDL 4-9-22
+       '''
 
 
+    def printx(self):    #  printing clue table
+        ###  needs a rescan to be sure up to date
+        ##       presently rescan does not restore the radiolog and clue displays are correct
+        from reportlab.lib.units import inch
+
+        c = canvas.Canvas("report.pdf", pagesize=letter)
+        # move the origin up and to the left
+        c.translate(0.5*inch,inch)
+        # define a font
+        c.setFont("Helvetica", 8)
+        # choose some colors
+        c.setStrokeColorRGB(0,0,0)           ## color for lines
+        c.setFillColorRGB(0.15,0.15,0.15)    ## color for text
         
+        f2=glob.glob(self.watchedDir+"\\*.csv")
+        print(f2)
+        f2x=[x for x in f2 if regex.match('.*_clueLog.csv$',x)]  # get cluelog files
+        f2s=sorted(f2x,key=os.path.getmtime,reverse=True)
+        print(f2s)
+        for file in f2s:
+            l=[file,os.path.getsize(file),os.path.getmtime(file)]
+            self.csvFiles2.append(l)
+        print(self.csvFiles2)   
+        self.watchedFile2=self.csvFiles2[0][0]
+        ioff = 0.1
+        Entries = []
+        if (self.watchedDir and self.csvFiles2!=[]):
+          with open(self.watchedFile2, 'r') as fid:  
+                lines = fid.readlines()
+          print("LINES:"+str(lines))      
+          for line in lines:      
+                inStrg = False
+                for i in range(len(line)-1):  # stop b4 last char  REMOVE comma in a string
+                    if line[i] == '"' or inStrg:
+                        if line[i] == ',':
+                            line = line[:i-1]+'_'+line[i+1:]       # replace ',' in a string
+                        elif line[i] == '"' and inStrg:
+                            inStrg = False      # end of string
+                            continue 
+                        inStrg = True    
+                Entries.append(line.split(','))
+          for entry in Entries:
+            if len(entry)>8:
+                entry=entry[:8]                 
+            if len(entry)==8:
+               ioff = ioff + 0.3
+               clueNum,msg,callsign,time,d1,d2,radioLoc,status=entry
+               c.drawString(0.05*inch, (8.5-ioff)*inch, clueNum)
+               c.drawString(0.6*inch, (8.5-ioff)*inch, time)
+               c.drawString(1.1*inch, (8.5-ioff)*inch, radioLoc)
+               c.drawString(2.0*inch, (8.5-ioff)*inch, msg)
+          c.drawString(0.05*inch, (8.5)*inch, 'Cluenum   Time           Location              Message')
+          c.showPage()
+          # 2nd page
+        if True:    # indent  
+          # define a font
+          c.translate(0.5*inch,inch)
+          # define a font
+          c.setFont("Helvetica", 8)
+          # choose some colors
+          c.setStrokeColorRGB(0,0,0)           ## color for lines
+          c.setFillColorRGB(0.15,0.15,0.15)    ## color for text
+          ioff = 0
+          for itm2 in range(self.ui.tableWidget_TmAs.rowCount()): # data for team assignment table 
+             ioff = ioff + 0.3
+             team = self.ui.tableWidget_TmAs.item(itm2, 0).text()
+             c.drawString(0.5*inch, (8.5-ioff)*inch, team)
+             assign = self.ui.tableWidget_TmAs.item(itm2, 1).text()
+             c.drawString(1.5*inch, (8.5-ioff)*inch, assign)
+             type = self.ui.tableWidget_TmAs.item(itm2, 2).text()
+             c.drawString(2.5*inch, (8.5-ioff)*inch, type)
+             med = self.ui.tableWidget_TmAs.item(itm2, 3).text()
+             if med != ' ':
+                 med = 'Yes'
+             c.drawString(3.5*inch, (8.5-ioff)*inch, med)
+          c.drawString(0.05*inch, (8.5)*inch, '          Team#               Assignment                         Type                     Medical')
+          c.showPage()
+ 
+        c.save()
+        pdfx = subprocess.Popen(["C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe", "report.pdf"])
+
+
     def createSTS(self):
         parse=self.incidentURL.replace("http://","").replace("https://","").split("/")
         domainAndPort=parse[0]
@@ -557,7 +647,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             cacheDumpFile+='.txt'
         self.sts=None
         box=QMessageBox(
-            QMessageBox.NoIcon, # other vaues cause the chime sound to play
+            QMessageBox.NoIcon, # other values cause the chime sound to play
             'Connecting...',
             'Incident Map:\n\nConnecting to '+self.incidentURL+'\n\nPlease wait...')
         box.setStandardButtons(QMessageBox.NoButton)
@@ -699,6 +789,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign.upper(),properties={'number':numbr, \
                                    'resourceType':self.curType})
         logging.info("RVAL rtn:"+str(rval)+' : '+str(rval2))
+
+
     
     def delMarker(self):
         rval = self.sts.getFeatures("Folder")     # get Folders
@@ -943,6 +1035,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.tryAgain=False
 
     def debriefButtonClicked(self):
+        ###  Use the debrief button to Print clue and assignment tables
+        print("Printing.....")
+        self.printx()
+        '''
         if not self.sts or self.sts.apiVersion<0:
             inform_user_about_issue('You must establish a link with the Incident Map first.',parent=self)
         else:
@@ -958,6 +1054,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.ui.debriefMapField.setText('<None>')
                 del self.dmg
                 self.dmg=None # so that the next debrief button click will try again
+        '''        
 
     def rescanButtonClicked(self):
         self.forceRescan = 1
@@ -966,9 +1063,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     def rescan(self):
         logging.info("scanning "+self.watchedDir+" for latest valid csv file...")
         self.csvFiles=[]
+        self.csvFiles2=[]
         self.readDir()
         #
-        #  add section for self.csvFiles2
+        #  added section for self.csvFiles2
         #
         if self.csvFiles!=[]:
             self.rescanTimer.stop()
@@ -982,7 +1080,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if os.path.isfile(self.offsetFileName):
                 os.remove(self.offsetFileName)
             logging.info("  found "+self.watchedFile)
-            self.refresh()
+            #self.refresh()
         if self.csvFiles2!=[]:
             self.rescanTimer.stop()
             self.ui.notYet.close()
@@ -994,6 +1092,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if os.path.isfile(self.offsetFileName2):
                 os.remove(self.offsetFileName2)
             logging.info("  found "+self.watchedFile2)
+            #self.refresh()
+        if self.csvFiles!=[] or self.csvFiles2!=[]:
             self.refresh()
 
     # refresh - this is the main radiolog viewing loop
@@ -1045,8 +1145,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             #
             #  add newEntries section
             #
-            if newEntries:
+            #print("PRINT NEW ENTRIES:"+str(newEntries)+str(newEntries2)+str(self.forceRescan))
+            if newEntries:   ## Only adding new entries, not overridding previous entries
                 ix = 0
+                irow = 0
+                self.totalRows = 0
+                self.ui.tableWidget.setRowCount(0)
                 for entry in newEntries:
                     logging.info("In loop: %s"% entry)
                     #14: get rid of any elements after 10 (e.g. 11 = operator ID - not needed here)
@@ -1054,61 +1158,66 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         entry=entry[:10]                 
                     if len(entry)==10:
                         if self.forceRescan == 1:
-                            logging.info("AT force rescan")
+                            logging.info("AT force rescan")   # question if this loop actually gets used
                             if ix < self.totalRows:
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
-                        time,tf,callsign,msg,radioLoc,status,epoch,d1,d2,d3=entry
-                        print("MSG:"+str(msg))
-                        if 'Radio Log Software' in msg:    
-                            logging.info('Entry with RADIO LOG SOFTWARE skipped.')
+                        timex,tf,callsign,msg,radioLoc,status,epoch,d1,d2,d3=entry
+                        if msg.find('Radio Log Begins') > -1:    
+                            logging.info('Entry with RADIO LOG BEGINS skipped.')
                         else:
-                            self.ui.tableWidget.insertRow(0)
-                            self.ui.tableWidget.setItem(0, 0, QtWidgets.QTableWidgetItem(time))
-                            self.ui.tableWidget.setItem(0, 1, QtWidgets.QTableWidgetItem(callsign))    
-                            self.ui.tableWidget.setItem(0, 2, QtWidgets.QTableWidgetItem(msg))    
-                            self.ui.tableWidget.setItem(0, 3, QtWidgets.QTableWidgetItem(radioLoc))    
-                            self.ui.tableWidget.setItem(0, 4, QtWidgets.QTableWidgetItem(status))    
-                            prevColor=self.ui.tableWidget.item(0,1).background().color().name()
+                            self.ui.tableWidget.insertRow(irow)
+                            self.ui.tableWidget.setItem(irow, 0, QtWidgets.QTableWidgetItem(timex))
+                            self.ui.tableWidget.setItem(irow, 1, QtWidgets.QTableWidgetItem(callsign))    
+                            self.ui.tableWidget.setItem(irow, 2, QtWidgets.QTableWidgetItem(msg))    
+                            self.ui.tableWidget.setItem(irow, 3, QtWidgets.QTableWidgetItem(radioLoc))    
+                            self.ui.tableWidget.setItem(irow, 4, QtWidgets.QTableWidgetItem(status))    
+                            prevColor=self.ui.tableWidget.item(irow,1).background().color().name()
                             newColor=stateColorDict.get(prevColor,self.color[0])
-                            self.setRowColor(self.ui.tableWidget,0,newColor)
-                            self.totalRows = self.ui.tableWidget.rowCount()
+                            self.setRowColor(self.ui.tableWidget,irow,newColor)
                             logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
+                            irow = irow + 1
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
+                self.totalRows = self.ui.tableWidget.rowCount()
             if newEntries2:
+                self.totalRows2 = 0
+                self.ui.tableWidget_2.setRowCount(0)
                 ix = 0
+                irow = 0
                 for entry in newEntries2:
-                    logging.info("In loop: %s"% entry)
+                    logging.info("In loop2: %s"% entry)
                     #14: get rid of any elements after 10 (e.g. 11 = operator ID - not needed here)
                     if len(entry)>8:
                         entry=entry[:8]                 
                     if len(entry)==8:
                         if self.forceRescan == 1:
-                            logging.info("AT force rescan")
-                            if ix < self.totalRows:
+                            logging.info("AT force rescan2")
+                            if ix < self.totalRows2:
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
-                        clueNum,msg,callsign,time,d1,d2,radioLoc,status=entry
-                        if 'Radio Log  Begins' in msg:    
+                        clueNum,msg,callsign,timex,d1,d2,radioLoc,status=entry
+                        if msg.find('Radio Log Begins') > -1:    
                             logging.info('Entry with Radio Log Begins skipped.')
                         else:
-                            self.ui.tableWidget_2.insertRow(0)
-                            self.ui.tableWidget_2.setItem(0, 0, QtWidgets.QTableWidgetItem(clueNum))
-                            self.ui.tableWidget_2.setItem(0, 1, QtWidgets.QTableWidgetItem(time))    
-                            self.ui.tableWidget_2.setItem(0, 2, QtWidgets.QTableWidgetItem(radioLoc))    
-                            self.ui.tableWidget_2.setItem(0, 3, QtWidgets.QTableWidgetItem(msg))    
-                            prevColor=self.ui.tableWidget_2.item(0,1).background().color().name()
+                            self.ui.tableWidget_2.insertRow(irow)
+                            self.ui.tableWidget_2.setItem(irow, 0, QtWidgets.QTableWidgetItem(clueNum))
+                            self.ui.tableWidget_2.setItem(irow, 1, QtWidgets.QTableWidgetItem(timex))    
+                            self.ui.tableWidget_2.setItem(irow, 2, QtWidgets.QTableWidgetItem(radioLoc))    
+                            self.ui.tableWidget_2.setItem(irow, 3, QtWidgets.QTableWidgetItem(msg))    
+                            prevColor=self.ui.tableWidget_2.item(irow,1).background().color().name()
                             newColor=stateColorDict.get(prevColor,self.color[0])
-                            self.setRowColor(self.ui.tableWidget_2,0,newColor)
-                            self.totalRows = self.ui.tableWidget_2.rowCount()
+                            self.setRowColor(self.ui.tableWidget_2,irow,newColor)
                             logging.info("status2:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
+                            irow = irow + 1
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
+                self.totalRows2 = self.ui.tableWidget_2.rowCount()
                         
 ## save data
+            if newEntries2 or newEntries:
                 self.save_data()            
-                self.forceRescan = 0
+            self.forceRescan = 0
 
     def save_data(self):  
         # logging.info("In savedata")
@@ -1384,7 +1493,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         f2=[x for x in f2 if regex.match('.*_clueLog.csv$',x)]  # get cluelog files
         f=sorted(f,key=os.path.getmtime,reverse=True)
         f2=sorted(f2,key=os.path.getmtime,reverse=True)
-        print("############################### C L U E:"+str(f2))
         for file in f:
             l=[file,os.path.getsize(file),os.path.getmtime(file)]
             self.csvFiles.append(l)
@@ -1395,7 +1503,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     def readWatchedFile(self):
         newEntries=[]
         newEntries2=[]
-        for line in Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False):
+        if self.csvFiles !=[]:
+          for line in Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False):
             inStrg = False
             for i in range(len(line)-1):  # stop b4 last char
                 if line[i] == '"' or inStrg:
@@ -1406,8 +1515,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         continue 
                     inStrg = True    
             newEntries.append(line.split(','))
-            print("new1:"+str(newEntries))
-        for line in Pygtail(self.watchedFile2, offset_file=self.offsetFileName2, copytruncate=False):
+        if self.csvFiles2 !=[]:
+          for line in Pygtail(self.watchedFile2, offset_file=self.offsetFileName2, copytruncate=False):
             inStrg = False
             for i in range(len(line)-1):  # stop b4 last char
                 if line[i] == '"' or inStrg:
@@ -1418,7 +1527,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         continue 
                     inStrg = True    
             newEntries2.append(line.split(','))
-            print("new2:"+str(newEntries2))
         return newEntries,newEntries2
                 
     def updateClock(self):
