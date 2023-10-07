@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\Users\steve\Documents\python\plans_console-master\plans_consoleY.ui'
+# Form implementation generated from reading ui file '\\STEVE71\Users\steve\Documents\python\plans_console-master\plans_console2.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.6
 #
@@ -207,14 +207,19 @@ class Ui_PlansConsole(object):
         self.TmAsAddHorizLayout.setStretch(3, 1)
         self.TmAsAddHorizLayout.setStretch(4, 1)
         self.rightVertLayout.addLayout(self.TmAsAddHorizLayout)
-        spacerItem = QtWidgets.QSpacerItem(20, 10, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
+        spacerItem = QtWidgets.QSpacerItem(20, 13, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
         self.rightVertLayout.addItem(spacerItem)
         self.clockResetHorizLayout = QtWidgets.QHBoxLayout()
         self.clockResetHorizLayout.setObjectName("clockResetHorizLayout")
         self.clock = QtWidgets.QLCDNumber(PlansConsole)
         self.clock.setObjectName("clock")
         self.clockResetHorizLayout.addWidget(self.clock)
+        self.printButton = QtWidgets.QPushButton(PlansConsole)
+        self.printButton.setMinimumSize(QtCore.QSize(100, 0))
+        self.printButton.setObjectName("printButton")
+        self.clockResetHorizLayout.addWidget(self.printButton, 0, QtCore.Qt.AlignRight)
         self.rescanButton = QtWidgets.QPushButton(PlansConsole)
+        self.rescanButton.setEnabled(True)
         self.rescanButton.setText("")
         icon = QtGui.QIcon()
         icon.addPixmap(QtGui.QPixmap(":/plans_console/reload-icon.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
@@ -430,6 +435,7 @@ class Ui_PlansConsole(object):
         self.comboBox.setItemText(9, _translate("PlansConsole", "LE"))
         self.label_4.setText(_translate("PlansConsole", "Med"))
         self.OKbut.setText(_translate("PlansConsole", "Ok"))
+        self.printButton.setText(_translate("PlansConsole", "Print"))
         self.mapsGroup.setTitle(_translate("PlansConsole", "Maps"))
         self.debriefButton.setText(_translate("PlansConsole", "Debrief"))
         self.incidentButton.setText(_translate("PlansConsole", "Incident"))

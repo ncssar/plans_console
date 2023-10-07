@@ -20,6 +20,7 @@
 #  2022       TMG         upgraded the UI and added the debrief map
 #  7/8/2023   SDL         changed Med icon to not display team# on the map
 #  8/27/2023  SDL         fixed issue with case and not finding an edited object (part of fix is in sartopo_python)
+#  10/6/2023  SDL         added clue log listing and print button for clue log and assignments
 #
 # #############################################################################
 #
@@ -459,8 +460,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.updateClock()
 
         
-        
-        
         # hardcode workarounds to avoid uncaught exceptions during save_data TMG 1-18-21
         self.watchedFile='watched.csv'
         self.watchedFile2='watched2.csv'
@@ -469,9 +468,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.csvFiles=[]
         self.csvFiles2=[]
 
-
-
-
+        
         if self.watchedDir:
             logging.info('watched dir:'+str(self.watchedDir))
             self.ui.notYet=QMessageBox(QMessageBox.Information,"Waiting...","No valid radiolog file was found.\nRe-scanning every few seconds...",
@@ -481,6 +478,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.notYet.show()
             self.ui.notYet.buttonClicked.connect(self.notYetButtonClicked)
             self.ui.rescanButton.clicked.connect(self.rescanButtonClicked)
+            self.ui.printButton.clicked.connect(self.printButtonClicked)
 
             self.rescanTimer=QTimer(self)
             self.rescanTimer.timeout.connect(self.rescan)
@@ -490,6 +488,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.ui.notYet.close()           # we have csv file in reload
         else:
             logging.info('No watched dir specified.')
+        
                   
         self.refreshTimer=QTimer(self)
         self.refreshTimer.timeout.connect(self.refresh)
@@ -677,6 +676,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.incidentLinkLight.setStyleSheet(BG_GREEN)
             if not self.reloaded:  
                 self.getObjects()
+            '''
+            #Z1
+            else:
+                pass
+                ####self.rescan()   #QQ   ## Do a rescan here to get info updated after a reload
+            '''    
             self.tryAgain=False
         else:
             logging.info('Connection failed.')
@@ -1034,11 +1039,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         else: # don't change the incident map if dialog is canceled
             self.tryAgain=False
 
-    def debriefButtonClicked(self):
-        ###  Use the debrief button to Print clue and assignment tables
+
+    def printButtonClicked(self):
         print("Printing.....")
         self.printx()
-        '''
+
+
+    def debriefButtonClicked(self):
         if not self.sts or self.sts.apiVersion<0:
             inform_user_about_issue('You must establish a link with the Incident Map first.',parent=self)
         else:
@@ -1054,7 +1061,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.ui.debriefMapField.setText('<None>')
                 del self.dmg
                 self.dmg=None # so that the next debrief button click will try again
-        '''        
 
     def rescanButtonClicked(self):
         self.forceRescan = 1
@@ -1147,21 +1153,26 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             #
             #print("PRINT NEW ENTRIES:"+str(newEntries)+str(newEntries2)+str(self.forceRescan))
             if newEntries:   ## Only adding new entries, not overridding previous entries
-                ix = 0
-                irow = 0
-                self.totalRows = 0
-                self.ui.tableWidget.setRowCount(0)
+                #Z1ix = 0
+                #Zirow = 0     #QQ top row
+                #Z1self.totalRows = 0 #QQ
+                if self.forceRescan == 1:   #QQ
+                    self.ui.tableWidget.setRowCount(0) #QQ
                 for entry in newEntries:
+                    irow = 0       # forcing to 0 keeps the most recent at the top #QQ
                     logging.info("In loop: %s"% entry)
                     #14: get rid of any elements after 10 (e.g. 11 = operator ID - not needed here)
                     if len(entry)>10:
                         entry=entry[:10]                 
                     if len(entry)==10:
+                        '''
+                        #Z1
                         if self.forceRescan == 1:
                             logging.info("AT force rescan")   # question if this loop actually gets used
                             if ix < self.totalRows:
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
+                        '''
                         timex,tf,callsign,msg,radioLoc,status,epoch,d1,d2,d3=entry
                         if msg.find('Radio Log Begins') > -1:    
                             logging.info('Entry with RADIO LOG BEGINS skipped.')
@@ -1176,26 +1187,31 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             newColor=stateColorDict.get(prevColor,self.color[0])
                             self.setRowColor(self.ui.tableWidget,irow,newColor)
                             logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
-                            irow = irow + 1
+                            ##irow = irow + 1   #QQ
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
                 self.totalRows = self.ui.tableWidget.rowCount()
             if newEntries2:
-                self.totalRows2 = 0
-                self.ui.tableWidget_2.setRowCount(0)
-                ix = 0
-                irow = 0
+                #Z1ix = 0
+                #Zirow = 0    #QQ
+                #Z1self.totalRows2 = 0 #QQ
+                if self.forceRescan == 1:   #QQ
+                    self.ui.tableWidget_2.setRowCount(0) #QQ
                 for entry in newEntries2:
+                    irow = 0       # forcing to 0 keeps the most recent at the top #QQ
                     logging.info("In loop2: %s"% entry)
-                    #14: get rid of any elements after 10 (e.g. 11 = operator ID - not needed here)
+                    #14: get rid of any elements after 8 (e.g. 11 = operator ID - not needed here)
                     if len(entry)>8:
                         entry=entry[:8]                 
                     if len(entry)==8:
+                        '''
+                        #Z1
                         if self.forceRescan == 1:
                             logging.info("AT force rescan2")
                             if ix < self.totalRows2:
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
+                        '''        
                         clueNum,msg,callsign,timex,d1,d2,radioLoc,status=entry
                         if msg.find('Radio Log Begins') > -1:    
                             logging.info('Entry with Radio Log Begins skipped.')
@@ -1209,7 +1225,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             newColor=stateColorDict.get(prevColor,self.color[0])
                             self.setRowColor(self.ui.tableWidget_2,irow,newColor)
                             logging.info("status2:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
-                            irow = irow + 1
+                            #Zirow = irow + 1 #QQ
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
                 self.totalRows2 = self.ui.tableWidget_2.rowCount()
@@ -1244,7 +1260,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             data1.update({'time': self.ui.tableWidget_2.item(itm3, 1).text()})
             data1.update({'radioLoc': self.ui.tableWidget_2.item(itm3, 2).text()})
             data1.update({'msg': self.ui.tableWidget_2.item(itm3, 3).text()})
-            data1.update({'color': self.ui.tableWidget_2.item(itm3,1).background().color().name()})
+            data1.update({'color': self.ui.tableWidget_2.item(itm3,1).background().color().name()}) # doesn't matter - not clickable
             rowz['rowC'+str(itm3)] = data1.copy()
         
         maps={}
@@ -1267,7 +1283,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             n=len(l[2])
         return [incidentURL,debriefURL,n]
 
-    def load_data(self):  # loading radiolog data table and assignments table
+    def load_data(self):  # loading radiolog data table and assignments table from save file
         # logging.info("In load data")
         fid = open(self.pcDataFileName,'r')
         alld = fid.read()
