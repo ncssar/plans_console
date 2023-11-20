@@ -66,7 +66,6 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
 
-
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
 #sartopo_python_installed_version=pkg_resources.get_distribution("sartopo-python").version
@@ -405,6 +404,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.reloaded = False
         self.incidentURL=None
         self.debriefURL=None
+        
+    # hardcode workarounds to avoid uncaught exceptions during save_data TMG 1-18-21
+        self.watchedFile='watched.csv'
+        self.watchedFile2='watched2.csv'
+        self.offsetFileName='offset.csv'
+        self.offsetFileName2='offset2.csv'
+        self.csvFiles=[]
+        self.csvFiles2=[]
+
         if os.path.exists(self.pcDataFileName):
             [i,d,n]=self.preview_saved_data()
             if not self.args.norestore:
@@ -458,15 +466,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # logging.info("Scale:"+str(self.scl))
 
         self.updateClock()
-
-        
-        # hardcode workarounds to avoid uncaught exceptions during save_data TMG 1-18-21
-        self.watchedFile='watched.csv'
-        self.watchedFile2='watched2.csv'
-        self.offsetFileName='offset.csv'
-        self.offsetFileName2='offset2.csv'
-        self.csvFiles=[]
-        self.csvFiles2=[]
 
         
         if self.watchedDir:
@@ -561,34 +560,25 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # choose some colors
         c.setStrokeColorRGB(0,0,0)           ## color for lines
         c.setFillColorRGB(0.15,0.15,0.15)    ## color for text
-        
+        self.csvFiles2 = []        
         f2=glob.glob(self.watchedDir+"\\*.csv")
-        print(f2)
         f2x=[x for x in f2 if regex.match('.*_clueLog.csv$',x)]  # get cluelog files
         f2s=sorted(f2x,key=os.path.getmtime,reverse=True)
-        print(f2s)
         for file in f2s:
             l=[file,os.path.getsize(file),os.path.getmtime(file)]
             self.csvFiles2.append(l)
-        print(self.csvFiles2)   
         self.watchedFile2=self.csvFiles2[0][0]
         ioff = 0.1
         Entries = []
         if (self.watchedDir and self.csvFiles2!=[]):
           with open(self.watchedFile2, 'r') as fid:  
                 lines = fid.readlines()
-          print("LINES:"+str(lines))      
+          newl = False   # set to not working a newline within a string
           for line in lines:      
-                inStrg = False
-                for i in range(len(line)-1):  # stop b4 last char  REMOVE comma in a string
-                    if line[i] == '"' or inStrg:
-                        if line[i] == ',':
-                            line = line[:i-1]+'_'+line[i+1:]       # replace ',' in a string
-                        elif line[i] == '"' and inStrg:
-                            inStrg = False      # end of string
-                            continue 
-                        inStrg = True    
-                Entries.append(line.split(','))
+              line, newl = self.fixStrg(line, newl)  # fix ' and newline in  string
+              if newl:
+                  continue     # in the middle of a multi-line description
+              Entries.append(line.split(','))
           for entry in Entries:
             if len(entry)>8:
                 entry=entry[:8]                 
@@ -599,6 +589,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                c.drawString(0.6*inch, (8.5-ioff)*inch, time)
                c.drawString(1.1*inch, (8.5-ioff)*inch, radioLoc)
                c.drawString(2.0*inch, (8.5-ioff)*inch, msg)
+          c.drawString(0.05*inch, 8.8*inch, datetime.now().strftime("%a %b %d %Y %H:%M:%S"))     
           c.drawString(0.05*inch, (8.5)*inch, 'Cluenum   Time           Location              Message')
           c.showPage()
           # 2nd page
@@ -623,12 +614,57 @@ class PlansConsole(QDialog,Ui_PlansConsole):
              if med != ' ':
                  med = 'Yes'
              c.drawString(3.5*inch, (8.5-ioff)*inch, med)
+          c.drawString(0.05*inch, 8.8*inch, datetime.now().strftime("%a %b %d %Y %H:%M:%S"))     
           c.drawString(0.05*inch, (8.5)*inch, '          Team#               Assignment                         Type                     Medical')
           c.showPage()
  
         c.save()
         pdfx = subprocess.Popen(["C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe", "report.pdf"])
 
+    def fixStrg(self, line, newl):
+        lineX = line
+        if newl:
+            pass # reading next line as part of prior line; replace
+                 # newline with /
+            lineX = self.savel+lineX    # concatenate lines
+            offset = len(self.savel)  # want to continue scan after nl replacement
+            #newl = False         # reset newl mode until a possible next nl
+            #print("LINE:"+str(self.savel)+":"+str(lineX)+"::")
+        else:
+            self.inStrg = False
+            offset= 0
+        #print("INTER:"+str(lineX)+":"+str(self.inStrg)+":"+str(newl)+":"+str(len(lineX)))    
+        #
+        #
+        #  CHECK -1 removal............
+        #
+        for i in range(offset,len(lineX)): # -1):  # stop b4 last char  REMOVE comma in a string
+                                              # also account for newline in a text string
+            ##QQ print("ERROR:"+str(line)+":"+str(i))
+            if lineX[i] == '"' or self.inStrg :
+                #print("A:"+str(lineX[i])+":"+str(i))
+                if lineX[i] == ',':
+                    lineX = lineX[:i]+';'+lineX[i+1:]       # replace ',' in a string
+                if lineX[i] == '\n' or (newl and i == len(lineX)-2):  # do not want to keep newline character
+                    if lineX[i] == '\n':   # some lines appear to have the nl (get rid of)
+                                           # others do not, so keep the character
+                        j = 0
+                    else:
+                        j = 1
+                    lineX = lineX[:i+j]+'/'       # replace 'nl' in a string OR last char w/o finding nl
+                    #print("MOD:"+str(lineX)+":"+str(i))
+                    self.savel = lineX
+                    newl= True
+                    self.inStrg = True
+                    break     # at end of this line, get some more on next call
+                elif lineX[i] == '"' and self.inStrg:
+                    #print("END:"+str(i))
+                    self.inStrg = False      # end of string
+                    newl = False
+                    continue 
+                self.inStrg = True   # only done inside a string  
+
+        return(lineX, newl)
 
     def createSTS(self):
         parse=self.incidentURL.replace("http://","").replace("https://","").split("/")
@@ -705,15 +741,19 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         medMarkers=[f for f in self.sts.getFeatures('Marker') if f['properties'].get('marker-symbol','') == 'medevac-site']
         #  get assignments with teams(s) assigned
         assignmentsWithNumber=[f for f in self.sts.getFeatures('Assignment') if f['properties'].get('number','') != '']
-        #   Need to parsse title to get assignemnt and each team #
-        l = []   # init list of entried
+        #   Need to parse title to get assignemnt and each team #
+        l = []   # init list of entries
         for a in assignmentsWithNumber:
-            s = a['properties']['title'].split(' ')
+            s = re.split(r'[ ,/]', a['properties']['title'])   # split at space or comma or slash
+            # pop warning message that Assignment does not exist - skipping
+            if s[0] == '':    # no assignment or assignment is in number (team) field
+                self.inform_user_about_issue("Mostlikely Assignment name, "+str(s[1])+", is in the number field, skipping")
+                continue
             scnt = len(s)
             #$#if self.flag == 1:
             #$#    scnt = min(scnt,2)
             for k in range(0, scnt-1):
-                if s[k+1].isdigit():
+                if s[k+1].isdigit():     # if this is a number then not LE
                     x = a['properties']['resourceType']
                 else:
                     x = 'LE'
@@ -739,35 +779,51 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def addMarker(self):
         folders=self.sts.getFeatures("Folder")
+        self.fidX = True    # set to something other than None for following test
         if not folders:
+            self.fidX = self.sts.addFolder("X")   # add unused folder for following test
+            print("StatusAddFolder"+str(self.fidX))
+        if self.fidX == None:   # could not add    
             inform_user_about_issue("Mostlikely this session is not connected to the map for write access. Check that the proper account is being used.")
             return
         logging.info('addMarker folders:'+str(folders))
-        fid=False
+        fid=False   # used to help get display of first marker of type Med or LE, see below
         for folder in folders:
             if folder["properties"]["title"]=="Medical":
                 self.fidMed=folder["id"]
-                fid = True
+                fid = True     # use here or below?
             if folder["properties"]["title"]=="LE":
                 self.fidLE=folder["id"]
-                fid = True
-        if not self.fidMed:
-            self.fidMed = self.sts.addFolder("Medical")
-        if not self.fidLE:
-            self.fidLE = self.sts.addFolder("LE")
+                fid = True     # use here or below?
+        #if not self.fidMed:
+        #    self.fidMed = self.sts.addFolder("Medical")
+        #if not self.fidLE:
+        #    self.fidLE = self.sts.addFolder("LE")
         ## icons
         if self.medval == " X":
+            if not self.fidMed:
+                self.fidMed = self.sts.addFolder("Medical")
+                fid = True
             markr = "medevac-site"     # medical +
             clr = "FF0000"
             #rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam,self.curAssign, \  # OLD: team# was displayed on the map
-            rval=self.sts.addMarker(self.latField,self.lonField,' ',self.curTeam+self.curAssign, \
+            rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam,self.curTeam+self.curAssign, \
+                                            clr,markr,None,self.fidMed)
+            if fid:                  # temporary fix   NOW (10/25/2023) does not seem to help
+              print("At reADD marker")
+              time.sleep(4)          # the delay, delete and redo seems to get display of marker
+              self.delMarker()       # removes most recent
+              rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam,self.curTeam+self.curAssign, \
                                             clr,markr,None,self.fidMed)
         elif self.curType == "LE":     # law enforcement
+            if not self.fidLE:
+                self.fidLE = self.sts.addFolder("LE")
+                fid = True
             markr = "icon-ERJ4011P-24-0.5-0.5-ff"     # red dot with blue circle
             clr = "FF0000"           
             rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
                                     self.curAssign,clr,markr,None,self.fidLE)
-            if fid:                  # temporary fix
+            if fid:                  # temporary fix   NOW (10/25/2023) does not seem to help
               print("At reADD marker")
               time.sleep(4)          # the delay, delete and redo seems to get display of marker
               self.delMarker()
@@ -801,15 +857,19 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         rval = self.sts.getFeatures("Folder")     # get Folders
         rval2 = self.sts.getFeatures("Marker")
         ##print("Folders:"+json.dumps(rval))
-        fid = None
+        fidLE = None
+        fidMed = None
         for self.feature2 in rval:
             if self.feature2['properties'].get("title") == 'LE':   # find LE folder Match                
-                fid=self.feature2.get("id")
-                logging.info("id:"+str(fid))
+                fidLE=self.feature2.get("id")
+            if self.feature2['properties'].get("title") == 'Medical':   # find Medical folder Match                
+                fidMed=self.feature2.get("id")
+            if fidLE != None or fidMed != None:    
+                logging.info("id:"+str(fidLE))
                 ##print("Marker:"+json.dumps(rval2))                  
                 # get Markers
                 for self.feature2 in rval2:
-                    if self.feature2['properties'].get('folderId') == fid and \
+                    if (self.feature2['properties'].get('folderId') == fidLE or self.feature2['properties'].get('folderId') == fidMed) and \
                         self.feature2['properties'].get('title').upper() == self.curTeam.upper(): # both folder and Team match
                             logging.info("Marker ID:"+self.feature2['id']+" of team: "+self.curTeam)
                             rval3 = self.sts.delMarker(self.feature2['id'])
@@ -977,8 +1037,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         op=self.ui.geomOpButtonGroup.checkedButton().text()
         selFeatureTitle=self.ui.selFeature.text()
         ## check that the shapes exist
+        selFeatures=self.sts.getFeatures(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'], allowMultiTitleMatch=True)
         selFeature=self.sts.getFeature(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
-        if selFeature == -1:
+        ##if selFeature == -1:
+        if len(selFeatures) > 1:    
             logging.warning(op+' operation failed: Selected feature "'+selFeatureTitle+'" has an issue.')
             inform_user_about_issue(op+' operation failed:\n\nThere are more than one feature with the name "'+selFeatureTitle+'"')
             return
@@ -987,8 +1049,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             inform_user_about_issue(op+' operation failed:\n\nSelected feature "'+selFeatureTitle+'" not found.')
             return
         editorFeatureTitle=self.ui.editorFeature.text()
+        editorFeatures=self.sts.getFeatures(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'], allowMultiTitleMatch=True)
         editorFeature=self.sts.getFeature(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
-        if editorFeature == -1:
+        ##if editorFeature == -1:
+        if len(editorFeatures) > 1:    
             logging.warning(op+' operation failed: Editor feature "'+selFeatureTitle+'" has an issue.')
             inform_user_about_issue(op+' operation failed:\n\nThere are more than one feature with the name "'+editorFeatureTitle+'"')
             return
@@ -998,7 +1062,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             return
         logging.info("%s shape %s with feature %s"%(op,selFeature,editorFeature))
         if op=='Cut':
-            print("AT CUT")
+            #print("AT CUT")
             if not self.sts.cut(selFeature,editorFeature):
                print("F A I L E D")   # #A#
                logging.warning(op+' operation failed.')
@@ -1100,6 +1164,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             logging.info("  found "+self.watchedFile2)
             #self.refresh()
         if self.csvFiles!=[] or self.csvFiles2!=[]:
+            self.forceRescan = 1   #QQ      ### clear rows by setting to no rows
             self.refresh()
 
     # refresh - this is the main radiolog viewing loop
@@ -1107,12 +1172,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     #  - process each new line
     #    - add a row to the appropriate panel's table    
     def refresh(self):
-        if self.update_Tm == 200:    # 10 minutes
+        if self.update_Tm == 200:    # 10 minutes    ## why is there a rescan timeout???
+               # maybe do this, but reset timeout if activity (refresh w/new data) has occurred??
             logging.info("Calling rescan timeout...")
             self.update_Tm = 0
             self.rescan()
         self.update_Tm += 1
-        if self.print_refresh == 20:
+        if self.print_refresh == 20:    # does this do anything??
             logging.info("Refreshing print...")
             self.print_refresh = 0
         self.print_refresh += 1
@@ -1151,12 +1217,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             #
             #  add newEntries section
             #
-            #print("PRINT NEW ENTRIES:"+str(newEntries)+str(newEntries2)+str(self.forceRescan))
             if newEntries:   ## Only adding new entries, not overridding previous entries
+                self.update_Tm = 0   # reset timeout since we got new data
                 #Z1ix = 0
                 #Zirow = 0     #QQ top row
                 #Z1self.totalRows = 0 #QQ
-                if self.forceRescan == 1:   #QQ
+                if self.forceRescan == 1:   #QQ      ### clear rows by setting to no rows
                     self.ui.tableWidget.setRowCount(0) #QQ
                 for entry in newEntries:
                     irow = 0       # forcing to 0 keeps the most recent at the top #QQ
@@ -1168,7 +1234,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         '''
                         #Z1
                         if self.forceRescan == 1:
-                            logging.info("AT force rescan")   # question if this loop actually gets used
+                            logging.info("AT force rescan")   # question if this actually gets used
                             if ix < self.totalRows:
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
@@ -1192,10 +1258,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
                 self.totalRows = self.ui.tableWidget.rowCount()
             if newEntries2:
+                self.update_Tm = 0   # reset timeout since we got new data
                 #Z1ix = 0
                 #Zirow = 0    #QQ
                 #Z1self.totalRows2 = 0 #QQ
-                if self.forceRescan == 1:   #QQ
+                if self.forceRescan == 1:   #QQ   ### clear rows by setting to no rows
+                    # for clue log could do this for normal rescan in that we do not have marking of already 
+                    #    reviewed rows as for radiolog lines
                     self.ui.tableWidget_2.setRowCount(0) #QQ
                 for entry in newEntries2:
                     irow = 0       # forcing to 0 keeps the most recent at the top #QQ
@@ -1207,7 +1276,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         '''
                         #Z1
                         if self.forceRescan == 1:
-                            logging.info("AT force rescan2")
+                            logging.info("AT force rescan2")   # question if this actually gets used)
                             if ix < self.totalRows2:
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
@@ -1519,29 +1588,34 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     def readWatchedFile(self):
         newEntries=[]
         newEntries2=[]
+        #print("Watched:"+str(self.watchedFile))
         if self.csvFiles !=[]:
-          for line in Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False):
-            inStrg = False
-            for i in range(len(line)-1):  # stop b4 last char
-                if line[i] == '"' or inStrg:
-                    if line[i] == ',':
-                        line = line[:i-1]+'_'+line[i+1:]       # replace ',' in a string
-                    elif line[i] == '"' and inStrg:
-                        inStrg = False      # end of string
-                        continue 
-                    inStrg = True    
+          newl = False  
+          try:
+              lines = Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False)
+          except:   # retry if first connection fails
+              lines = Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False)
+              print("At 2nd attempt to read...")
+          ## for line in Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False):
+          for line in lines:
+            #print("LINEZZ:"+str(line))  
+            line, newl = self.fixStrg(line, newl)  # fix ' and newline in  string
+            if newl:
+                #print("In middle")
+                continue     # in the middle of a multi-line description
+            print("FIXED:"+str(line)+":"+str(newl))
             newEntries.append(line.split(','))
         if self.csvFiles2 !=[]:
-          for line in Pygtail(self.watchedFile2, offset_file=self.offsetFileName2, copytruncate=False):
-            inStrg = False
-            for i in range(len(line)-1):  # stop b4 last char
-                if line[i] == '"' or inStrg:
-                    if line[i] == ',':
-                        line = line[:i-1]+'_'+line[i+1:]       # replace ',' in a string
-                    elif line[i] == '"' and inStrg:
-                        inStrg = False      # end of string
-                        continue 
-                    inStrg = True    
+          newl = False  
+          try:
+              lines = Pygtail(self.watchedFile2, offset_file=self.offsetFileName2, copytruncate=False)
+          except:   # retry if first connection fails
+              lines = Pygtail(self.watchedFile2, offset_file=self.offsetFileName2, copytruncate=False)
+          ## for line in Pygtail(self.watchedFile2, offset_file=self.offsetFileName2, copytruncate=False):
+          for line in lines:
+            line, newl = self.fixStrg(line, newl)  # fix ' and newline in  string
+            if newl:
+                continue     # in the middle of a multi-line description
             newEntries2.append(line.split(','))
         return newEntries,newEntries2
                 

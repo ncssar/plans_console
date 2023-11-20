@@ -180,7 +180,8 @@ class SartopoSession():
             newFeatureCallback=None,
             deletedFeatureCallback=None,
             syncCallback=None,
-            useFiddlerProxy=False):
+            useFiddlerProxy=False,
+            caseSensitiveComparisons=False):  # case-insensitive comparisons by default, see caseMatch()
         self.s=requests.session()
         self.apiVersion=-1
         if not mapID or not isinstance(mapID,str) or len(mapID)<3:
@@ -214,6 +215,7 @@ class SartopoSession():
         self.cacheDumpFile=cacheDumpFile
         self.useFiddlerProxy=useFiddlerProxy
         self.syncing=False
+        self.caseSensitiveComparisons=caseSensitiveComparisons
         if not self.setupSession():
             raise STSException
         
@@ -435,6 +437,11 @@ class SartopoSession():
 
         return True
 
+    def caseMatch(self,a,b):
+        if isinstance(a,str) and isinstance(b,str) and not self.caseSensitiveComparisons:
+            a=a.upper()
+            b=b.upper()
+        return a==b
 
     def sendUserdata(self,activeLayers=[['mbt',1]],center=[-120,39],zoom=13):
         j={
@@ -467,7 +474,6 @@ class SartopoSession():
         #     the same id
 
         # logging.info('Sending sartopo "since" request...')
-        ##Q##rj=self.sendRequest('get','since/0',None,returnJson='ALL',timeout=self.syncTimeout)
         rj=self.sendRequest('get','since/'+str(max(0,self.lastSuccessfulSyncTimestamp-500)),None,returnJson='ALL',timeout=self.syncTimeout)
         if rj and rj['status']=='ok':
             if self.syncDumpFile:
@@ -491,7 +497,7 @@ class SartopoSession():
             
             # 2 - update existing features as needed
             if len(rjrsf)>0:
-                #logging.info('  processing '+str(len(rjrsf))+' feature(s):'+str([x['id'] for x in rjrsf]))
+                logging.info('  processing '+str(len(rjrsf))+' feature(s):'+str([x['id'] for x in rjrsf]))
                 # logging.info(json.dumps(rj,indent=3))
                 for f in rjrsf:
                     rjrfid=f['id']
@@ -520,8 +526,7 @@ class SartopoSession():
                                     if self.propertyUpdateCallback:
                                         self.propertyUpdateCallback(f)
                                 else:
-                                    pass
-                                    #logging.info('  response contained properties for '+featureClass+':'+title+' but they matched the cache, so no cache update or callback is performed')
+                                    logging.info('  response contained properties for '+featureClass+':'+title+' but they matched the cache, so no cache update or callback is performed')
                             if title=='None':
                                 title=self.mapData['state']['features'][i]['properties']['title']
                             if 'geometry' in f.keys():
@@ -549,8 +554,7 @@ class SartopoSession():
                                     if self.geometryUpdateCallback:
                                         self.geometryUpdateCallback(f)
                                 else:
-                                    pass
-                                    #logging.info('  response contained geometry for '+featureClass+':'+title+' but it matched the cache, so no cache update or callback is performed')
+                                    logging.info('  response contained geometry for '+featureClass+':'+title+' but it matched the cache, so no cache update or callback is performed')
                             processed=True
                             break
                     # 2b - otherwise, create it - and add to ids so it doesn't get cleaned
@@ -853,8 +857,6 @@ class SartopoSession():
 
         if r.status_code!=200:
             logging.info("response code = "+str(r.status_code))
-            self.syncPause=False
-            return False
 
         if newMap:
             # for CTD 4221 and newer, and internet, a new map request should return 200, and the response data
@@ -922,9 +924,13 @@ class SartopoSession():
                     return False
                 else:
                     if 'status' in rj and rj['status'].lower()!='ok':
-                        logging.warning('response status other than "ok":  '+str(rj))
+                        msg='response status other than "ok"'
+                        if 'message' in rj and 'error saving object' in rj['message'].lower():
+                            msg+='; maybe the user does not have necessary permissions on this map'
+                        msg+=':  '+str(rj)
+                        logging.warning(msg)
                         self.syncPause=False
-                        return rj
+                        return False
                     if returnJson=="ID":
                         id=None
                         if 'result' in rj and 'id' in rj['result']:
@@ -971,11 +977,14 @@ class SartopoSession():
             # return self.sendRequest("post","folder",j,returnJson="ID")
             # add to .mapData immediately
             rj=self.sendRequest('post','folder',j,returnJson='ALL',timeout=timeout)
-            rjr=rj['result']
-            id=rjr['id']
-            self.mapData['ids'].setdefault('Folder',[]).append(id)
-            self.mapData['state']['features'].append(rjr)
-            return id
+            if rj:
+                rjr=rj['result']
+                id=rjr['id']
+                self.mapData['ids'].setdefault('Folder',[]).append(id)
+                self.mapData['state']['features'].append(rjr)
+                return id
+            else:
+                return False
     
     def addMarker(self,
             lat,
@@ -1020,11 +1029,14 @@ class SartopoSession():
             # return self.sendRequest('post','marker',j,id=existingId,returnJson='ID')
             # add to .mapData immediately
             rj=self.sendRequest('post','marker',j,id=existingId,returnJson='ALL',timeout=timeout)
-            rjr=rj['result']
-            id=rjr['id']
-            self.mapData['ids'].setdefault('Marker',[]).append(id)
-            self.mapData['state']['features'].append(rjr)
-            return id
+            if rj:
+                rjr=rj['result']
+                id=rjr['id']
+                self.mapData['ids'].setdefault('Marker',[]).append(id)
+                self.mapData['state']['features'].append(rjr)
+                return id
+            else:
+                return False
 
     def addLine(self,
             points,
@@ -1065,11 +1077,14 @@ class SartopoSession():
             # return self.sendRequest("post","Shape",j,id=existingId,returnJson="ID",timeout=timeout)
             # add to .mapData immediately
             rj=self.sendRequest('post','Shape',j,id=existingId,returnJson='ALL',timeout=timeout)
-            rjr=rj['result']
-            id=rjr['id']
-            self.mapData['ids'].setdefault('Shape',[]).append(id)
-            self.mapData['state']['features'].append(rjr)
-            return id
+            if rj:
+                rjr=rj['result']
+                id=rjr['id']
+                self.mapData['ids'].setdefault('Shape',[]).append(id)
+                self.mapData['state']['features'].append(rjr)
+                return id
+            else:
+                return False
 
     def addPolygon(self,
             points,
@@ -1112,11 +1127,14 @@ class SartopoSession():
             # return self.sendRequest('post','Shape',j,id=existingId,returnJson='ID')
             # add to .mapData immediately
             rj=self.sendRequest('post','Shape',j,id=existingId,returnJson='ALL',timeout=timeout)
-            rjr=rj['result']
-            id=rjr['id']
-            self.mapData['ids'].setdefault('Shape',[]).append(id)
-            self.mapData['state']['features'].append(rjr)
-            return id
+            if rj:
+                rjr=rj['result']
+                id=rjr['id']
+                self.mapData['ids'].setdefault('Shape',[]).append(id)
+                self.mapData['state']['features'].append(rjr)
+                return id
+            else:
+                return False
 
     def addLineAssignment(self,
             points,
@@ -1346,7 +1364,7 @@ class SartopoSession():
             forceRefresh=False):
         timeout=timeout or self.syncTimeout
         # rj=self.sendRequest('get','since/'+str(since),None,returnJson='ALL',timeout=timeout)
-        # call refresh now; refresh will decide whether it needs to do a new doSync call, based
+        # call refresh now; refresh will decide whether it needs to do a new call, based
         #  on time since last doSync response - or, if specified with forceImmediate, will call
         #  doSync regardless of time since last doSync response
         self.refresh(forceImmediate=forceRefresh)
@@ -1395,15 +1413,15 @@ class SartopoSession():
                             s=prop['title'].split()
                             # avoid exception when title exists but is blank
                             if len(s)>0:
-                                if s[0].upper()==title: # since assignments title may include number (not desired for edits) 
+                                if self.caseMatch(s[0],title): # since assignments title may include number (not desired for edits) 
                                     titleMatchCount+=1
                                     rval.append(feature)
                         else:        
-                            if prop['title'].rstrip().upper()==title: # since assignments without number could still have a space after letter
+                            if self.caseMatch(prop['title'].rstrip(),title): # since assignments without number could still have a space after letter
                                 titleMatchCount+=1
                                 rval.append(feature)
                             elif 'letter' in pk: # if the title wasn't a match, try the letter if it exists
-                                if prop.get('letter','').rstrip().upper()==title:
+                                if prop.get('letter','').rstrip()==title:
                                     titleMatchCount+=1
                                     rval.append(feature)
                     else:
@@ -1418,7 +1436,7 @@ class SartopoSession():
                     return rval
                 else:
                     logging.warning('getFeatures: More than one feature matches the specified title.')
-                    return [-1, -1]
+                    return []
             else:
                 return rval
 
@@ -1436,7 +1454,7 @@ class SartopoSession():
             forceRefresh=False):
         r=self.getFeatures(
             featureClass=featureClass,
-            title=title.upper(),
+            title=title,
             id=id,
             featureClassExcludeList=featureClassExcludeList,
             letterOnly=letterOnly,
@@ -1448,7 +1466,10 @@ class SartopoSession():
             if len(r)==1:
                 return r[0]
             elif len(r)<1:
-                logging.warning('getFeature: no match')
+                msg='getFeature: no valid match'
+                if not allowMultiTitleMatch:
+                    msg+='; this may be due to multiple matches while allowMultiTitleMatch is False'
+                logging.warning(msg)
                 return False
             else:
                 msg='getFeature: more than one match found while looking for feature:'
@@ -1460,7 +1481,7 @@ class SartopoSession():
                     msg+=' id='+str(id)
                 logging.warning(msg)
                 logging.info(str(r))
-                return -1
+                return False
         else:
             logging.error('getFeature: return from getFeatures was not a list: '+str(r))
 
@@ -1517,24 +1538,18 @@ class SartopoSession():
                 title=None
             if title is not None:
                 ltKey='title'
-                ltVal=title.upper()
+                ltVal=title
             else:
                 ltKey='letter'
-                ltVal=letter.upper()
+                ltVal=letter
 
             # validation complete; first search based on letter/title, then, if needed, filter based on className if specified
             
             # it's probably quicker to filter by letter/title first, since that should only return a very small number of hits,
             #   as opposed to filtering by className first, which could return a large number of hits
-        #A#  features=[f for f in self.mapData['state']['features'] if f['properties'].get(ltKey,None)==ltVal and f['properties']['class'].lower()==className.lower()]
-         ## USING THE FOLLOWING to be able to compare strings case independently by using upper()  
-            features = []
-            for f in self.mapData['state']['features']:
-                m = f['properties'].get(ltKey,None)
-                if m != None:
-                    if m.upper() == ltVal and f['properties']['class'].lower()==className.lower():
-                        features.append(f)
 
+            features=[f for f in self.mapData['state']['features'] if self.caseMatch(f['properties'].get(ltKey,None),ltVal) and f['properties']['class'].lower()==className.lower()]
+                
             if len(features)==0:
                 logging.warning(' no feature matched class='+str(className)+' title='+str(title)+' letter='+str(letter))
                 return False
@@ -1571,18 +1586,17 @@ class SartopoSession():
         #   }
         # }
 
-        propToWrite=None
-
-        if properties is None:        # appears editFeature needs some properties to be specified to create a valid output feature
-            properties = feature['properties']
-        if properties is not None:    # Logic here could be amended
+        #56 - include all properties in the edit request, even if no properties are being edited
+        # propToWrite=None
+        propToWrite=feature['properties']
+        if properties is not None:
             keys=properties.keys()
-            propToWrite=feature['properties']
+            # propToWrite=feature['properties']
             for key in keys:
                 propToWrite[key]=properties[key]
-            # write the correct title for assignments, since sartopo does not internally recalculate it
+            # write the correct title for assignments, since sartopo does not internally recalcualte it
             if className.lower()=='assignment':
-                propToWrite['title']=propToWrite['letter']+' '+propToWrite['number'].strip()
+                propToWrite['title']=(propToWrite['letter']+' '+propToWrite['number']).strip()
 
         geomToWrite=None
         if geometry is not None:
@@ -1800,10 +1814,6 @@ class SartopoSession():
         elif isinstance(result,MultiPolygon):
             ##### EDIT FEATURE is used to update the original feature information (geometry)
             rids.append(self.editFeature(id=targetShape['id'],geometry={'coordinates':[list(result[0].exterior.coords)]}))
-            print("RIDS:"+str(rids))   #  #A#
-            if rids[0] == False:
-                print("PASSING False")   # #A#
-                return False  # edit did not occur, possibly due to not having write access to the map
             if rids==[]:
                 logging.warning('cut: target shape not found; operation aborted.')
                 return False
