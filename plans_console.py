@@ -21,6 +21,7 @@
 #  7/8/2023   SDL         changed Med icon to not display team# on the map
 #  8/27/2023  SDL         fixed issue with case and not finding an edited object (part of fix is in sartopo_python)
 #  10/6/2023  SDL         added clue log listing and print button for clue log and assignments
+#  12/17/2023 SDL         added try block around getFeatures for med/assignment getObjects
 #
 # #############################################################################
 #
@@ -738,9 +739,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         pass                # look at map to get features to load into the assignent table
         print("Loading assignment table from map")
         #  get Medical marker information
-        medMarkers=[f for f in self.sts.getFeatures('Marker') if f['properties'].get('marker-symbol','') == 'medevac-site']
+        try:
+            medMarkers=[f for f in self.sts.getFeatures('Marker') if f['properties'].get('marker-symbol','') == 'medevac-site']
+        except:
+            return   # if timeout then just return
         #  get assignments with teams(s) assigned
-        assignmentsWithNumber=[f for f in self.sts.getFeatures('Assignment') if f['properties'].get('number','') != '']
+        try:
+            assignmentsWithNumber=[f for f in self.sts.getFeatures('Assignment') if f['properties'].get('number','') != '']
+        except:
+            return   # if timeout then just return
         #   Need to parse title to get assignemnt and each team #
         l = []   # init list of entries
         for a in assignmentsWithNumber:
