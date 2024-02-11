@@ -693,6 +693,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         logging.info("Creating SartopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
         try:
             if 'sartopo.com' in domainAndPort.lower():
+                print("Account:"+str(self.accountName))
                 self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,
                                         configpath=self.stsconfigpath,
                                         account=self.accountName,
@@ -856,6 +857,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             numbr += " "+self.curTeam  #  set the team# and resource from table entry  
         rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign.upper(),properties={'number':numbr, \
                                    'resourceType':self.curType})
+        if rval2 == False:
+            inform_user_about_issue('Could not edit map object, probably do not have access to EDIT this map.',parent=self)
         logging.info("RVAL rtn:"+str(rval)+' : '+str(rval2))
 
 
@@ -1170,11 +1173,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 os.remove(self.offsetFileName2)
             logging.info("  found "+self.watchedFile2)
             #self.refresh()
-        if self.csvFiles!=[] or self.csvFiles2!=[]:
+        if (self.csvFiles!=[] or self.csvFiles2!=[]) and self.link > -1:  # chk that csvfiles exist and that map is connected
             self.forceRescan = 1   #QQ      ### clear rows by setting to no rows
             self.refresh()
+        else:
+            self.inform_user_about_issue("Mostlikely the Radiolog data or the Caltopo map cannot be accessed")
 
-    # refresh - this is the main radiolog viewing loop
+
+    # refresh - this is the main radiolog and caltopo map viewing loop
     #  - read any new lines from the log file
     #  - process each new line
     #    - add a row to the appropriate panel's table    
