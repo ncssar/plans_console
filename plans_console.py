@@ -755,7 +755,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             s = re.split(r'[ ,/]', a['properties']['title'])   # split at space or comma or slash
             # pop warning message that Assignment does not exist - skipping
             if s[0] == '':    # no assignment or assignment is in number (team) field
-                self.inform_user_about_issue("Mostlikely Assignment name, "+str(s[1])+", is in the number field, skipping")
+                inform_user_about_issue("Mostlikely Assignment name, "+str(s[1])+", is in the number field, skipping")
                 continue
             scnt = len(s)
             #$#if self.flag == 1:
@@ -1177,7 +1177,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.forceRescan = 1   #QQ      ### clear rows by setting to no rows
             self.refresh()
         else:
-            self.inform_user_about_issue("Mostlikely the Radiolog data or the Caltopo map cannot be accessed")
+            inform_user_about_issue("Mostlikely the Radiolog data or the Caltopo map cannot be accessed")
 
 
     # refresh - this is the main radiolog and caltopo map viewing loop
