@@ -67,6 +67,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
+VERSION = "1.2"
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -338,6 +339,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.fidMed = None
         self.fidLE = None
         self.sentMsg = []
+        FIRST_PASS = True   # unset after first time thru so that warning above is only given once
         self.color = ["#ffff00", "#cccccc"]  # yellow, gray80
                      
         self.loadRcFile()
@@ -755,7 +757,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         for a in assignmentsWithNumber:
             s = re.split(r'[ ,/]', a['properties']['title'])   # split at space or comma or slash
             # pop warning message that Assignment does not exist - skipping
-            if s[0] == '':    # no assignment or assignment is in number (team) field
+            if s[0] == '' and FIRST_PASS:    # no assignment or assignment is in number (team) field
                 inform_user_about_issue("Mostlikely Assignment name, "+str(s[1])+", is in the number field, skipping")
                 continue
             scnt = len(s)
@@ -778,7 +780,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
  
                 l.append([s[k+1], s[0], x, self.medval])
                 l.sort(key = lambda g: g[0], reverse = True)   # sort by 1st element, team #
-
+        FIRST_PASS = False   # set after first time thru so that warning above is only given once
         for el in l:
                    self.ui.tableWidget_TmAs.insertRow(0)
                    self.ui.tableWidget_TmAs.setItem(0, 0, QtWidgets.QTableWidgetItem(el[0]))
