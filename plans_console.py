@@ -22,6 +22,7 @@
 #  8/27/2023  SDL         fixed issue with case and not finding an edited object (part of fix is in sartopo_python)
 #  10/6/2023  SDL         added clue log listing and print button for clue log and assignments
 #  12/17/2023 SDL         added try block around getFeatures for med/assignment getObjects
+#  3/10/2024  SDL         fixed reload of medical icon into TmAs table
 #
 # #############################################################################
 #
@@ -737,7 +738,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.tryAgain=False
 
     def getObjects(self):   # run when the map has NOT been reloaded
-        pass                # look at map to get features to load into the assignent table
+        pass                # look at map to get features to load into the assignment table
         print("Loading assignment table from map")
         #  get Medical marker information
         try:
@@ -761,14 +762,16 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             #$#if self.flag == 1:
             #$#    scnt = min(scnt,2)
             for k in range(0, scnt-1):
-                if s[k+1].isdigit():     # if this is a number then not LE
+                if s[k+1].isdigit():     # 2nd char: if this is a number then not LE
                     x = a['properties']['resourceType']
                 else:
                     x = 'LE'
                 Med = False    
                 for m in medMarkers:
+                    print("Med Info Chk:"+str(m)+":"+str(s[k+1]+s[0]))
                     #if m['properties']['title'] == s[k+1] and m['properties']['description'] == s[0]:   #OLD team# was displayed on the map
-                    if m['properties']['title'] == ' ' and m['properties']['description'] == s[k+1]+s[0]:
+                    if m['properties']['title'] == s[k+1] and m['properties']['description'] == s[k+1]+s[0]:
+                       print("Found") 
                        Med = True          #  will get Medical info from the Marker
                 if Med: self.medval = " X"
                 else: self.medval = " "    #  need at least a space so that it is not empty
