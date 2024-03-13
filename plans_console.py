@@ -67,7 +67,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.2"
+VERSION = "1.21"
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -339,7 +339,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.fidMed = None
         self.fidLE = None
         self.sentMsg = []
-        FIRST_PASS = True   # unset after first time thru so that warning above is only given once
+        self.FIRST_PASS = True   # unset after first time thru so that warning above is only given once
         self.color = ["#ffff00", "#cccccc"]  # yellow, gray80
                      
         self.loadRcFile()
@@ -757,7 +757,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         for a in assignmentsWithNumber:
             s = re.split(r'[ ,/]', a['properties']['title'])   # split at space or comma or slash
             # pop warning message that Assignment does not exist - skipping
-            if s[0] == '' and FIRST_PASS:    # no assignment or assignment is in number (team) field
+            if s[0] == '' and self.FIRST_PASS:    # no assignment or assignment is in number (team) field
                 inform_user_about_issue("Mostlikely Assignment name, "+str(s[1])+", is in the number field, skipping")
                 continue
             scnt = len(s)
@@ -770,17 +770,17 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     x = 'LE'
                 Med = False    
                 for m in medMarkers:
-                    print("Med Info Chk:"+str(m)+":"+str(s[k+1]+s[0]))
+                    #print("Med Info Chk:"+str(m)+":"+str(s[k+1]+s[0]))
                     #if m['properties']['title'] == s[k+1] and m['properties']['description'] == s[0]:   #OLD team# was displayed on the map
                     if m['properties']['title'] == s[k+1] and m['properties']['description'] == s[k+1]+s[0]:
-                       print("Found") 
+                       #print("Found") 
                        Med = True          #  will get Medical info from the Marker
                 if Med: self.medval = " X"
                 else: self.medval = " "    #  need at least a space so that it is not empty
  
                 l.append([s[k+1], s[0], x, self.medval])
                 l.sort(key = lambda g: g[0], reverse = True)   # sort by 1st element, team #
-        FIRST_PASS = False   # set after first time thru so that warning above is only given once
+        self.FIRST_PASS = False   # set after first time thru so that warning above is only given once
         for el in l:
                    self.ui.tableWidget_TmAs.insertRow(0)
                    self.ui.tableWidget_TmAs.setItem(0, 0, QtWidgets.QTableWidgetItem(el[0]))
@@ -1157,7 +1157,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.rescanTimer.stop()
             self.ui.notYet.close()
             self.watchedFile=self.csvFiles[0][0]
-            self.setWindowTitle("Plans_console B - "+os.path.basename(self.watchedFile))
+            logging.info("Setting window title")
+            self.setWindowTitle("Plans_console - "+os.path.basename(self.watchedFile)+"  Version "+VERSION)
             # remove the pygtail offset file, if any, so pygtail will
             #  read from the beginning even if this file has already
             #  been read by pygtail
@@ -1602,6 +1603,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         for file in f2:
             l=[file,os.path.getsize(file),os.path.getmtime(file)]
             self.csvFiles2.append(l)
+        print("LIST:"+str(self.csvFiles))    
 
     def readWatchedFile(self):
         newEntries=[]
