@@ -23,6 +23,7 @@
 #  10/6/2023  SDL         added clue log listing and print button for clue log and assignments
 #  12/17/2023 SDL         added try block around getFeatures for med/assignment getObjects
 #  3/10/2024  SDL         fixed reload of medical icon into TmAs table
+#  3/17/2024  SDL         redefined check for LE callsign & trying to remove duplicate radiolog entries
 #
 # #############################################################################
 #
@@ -67,7 +68,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.21"
+VERSION = "1.22"
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -755,7 +756,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         #   Need to parse title to get assignemnt and each team #
         l = []   # init list of entries
         for a in assignmentsWithNumber:
-            s = re.split(r'[ ,/]', a['properties']['title'])   # split at space or comma or slash
+            s = re.split(r'[ ,/]', a['properties']['title'])   # split at space or comma or slash (get assignment & teams)
             # pop warning message that Assignment does not exist - skipping
             if s[0] == '' and self.FIRST_PASS:    # no assignment or assignment is in number (team) field
                 inform_user_about_issue("Mostlikely Assignment name, "+str(s[1])+", is in the number field, skipping")
@@ -763,11 +764,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             scnt = len(s)
             #$#if self.flag == 1:
             #$#    scnt = min(scnt,2)
-            for k in range(0, scnt-1):
-                if s[k+1].isdigit():     # 2nd char: if this is a number then not LE
-                    x = a['properties']['resourceType']
-                else:
+            for k in range(0, scnt-1):   # run thru team numbers (or LE callsign)
+                if len(s[k+1]) >= 3 and (s[k+1][0].isdigit() and s[k+1][1].isalpha() and s[k+1][2].isdigit()):  # 2nd char is a digit, not LE
                     x = 'LE'
+                else:
+                    x = a['properties']['resourceType']
                 Med = False    
                 for m in medMarkers:
                     #print("Med Info Chk:"+str(m)+":"+str(s[k+1]+s[0]))
@@ -1157,7 +1158,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.rescanTimer.stop()
             self.ui.notYet.close()
             self.watchedFile=self.csvFiles[0][0]
-            logging.info("Setting window title")
             self.setWindowTitle("Plans_console - "+os.path.basename(self.watchedFile)+"  Version "+VERSION)
             # remove the pygtail offset file, if any, so pygtail will
             #  read from the beginning even if this file has already
@@ -1243,6 +1243,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 #Z1self.totalRows = 0 #QQ
                 if self.forceRescan == 1:   #QQ      ### clear rows by setting to no rows
                     self.ui.tableWidget.setRowCount(0) #QQ
+                prev_entry = ''    
                 for entry in newEntries:
                     irow = 0       # forcing to 0 keeps the most recent at the top #QQ
                     logging.info("In loop: %s"% entry)
@@ -1262,6 +1263,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                         if msg.find('Radio Log Begins') > -1:    
                             logging.info('Entry with RADIO LOG BEGINS skipped.')
                         else:
+                            if prev_entry == entry:
+                                continue       # skip as must have been a hiccup
                             self.ui.tableWidget.insertRow(irow)
                             self.ui.tableWidget.setItem(irow, 0, QtWidgets.QTableWidgetItem(timex))
                             self.ui.tableWidget.setItem(irow, 1, QtWidgets.QTableWidgetItem(callsign))    
@@ -1273,6 +1276,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             self.setRowColor(self.ui.tableWidget,irow,newColor)
                             logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
                             ##irow = irow + 1   #QQ
+                            prev_entry = entry
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
                 self.totalRows = self.ui.tableWidget.rowCount()
