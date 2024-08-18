@@ -24,6 +24,7 @@
 #  12/17/2023 SDL         added try block around getFeatures for med/assignment getObjects
 #  3/10/2024  SDL         fixed reload of medical icon into TmAs table
 #  3/17/2024  SDL         redefined check for LE callsign & trying to remove duplicate radiolog entries
+#  8/17/2024  SDL         bug  assignment number with embedded extra spaces
 #
 # #############################################################################
 #
@@ -68,7 +69,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.22"
+VERSION = "1.23"
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -738,25 +739,30 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 if not self.incidentURL:
                     self.tryAgain=False
             else:
-                self.tryAgain=False
+                self.tryAgain=False                 
 
-    def getObjects(self):   # run when the map has NOT been reloaded
+    def getObjects(self):   # run when the map has NOT been reloaded OR needs to be updated
         pass                # look at map to get features to load into the assignment table
         print("Loading assignment table from map")
         #  get Medical marker information
         try:
             medMarkers=[f for f in self.sts.getFeatures('Marker') if f['properties'].get('marker-symbol','') == 'medevac-site']
+            print("updating markers")
         except:
             return   # if timeout then just return
         #  get assignments with teams(s) assigned
         try:
             assignmentsWithNumber=[f for f in self.sts.getFeatures('Assignment') if f['properties'].get('number','') != '']
+            print("updating assignments with teams")
         except:
             return   # if timeout then just return
         #   Need to parse title to get assignemnt and each team #
         l = []   # init list of entries
         for a in assignmentsWithNumber:
-            s = re.split(r'[ ,/]', a['properties']['title'])   # split at space or comma or slash (get assignment & teams)
+            s = re.sub(' +', ' ',a['properties']['title'].strip())   # split at space or comma or slash (get assignment & teams)
+            s = re.split(r'[ ,/]', s)   # split at space or comma or slash (get assignment & teams)
+            #s = re.split(r'[ ,/]', a['properties']['title'].strip())   # split at space or comma or slash (get assignment & teams)
+            print("####### "+str(s)+"::"+str(a['properties']['title'].strip())+"::")
             # pop warning message that Assignment does not exist - skipping
             if s[0] == '' and self.FIRST_PASS:    # no assignment or assignment is in number (team) field
                 inform_user_about_issue("Mostlikely Assignment name, "+str(s[1])+", is in the number field, skipping")
@@ -1049,7 +1055,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # eventually, we can use STSFeatureComboBox to allow autocomplete on each feature name;
         #  that will also do an immediate cache refresh when the fields are opened; until then,
         #  we can force an immediate refresh now, when the button is clicked.
-        self.sts.refresh(forceImmediate=True)
+        self.sts._refresh(forceImmediate=True)
         op=self.ui.geomOpButtonGroup.checkedButton().text()
         selFeatureTitle=self.ui.selFeature.text()
         ## check that the shapes exist
@@ -1201,6 +1207,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             logging.info("Refreshing print...")
             self.print_refresh = 0
         self.print_refresh += 1
+        ##
+        # updating the team/assignment table
+        ##
         if self.update_TmAs == 4:
             while self.flag_TmAs_Ok:    # wait until Ok button operation is complete
                 pass
@@ -1212,12 +1221,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.curAssign = self.ui.tableWidget_TmAs.item(i,1).text().upper()
                 if self.curAssign not in ["TR", "IC"]:   # keep these entries; they do not have assignments on map
                     self.ui.tableWidget_TmAs.removeRow(i)
-            self.getObjects()
+            self.getObjects()       # read objects on the map and update the table
             self.flag_TmAs_getobj = False
             ## look for multiple entries for a given team. If so, pop up a warning
             fnd = []
             resend = []
-            for itm in range(self.ui.tableWidget_TmAs.rowCount()):    
+            for itm in range(self.ui.tableWidget_TmAs.rowCount()):    # look for team in multiple assignments
                 d = self.ui.tableWidget_TmAs.item(itm, 0).text()
                 if d.upper() not in fnd:              # add team# to queue on first appearance
                     fnd.append(d.upper())
@@ -1231,6 +1240,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 if itm not in resend:
                     self.sentMsg.remove(itm)         # if team# count has been corrected, elim from sentMsg
         self.update_TmAs += 1
+        ##
+        #    updating the radiolog listing table
+        ##
         if (self.watchedDir and (self.csvFiles!=[] or self.csvFiles2!=[])):
             newEntries, newEntries2=self.readWatchedFile()
             #
