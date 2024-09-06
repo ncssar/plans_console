@@ -304,7 +304,7 @@ def sortByTitle(item):
 class PlansConsole(QDialog,Ui_PlansConsole):
     def __init__(self,parent):
         QDialog.__init__(self)
-        logging.info('Plans Console startup at '+datetime.now().strftime("%a %b %d %Y %H:%M:%S"))
+        logging.info('Plans Console Vers '+str(VERSION)+' startup at '+datetime.now().strftime("%a %b %d %Y %H:%M:%S"))
 
         self.ldpi=1 # font size calculations (see moveEvent)
         self.parent=parent
