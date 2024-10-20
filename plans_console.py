@@ -25,6 +25,7 @@
 #  3/10/2024  SDL         fixed reload of medical icon into TmAs table
 #  3/17/2024  SDL         redefined check for LE callsign & trying to remove duplicate radiolog entries
 #  8/17/2024  SDL         bug  assignment number with embedded extra spaces
+# 10/20/2024  SDL         add check for empty assignment letter
 #
 # #############################################################################
 #
@@ -69,7 +70,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.23"
+VERSION = "1.24"
 
 sartopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -1444,13 +1445,16 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def assignTab_OK_clicked(self):   # add, delete, modify entry
         if self.sts == None:
-            msg = "Not connected to map"
+            msg = "Not connected to a map"
             inform_user_about_issue(msg)
-            return              # skip as not connected
-        while self.flag_TmAs_getobj:    # wait until getObject operation is complete
+            return                    # skip as not connected
+        while self.flag_TmAs_getobj:  # wait until getObject operation is complete
             pass
         self.flag_TmAs_Ok = True
         self.curAssign = self.ui.Assign.text().upper()
+        if self.curAssign == '':      # may be due to double click as things were slow
+            self.flag_TmAs_Ok = False
+            return                    # No entry, so ignore
         a=self.sts.getFeatures(featureClass='Assignment',title=self.curAssign,letterOnly=True,allowMultiTitleMatch=True)
         # logging.info('getFeatures:'+str(a))
         if self.curAssign not in ['RM','IC','TR'] and len(a)!=1:
