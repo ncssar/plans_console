@@ -2683,7 +2683,7 @@ class DebriefMapGenerator(QObject):
 
     # parseTrackName: return False if not a track, or [assignment,team,suffix] if a track
     def parseTrackName(self,t):
-        tparse=re.split('(\d+)',t.upper().replace(' ','').replace('-','')) # can result in empty string element(s)
+        tparse=re.split(r'(\d+)',t.upper().replace(' ','').replace('-','')) # can result in empty string element(s)
         if '' in tparse:
             tparse.remove('')
         if len(tparse)==3:

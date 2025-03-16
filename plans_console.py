@@ -25,7 +25,8 @@
 #  3/10/2024  SDL         fixed reload of medical icon into TmAs table
 #  3/17/2024  SDL         redefined check for LE callsign & trying to remove duplicate radiolog entries
 #  8/17/2024  SDL         bug  assignment number with embedded extra spaces
-# 10/20/2024  SDL         add check for empty assignment letter
+# 10/20/2024  SDL         add check for empty assignment letter (saving color for main/ckue table rows)
+#  3/14/2025  SDL 1.24    allow IC/TR to create a table entry, implemented color restore upon rescan
 #
 # #############################################################################
 #
@@ -259,7 +260,7 @@ statusColorDict["Available"]=["00ffff","000000"]
 statusColorDict["In Transit"]=["2222ff","eeeeee"]
 statusColorDict["Waiting for Transport"]=["2222ff","eeeeee"]
 
-stateColorDict={}
+stateColorDict={}    # used to toggle color
 stateColorDict["#ff4444"]="#eeeeee"
 stateColorDict["#eeeeee"]="#ff4444"
 sys.tracebacklimit = 1000
@@ -342,6 +343,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.fidMed = None
         self.fidLE = None
         self.sentMsg = []
+        self.savedData = []      # data saved prior to a rescan
         self.FIRST_PASS = True   # unset after first time thru so that warning above is only given once
         self.color = ["#ffff00", "#cccccc"]  # yellow, gray80
                      
@@ -626,7 +628,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
           c.showPage()
  
         c.save()
-        pdfx = subprocess.Popen(["C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe", "report.pdf"])
+        pdfx = subprocess.Popen(["C:/Program Files/Adobe/Acrobat DC/Acrobat/Acrobat.exe", "report.pdf"])
 
     def fixStrg(self, line, newl):
         lineX = line
@@ -1155,8 +1157,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             
     def rescan(self):
         logging.info("scanning "+self.watchedDir+" for latest valid csv file...")
-        self.csvFiles=[]
-        self.csvFiles2=[]
+        self.csvFiles=[]      # csvFiles is the main radiolog table
+        self.csvFiles2=[]     # csvFiles2 is the clue table
         self.readDir()
         #
         #  added section for self.csvFiles2
@@ -1173,6 +1175,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if os.path.isfile(self.offsetFileName):
                 os.remove(self.offsetFileName)
             logging.info("  found "+self.watchedFile)
+            self.get_data()   # get saved data to set color
             #self.refresh()
         if self.csvFiles2!=[]:
             self.rescanTimer.stop()
@@ -1256,10 +1259,17 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 #Z1self.totalRows = 0 #QQ
                 if self.forceRescan == 1:   #QQ      ### clear rows by setting to no rows
                     self.ui.tableWidget.setRowCount(0) #QQ
+                    #  if forced, previous rows will be reloaded.  So, we need to get their prior color
+                    #  therefore, need to correlate the saved file info with lines in watchedFile (oldest lines)
+                    #  Should be able to compare the first line in saved data with lines from watchedFile.  When it
+                    #     matches pickup at least the color (maybe all data) from the saved file
+                    #  Can do match on watchedFile[0, 2 and 3] and savedFile[0, 1 and 2]
                 prev_entry = ''    
+                fndMatch = False   # looking for savedData match to entry in watchedFile
+                savedRow = 0       # initialize
                 for entry in newEntries:
                     irow = 0       # forcing to 0 keeps the most recent at the top #QQ
-                    logging.info("In loop: %s"% entry)
+                    #logging.info("In loop: %s"% entry)
                     #14: get rid of any elements after 10 (e.g. 11 = operator ID - not needed here)
                     if len(entry)>10:
                         entry=entry[:10]                 
@@ -1272,7 +1282,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                 ix = ix + 1
                                 continue    # skip rows until get to new rows
                         '''
-                        timex,tf,callsign,msg,radioLoc,status,epoch,d1,d2,d3=entry
+                        timex,tf,callsign,msg,radioLoc,status,epoch,d1,d2,d3=entry  # values in watchedFile
+                        ##  'time' 'callsign' 'msg' 'radioLoc' 'status' 'color'       values in save file
+
                         if msg.find('Radio Log Begins') > -1:    
                             logging.info('Entry with RADIO LOG BEGINS skipped.')
                         else:
@@ -1284,15 +1296,28 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             self.ui.tableWidget.setItem(irow, 2, QtWidgets.QTableWidgetItem(msg))    
                             self.ui.tableWidget.setItem(irow, 3, QtWidgets.QTableWidgetItem(radioLoc))    
                             self.ui.tableWidget.setItem(irow, 4, QtWidgets.QTableWidgetItem(status))    
-                            prevColor=self.ui.tableWidget.item(irow,1).background().color().name()
-                            newColor=stateColorDict.get(prevColor,self.color[0])
-                            self.setRowColor(self.ui.tableWidget,irow,newColor)
-                            logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
+                            if self.savedData:    # implies there was prior stored data to use
+                                if (self.savedData[0][0] == timex and self.savedData[0][1] == callsign and self.savedData[0][2] == msg) \
+                                    or fndMatch:
+                                    self.setRowColor(self.ui.tableWidget,irow,self.savedData[savedRow][3])
+                                    if self.savedData[savedRow][0] != timex or self.savedData[savedRow][1] != callsign or  \
+                                        self.savedData[savedRow][2] != msg:
+                                            logging.error("Row "+str(savedRow)+" does not match corresponding row in watchedFile")
+                                    savedRow += 1      # get ready for next row
+                                    fndMatch = True    # found first matched row
+                                    # may want to get data from the savedData as well as the color (but not doing it now)
+                            else:
+                                prevColor=self.ui.tableWidget.item(irow,1).background().color().name()
+                                newColor=stateColorDict.get(prevColor,self.color[0])
+                                self.setRowColor(self.ui.tableWidget,irow,newColor)
+                            #logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
                             ##irow = irow + 1   #QQ
                             prev_entry = entry
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
                 self.totalRows = self.ui.tableWidget.rowCount()
+                if self.savedData and not fndMatch:
+                    logging.error("Did not find match in savedData and watchedFile information")
             if newEntries2:
                 self.update_Tm = 0   # reset timeout since we got new data
                 #Z1ix = 0
@@ -1304,7 +1329,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     self.ui.tableWidget_2.setRowCount(0) #QQ
                 for entry in newEntries2:
                     irow = 0       # forcing to 0 keeps the most recent at the top #QQ
-                    logging.info("In loop2: %s"% entry)
+                    #logging.info("In loop2: %s"% entry)
                     #14: get rid of any elements after 8 (e.g. 11 = operator ID - not needed here)
                     if len(entry)>8:
                         entry=entry[:8]                 
@@ -1327,9 +1352,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             self.ui.tableWidget_2.setItem(irow, 2, QtWidgets.QTableWidgetItem(radioLoc))    
                             self.ui.tableWidget_2.setItem(irow, 3, QtWidgets.QTableWidgetItem(msg))    
                             prevColor=self.ui.tableWidget_2.item(irow,1).background().color().name()
-                            newColor=stateColorDict.get(prevColor,self.color[0])
+                            newColor=stateColorDict.get(prevColor,self.color[0])  # clue rows do not change color if clicked
                             self.setRowColor(self.ui.tableWidget_2,irow,newColor)
-                            logging.info("status2:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
+                            #logging.info("status2:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
                             #Zirow = irow + 1 #QQ
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
@@ -1426,7 +1451,19 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             irow = irow + 1
         fid.close()
         
-    def setRowColor(self,table,row,color):
+        
+    def get_data(self):  # getting radiolog data table and putting in a list
+        # logging.info("In get data")
+        with open(self.pcDataFileName,'r')  as fid:
+            alld = fid.read()
+            l = json.loads(alld)
+            #logging.info("Get:"+str(l))
+            self.savedData = []
+            for key in reversed(l[2]):    # skip the first 2 row entries as header info
+                self.savedData.append([l[2][key]['time'], l[2][key]['callsign'], l[2][key]['msg'], l[2][key]['color']])
+
+
+    def setRowColor(self,table,row,color):     # sets each column to the desired color
         for col in range(table.columnCount()):
             table.item(row,col).setBackground(QColor(color))
 
@@ -1540,18 +1577,30 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         ##  ifnd=1  in table and on map          - update/moving
         ##  ifnd=2  in table but not on map      - add to map (except IC or TR)
         # usually won't be assignment IC nor TR
+        '''
+        ###############   REMOVE this section to allow entry for IC or TR
         if ifnd == 0 and (self.curAssign in ['IC','TR']) and \
                           self.ui.comboBox.currentText() != "LE":
-            pass # beep
-            self.flag_TmAs_Ok = False
+            self.ui.tableWidget_TmAs.insertRow(0)   # changed to create a new entry even for TR or IC (no marker)
+            self.curTeam = self.ui.Team.text()
+            self.ui.tableWidget_TmAs.setItem(irow, 0, QtWidgets.QTableWidgetItem(self.curTeam))
+            self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(self.curAssign))    
+            self.ui.tableWidget_TmAs.setItem(irow, 2, QtWidgets.QTableWidgetItem(self.ui.comboBox.currentText()))
+            self.curType = self.ui.comboBox.currentText()
+            if self.ui.Med.isChecked(): self.medval = " X"
+            else: self.medval = " "    #  need at least a space so that it is not empty
+            self.ui.tableWidget_TmAs.setItem(irow, 3, QtWidgets.QTableWidgetItem(self.medval))  # we don't want marker
+            self.flag_TmAs_Ok = True
+            self.save_data()    
             return
+        '''    
         ###if ifnd == 0: self.ui.tableWidget_TmAs.insertRow(0)
         if ifnd == 1:                                 # moving so remove present loc on map
             self.curTeam = self.ui.tableWidget_TmAs.item(irow,0).text()
             self.delMarker()                          # uses curTeam to find
         cntComma = self.ui.Team.text().count(',')+1   # add 1 for first element
         tok = self.ui.Team.text().split(',')
-        for ix in range(cntComma):     # go thru list of teams that may be in the assignment
+        for ix in range(cntComma):     # go thru list of teams in the assignment, add a row for each
             if ifnd == 0: self.ui.tableWidget_TmAs.insertRow(0)
             self.ui.tableWidget_TmAs.setItem(irow, 0, QtWidgets.QTableWidgetItem(tok[ix]))
             self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(self.curAssign))    
@@ -1626,12 +1675,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         print("LIST:"+str(self.csvFiles))    
 
     def readWatchedFile(self):
-        newEntries=[]
-        newEntries2=[]
+        newEntries=[]       # these are supposed to be NEW entries as using Pygtail to analyze watchedFile
+        newEntries2=[]      #   How does forced reload work if only passing NEW lines to rescan/refresh?
         #print("Watched:"+str(self.watchedFile))
         if self.csvFiles !=[]:
           newl = False  
-          try:
+          try:    # Note if offset file does not exist, whole file is returned
+                  #   rescan removes the offset file, hence upon rescan the whole file is read
               lines = Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False)
           except:   # retry if first connection fails
               lines = Pygtail(self.watchedFile, offset_file=self.offsetFileName, copytruncate=False)
@@ -1643,7 +1693,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if newl:
                 #print("In middle")
                 continue     # in the middle of a multi-line description
-            print("FIXED:"+str(line)+":"+str(newl))
+            #print("FIXED:"+str(line)+":"+str(newl))
             newEntries.append(line.split(','))
         if self.csvFiles2 !=[]:
           newl = False  
