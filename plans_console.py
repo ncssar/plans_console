@@ -7,7 +7,7 @@
 #    assignments and create debrief maps for faster access.
 #
 #   developed for Nevada County Sheriff's Search and Rescue
-#   requires sartopo_python and several other python libs
+#   requires caltopo_python and several other python libs
 #
 #   Attribution, feedback, bug reports and feature requests are appreciated
 #
@@ -19,7 +19,7 @@
 #  6/16/2021  SDL         added cut/expand/crop interface
 #  2022       TMG         upgraded the UI and added the debrief map
 #  7/8/2023   SDL         changed Med icon to not display team# on the map
-#  8/27/2023  SDL         fixed issue with case and not finding an edited object (part of fix is in sartopo_python)
+#  8/27/2023  SDL         fixed issue with case and not finding an edited object (part of fix is in caltopo_python)
 #  10/6/2023  SDL         added clue log listing and print button for clue log and assignments
 #  12/17/2023 SDL         added try block around getFeatures for med/assignment getObjects
 #  3/10/2024  SDL         fixed reload of medical icon into TmAs table
@@ -27,6 +27,8 @@
 #  8/17/2024  SDL         bug  assignment number with embedded extra spaces
 # 10/20/2024  SDL         add check for empty assignment letter (saving color for main/ckue table rows)
 #  3/14/2025  SDL 1.24    allow IC/TR to create a table entry, implemented color restore upon rescan
+#  4/26/2025  SDL 1.25    put try around editfeature due to connection error to Caltopo   
+#  4/28/2025  SDL 1.26    fixed issue with new radiolog entries, added IC and TR assignments, using caltopo_python
 #
 # #############################################################################
 #
@@ -71,21 +73,21 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.24"
+VERSION = "1.26"
 
-sartopo_python_min_version="1.1.2"
+caltopo_python_min_version="1.1.2"
 #import pkg_resources
-#sartopo_python_installed_version=pkg_resources.get_distribution("sartopo-python").version
-#print("sartopo_python version:"+str(sartopo_python_installed_version))
-##if pkg_resources.parse_version(sartopo_python_installed_version)<pkg_resources.parse_version(sartopo_python_min_version):
-#    print("ABORTING: installed sartopo_python version "+str(sartopo_python_installed_version)+ \
-#          " is less than minimum required version "+sartopo_python_min_version)
+#caltopo_python_installed_version=pkg_resources.get_distribution("caltopo-python").version
+#print("caltopo_python version:"+str(caltopo_python_installed_version))
+##if pkg_resources.parse_version(caltopo_python_installed_version)<pkg_resources.parse_version(caltopo_python_min_version):
+#    print("ABORTING: installed caltopo_python version "+str(caltopo_python_installed_version)+ \
+#          " is less than minimum required version "+caltopo_python_min_version)
 #    exit()
 import sys
-sartopo_python_dir='../sartopo_python/sartopo_python'
-if os.path.isdir(sartopo_python_dir):
-    sys.path.insert(1,sartopo_python_dir)
-from sartopo_python import SartopoSession # import before logging to avoid useless numpy-not-installed message
+caltopo_python_dir='../caltopo_python/caltopo_python'
+if os.path.isdir(caltopo_python_dir):
+    sys.path.insert(1,caltopo_python_dir)
+from caltopo_python import CaltopoSession # import before logging to avoid useless numpy-not-installed message
 
 # start logging early, to catch any messages during import of modules
 
@@ -166,7 +168,7 @@ for qrc in glob.glob(os.path.join(os.path.dirname(os.path.realpath(__file__)),'*
         os.system(cmd)
 
 from plans_console_ui import Ui_PlansConsole
-from sartopo_bg import *
+from caltopo_bg import *
 logging.info('PID:'+str(os.getpid()))
 
 def genLpix(ldpi):
@@ -290,7 +292,7 @@ def sortByTitle(item):
 #     |-- Config
 #     |     |-- plans_console.cfg
 #     |     |-- plans_console.rc
-#     |     |-- sts.ini
+#     |     |-- cts.ini
 #     |
 #     |-- save_plans_console.txt
 #     |
@@ -311,7 +313,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.ldpi=1 # font size calculations (see moveEvent)
         self.parent=parent
         self.pcConfigDir=os.path.join(common.pcDir,'Config')
-        self.stsconfigpath=os.path.join(self.pcConfigDir,'sts.ini')
+        self.ctsconfigpath=os.path.join(self.pcConfigDir,'cts.ini')
         self.rcFileName=os.path.join(self.pcConfigDir,'plans_console.rc')
         self.configFileName=os.path.join(self.pcConfigDir,'plans_console.cfg')
         self.pcDataFileName=os.path.join(common.pcDir,'save_plans_console.txt')
@@ -445,13 +447,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             name1=self.args.mapID
             if name1:
                 if "#" in name1:
-                    self.incidentURL="https://sartopo.com/m/"+name1[1:]        # remove the #
+                    self.incidentURL="https://caltopo.com/m/"+name1[1:]        # remove the #
                 elif "$" in name1:
                     self.incidentURL="http://localhost:8080/m/"+name1[1:]     # remove the $
                 else:    
                     self.incidentURL="http://192.168.1.20:8080/m/"+name1
             else:
-                if not ask_user_to_confirm('If the map is at sartopo.com it must be in the NCSSAR account.\n  Continue?',parent=self):
+                if not ask_user_to_confirm('If the map is at caltopo.com it must be in the NCSSAR account.\n  Continue?',parent=self):
                     pass   # abort
                     print("Exiting")
                     exit()
@@ -459,15 +461,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.incidentMapDialog.exec() # force modal
                 self.incidentURL=self.incidentMapDialog.url
                 self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
-        self.sts=None
+        self.cts=None
         self.dmg=None # DebriefMapGenerator instance
         self.link=-1
         self.latField = "0.0"
         self.lonField = "0.0"
         self.NCSO = [39.27, -121.026]
-        self.sinceFolder=0 # sartopo wants integer milliseconds
-        self.sinceMarker=0 # sartopo wants integer milliseconds
-        self.markerList=[] # list of all sartopo markers and their ids
+        self.sinceFolder=0 # caltopo wants integer milliseconds
+        self.sinceMarker=0 # caltopo wants integer milliseconds
+        self.markerList=[] # list of all caltopo markers and their ids
         
 
         # self.scl = min(self.w/self.wd, self.h/self.hd)
@@ -523,8 +525,29 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.incidentMapField.setText(self.incidentURL)
             self.tryAgain=True
             while self.tryAgain:
-                self.createSTS()
+                self.createCTS()
+        # check and create if not existing, line assignments for IC and TR to use as placeHolders for teams at IC or in transit
+        try:
+            assigns = self.cts.getFeatures('Assignment') 
+            print("getting assignments for IC and TR, if they exist")
+        except:
+            pass   # if timeout then just return
+        self.ICid = None
+        self.TRid = None
+        for x in assigns:
+            if 'IC' in x['properties']['title']:
+                self.ICid = x['id']
+                print('Found IC')
+            if 'TR' in x['properties']['title']:
+                self.TRid = x['id']
+                print('Found TR')
 
+        if self.ICid is None:
+           self.ICid = self.cts.addLineAssignment(points=[[-120,39],[-120.01,39.01]], letter='IC')
+           print('create IC')
+        if self.TRid is None:
+           self.TRid = self.cts.addLineAssignment(points=[[-120,39],[-120.01,39.01]], letter='TR')
+           print('create TR')
         self.save_data()
 
         # if debrief map was specified both on command line and in restored file,
@@ -537,7 +560,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             name2=self.args.debriefMapID
             if name2:
                 if "#" in name2:
-                    self.debriefURL="https://sartopo.com/m/"+name2[1:]        # remove the #
+                    self.debriefURL="https://caltopo.com/m/"+name2[1:]        # remove the #
                 elif "$" in name2:
                     self.debriefURL="http://localhost:8080/m/"+name2[1:]     # remove the $
                 else:    
@@ -671,11 +694,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     self.inStrg = False      # end of string
                     newl = False
                     continue 
-                self.inStrg = True   # only done inside a string  
+                self.inStrg = True   # only done inside a string  getting
 
         return(lineX, newl)
 
-    def createSTS(self):
+    def createCTS(self):
         parse=self.incidentURL.replace("http://","").replace("https://","").split("/")
         domainAndPort=parse[0]
         mapID=parse[-1]
@@ -689,7 +712,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             cacheDumpFile='cachedump.'+mapID
             logging.info('Cache dump file will be written after each "since" request; each filename will begin with '+cacheDumpFile)
             cacheDumpFile+='.txt'
-        self.sts=None
+        self.cts=None
         box=QMessageBox(
             QMessageBox.NoIcon, # other values cause the chime sound to play
             'Connecting...',
@@ -698,22 +721,22 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         box.show()
         QCoreApplication.processEvents()
         box.raise_()
-        logging.info("Creating SartopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
+        logging.info("Creating CaltopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
         try:
-            if 'sartopo.com' in domainAndPort.lower():
+            if 'caltopo.com' in domainAndPort.lower():
                 print("Account:"+str(self.accountName))
-                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,
-                                        configpath=self.stsconfigpath,
+                self.cts=CaltopoSession(domainAndPort=domainAndPort,mapID=mapID,
+                                        configpath=self.ctsconfigpath,
                                         account=self.accountName,
                                         sync=False,
                                         syncDumpFile=syncDumpFile,
                                         cacheDumpFile=cacheDumpFile,
                                         useFiddlerProxy=True)
             else:
-                self.sts=SartopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,syncDumpFile=syncDumpFile,cacheDumpFile=cacheDumpFile,useFiddlerProxy=True, syncTimeout=30)
-            self.link=self.sts.apiVersion
+                self.cts=CaltopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,syncDumpFile=syncDumpFile,cacheDumpFile=cacheDumpFile,useFiddlerProxy=True, syncTimeout=30)
+            self.link=self.cts.apiVersion
         except Exception as e:
-            logging.warning('Exception during createSTS:\n'+str(e))
+            logging.warning('Exception during createCTS:\n'+str(e))
             self.link=-1
         finally:
             box.done(0)
@@ -749,13 +772,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         print("Loading assignment table from map")
         #  get Medical marker information
         try:
-            medMarkers=[f for f in self.sts.getFeatures('Marker') if f['properties'].get('marker-symbol','') == 'medevac-site']
+            medMarkers=[f for f in self.cts.getFeatures('Marker') if f['properties'].get('marker-symbol','') == 'medevac-site']
             print("updating markers")
         except:
             return   # if timeout then just return
         #  get assignments with teams(s) assigned
         try:
-            assignmentsWithNumber=[f for f in self.sts.getFeatures('Assignment') if f['properties'].get('number','') != '']
+            assignmentsWithNumber=[f for f in self.cts.getFeatures('Assignment') if f['properties'].get('number','') != '']
             print("updating assignments with teams")
         except:
             return   # if timeout then just return
@@ -801,10 +824,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         #     set type to Unk if not type is unknown from map info
 
     def addMarker(self):
-        folders=self.sts.getFeatures("Folder")
+        folders=self.cts.getFeatures("Folder")
         self.fidX = True    # set to something other than None for following test
         if not folders:
-            self.fidX = self.sts.addFolder("X")   # add unused folder for following test
+            self.fidX = self.cts.addFolder("X")   # add unused folder for following test
             print("StatusAddFolder"+str(self.fidX))
         if self.fidX == None:   # could not add    
             inform_user_about_issue("Mostlikely this session is not connected to the map for write access. Check that the proper account is being used.")
@@ -819,38 +842,38 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.fidLE=folder["id"]
                 fid = True     # use here or below?
         #if not self.fidMed:
-        #    self.fidMed = self.sts.addFolder("Medical")
+        #    self.fidMed = self.cts.addFolder("Medical")
         #if not self.fidLE:
-        #    self.fidLE = self.sts.addFolder("LE")
+        #    self.fidLE = self.cts.addFolder("LE")
         ## icons
         if self.medval == " X":
             if not self.fidMed:
-                self.fidMed = self.sts.addFolder("Medical")
+                self.fidMed = self.cts.addFolder("Medical")
                 fid = True
             markr = "medevac-site"     # medical +
             clr = "FF0000"
-            #rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam,self.curAssign, \  # OLD: team# was displayed on the map
-            rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam,self.curTeam+self.curAssign, \
+            #rval=self.cts.addMarker(self.latField,self.lonField,self.curTeam,self.curAssign, \  # OLD: team# was displayed on the map
+            rval=self.cts.addMarker(self.latField,self.lonField,self.curTeam,self.curTeam+self.curAssign, \
                                             clr,markr,None,self.fidMed)
             if fid:                  # temporary fix   NOW (10/25/2023) does not seem to help
               print("At reADD marker")
               time.sleep(4)          # the delay, delete and redo seems to get display of marker
               self.delMarker()       # removes most recent
-              rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam,self.curTeam+self.curAssign, \
+              rval=self.cts.addMarker(self.latField,self.lonField,self.curTeam,self.curTeam+self.curAssign, \
                                             clr,markr,None,self.fidMed)
         elif self.curType == "LE":     # law enforcement
             if not self.fidLE:
-                self.fidLE = self.sts.addFolder("LE")
+                self.fidLE = self.cts.addFolder("LE")
                 fid = True
             markr = "icon-ERJ4011P-24-0.5-0.5-ff"     # red dot with blue circle
             clr = "FF0000"           
-            rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
+            rval=self.cts.addMarker(self.latField,self.lonField,self.curTeam, \
                                     self.curAssign,clr,markr,None,self.fidLE)
             if fid:                  # temporary fix   NOW (10/25/2023) does not seem to help
               print("At reADD marker")
               time.sleep(4)          # the delay, delete and redo seems to get display of marker
               self.delMarker()
-              rval=self.sts.addMarker(self.latField,self.lonField,self.curTeam, \
+              rval=self.cts.addMarker(self.latField,self.lonField,self.curTeam, \
                                      self.curAssign,clr,markr,None,self.fidLE)
         else:
             pass #X# don't place marker for searcher
@@ -859,18 +882,21 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             rval = "X"   # place holder
         logging.info("In addMarker:"+self.curTeam)    
         ## also add team number to assignment
-        rval2 = self.sts.mapData['state']['features']
+        rval2 = self.cts.mapData['state']['features']
         numbr = ""
         for props in rval2:
             lettr = props['properties'].get('letter')
             if lettr is None:  continue
+            print("PROPS:"+str(self.curAssign)+":"+str(lettr))
             if lettr == self.curAssign:
                 numbr = props['properties'].get('number')
-        if numbr=='':
-            numbr=self.curTeam
+                break
+        if numbr == '' or numbr is None:
+            numbr = self.curTeam
         else:
+            print("NUMBER:"+str(numbr)+":"+str(self.curTeam))
             numbr += " "+self.curTeam  #  set the team# and resource from table entry  
-        rval2=self.sts.editFeature(className='Assignment',letter=self.curAssign.upper(),properties={'number':numbr, \
+        rval2=self.cts.editFeature(className='Assignment',letter=self.curAssign.upper(),properties={'number':numbr, \
                                    'resourceType':self.curType})
         if rval2 == False:
             inform_user_about_issue('Could not edit map object, probably do not have access to EDIT this map.',parent=self)
@@ -879,8 +905,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     
     def delMarker(self):
-        rval = self.sts.getFeatures("Folder")     # get Folders
-        rval2 = self.sts.getFeatures("Marker")
+        rval = self.cts.getFeatures("Folder")     # get Folders
+        rval2 = self.cts.getFeatures("Marker")
         ##print("Folders:"+json.dumps(rval))
         fidLE = None
         fidMed = None
@@ -897,10 +923,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     if (self.feature2['properties'].get('folderId') == fidLE or self.feature2['properties'].get('folderId') == fidMed) and \
                         self.feature2['properties'].get('title').upper() == self.curTeam.upper(): # both folder and Team match
                             logging.info("Marker ID:"+self.feature2['id']+" of team: "+self.curTeam)
-                            rval3 = self.sts.delMarker(self.feature2['id'])
+                            rval3 = self.cts.delMarker(self.feature2['id'])
 
         # remove the team number from any assignments that contain it
-        assignmentsWithThisNumber=[f for f in self.sts.getFeatures('Assignment') if self.curTeam.upper() in f['properties'].get('number','').upper()]
+        assignmentsWithThisNumber=[f for f in self.cts.getFeatures('Assignment') if self.curTeam.upper() in f['properties'].get('number','').upper()]
         for a in assignmentsWithThisNumber:
             n=a['properties']['number']
             pe=a['properties']['previousEfforts']
@@ -913,7 +939,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             n=' '.join(nList)
             logging.info('  new number = "'+n+'"')
             pe += ' T'+self.curTeam+datetime.now().strftime("-%d%b%y_%H%M")                # append info to previousEfforts field
-            self.sts.editFeature(id=a['id'],properties={'number':n,'previousEfforts':pe})  # removes team# from assignment
+            try:
+                self.cts.editFeature(id=a['id'],properties={'number':n,'previousEfforts':pe})  # removes team# from assignment
+            except:
+                time.sleep(2)  # wait 2 seconds and retry
+                try:
+                    self.cts.editFeature(id=a['id'],properties={'number':n,'previousEfforts':pe})  # removes team# from assignment
+                except:
+                    logging.error("Could not connect to Caltopo, please retry request")
+                    return
 ###@@@@###            
         ##print("RestDel:"+json.dumps(rval3,indent=2))
         # check for Medical marker and also remove
@@ -924,17 +958,17 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     fid = md.get('id')
                     for md in rval2:      # match both folder and Team
                         if md['properties'].get('folderId') == fid and md['properties'].get('title').upper() == self.curTeam.upper():
-                            rval4 = self.sts.delMarker(md['id'])
+                            rval4 = self.cts.delMarker(md['id'])
              
 ##   APPEARS to not be used
     def updateFeatureList(self,featureClass,filterFolderId=None):
         # unfiltered feature list should be kept as an object;
         #  filtered feature list (i.e. combobox items) should be recalculated here on each call 
         logging.info("updateFeatureList called: "+featureClass+"  filterFolderId="+str(filterFolderId))
-        if self.sts and self.link>0:
-            rval=self.sts.getFeatures(featureClass,self.since[featureClass])
-            self.since[featureClass]=int(time.time()*1000) # sartopo wants integer milliseconds
-            logging.info("At sts check")
+        if self.cts and self.link>0:
+            rval=self.cts.getFeatures(featureClass,self.since[featureClass])
+            self.since[featureClass]=int(time.time()*1000) # caltopo wants integer milliseconds
+            logging.info("At cts check")
             if rval:
                 logging.info("rval:"+str(rval))
                 for feature in rval:
@@ -1055,15 +1089,15 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     
     def doOperClicked(self):  # map editor functions
-        # eventually, we can use STSFeatureComboBox to allow autocomplete on each feature name;
+        # eventually, we can use CTSFeatureComboBox to allow autocomplete on each feature name;
         #  that will also do an immediate cache refresh when the fields are opened; until then,
         #  we can force an immediate refresh now, when the button is clicked.
-        self.sts._refresh(forceImmediate=True)
+        self.cts._refresh(forceImmediate=True)
         op=self.ui.geomOpButtonGroup.checkedButton().text()
         selFeatureTitle=self.ui.selFeature.text()
         ## check that the shapes exist
-        selFeatures=self.sts.getFeatures(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'], allowMultiTitleMatch=True)
-        selFeature=self.sts.getFeature(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        selFeatures=self.cts.getFeatures(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'], allowMultiTitleMatch=True)
+        selFeature=self.cts.getFeature(title=selFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
         ##if selFeature == -1:
         if len(selFeatures) > 1:    
             logging.warning(op+' operation failed: Selected feature "'+selFeatureTitle+'" has an issue.')
@@ -1074,8 +1108,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             inform_user_about_issue(op+' operation failed:\n\nSelected feature "'+selFeatureTitle+'" not found.')
             return
         editorFeatureTitle=self.ui.editorFeature.text()
-        editorFeatures=self.sts.getFeatures(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'], allowMultiTitleMatch=True)
-        editorFeature=self.sts.getFeature(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
+        editorFeatures=self.cts.getFeatures(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'], allowMultiTitleMatch=True)
+        editorFeature=self.cts.getFeature(title=editorFeatureTitle,featureClassExcludeList=['Folder','OperationalPeriod'])
         ##if editorFeature == -1:
         if len(editorFeatures) > 1:    
             logging.warning(op+' operation failed: Editor feature "'+selFeatureTitle+'" has an issue.')
@@ -1088,18 +1122,18 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         logging.info("%s shape %s with feature %s"%(op,selFeature,editorFeature))
         if op=='Cut':
             #print("AT CUT")
-            if not self.sts.cut(selFeature,editorFeature):
+            if not self.cts.cut(selFeature,editorFeature):
                print("F A I L E D")   # #A#
                logging.warning(op+' operation failed.')
                inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
         elif op=='Expand':
-            if not self.sts.expand(selFeature,editorFeature):
+            if not self.cts.expand(selFeature,editorFeature):
                logging.warning(op+' operation failed.')
                inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
         elif op=='Crop':    
-            if not self.sts.crop(selFeature,editorFeature,deleteBoundary=True):
+            if not self.cts.crop(selFeature,editorFeature,deleteBoundary=True):
                logging.warning(op+' operation failed.')
                inform_user_about_issue(op+' operation failed.\n\nSee log file for details.')
                return
@@ -1113,7 +1147,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
     def incidentButtonClicked(self):
         # if a map was already open, ask for confirmation first
-        if self.sts and self.sts.apiVersion>-1:
+        if self.cts and self.cts.apiVersion>-1:
             really=ask_user_to_confirm('An incident map is already open.  Do you really want to specify a different incident map?')
             if not really:
                 return
@@ -1124,7 +1158,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
             self.incidentURL=self.incidentMapDialog.url
             self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
-            self.createSTS()
+            self.createCTS()
         else: # don't change the incident map if dialog is canceled
             self.tryAgain=False
 
@@ -1135,13 +1169,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
 
     def debriefButtonClicked(self):
-        if not self.sts or self.sts.apiVersion<0:
+        if not self.cts or self.cts.apiVersion<0:
             inform_user_about_issue('You must establish a link with the Incident Map first.',parent=self)
         else:
             if not self.dmg:
-                self.dmg=DebriefMapGenerator(self,self.sts,self.debriefURL)
+                self.dmg=DebriefMapGenerator(self,self.cts,self.debriefURL)
             self.save_data()
-            if self.dmg and self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
+            if self.dmg and self.dmg.cts2 and self.dmg.cts2.apiVersion>=0:
                 if self.debriefX and self.debriefY and self.debriefW and self.debriefH:
                     self.dmg.dd.setGeometry(int(self.debriefX),int(self.debriefY),int(self.debriefW),int(self.debriefH))
                 self.dmg.dd.show()
@@ -1155,7 +1189,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.forceRescan = 1
         self.rescan()    #force a rescan/refresh
             
-    def rescan(self):
+    def rescan(self):      # appears to RELOAD all radiolog data in the .csv file (not just the added entries as done in refresh)
         logging.info("scanning "+self.watchedDir+" for latest valid csv file...")
         self.csvFiles=[]      # csvFiles is the main radiolog table
         self.csvFiles2=[]     # csvFiles2 is the clue table
@@ -1223,8 +1257,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             rC = self.ui.tableWidget_TmAs.rowCount()
             for i in range(rC-1,-1,-1):  # appears to clear table when run in reverse
                 self.curAssign = self.ui.tableWidget_TmAs.item(i,1).text().upper()
-                if self.curAssign not in ["TR", "IC"]:   # keep these entries; they do not have assignments on map
-                    self.ui.tableWidget_TmAs.removeRow(i)
+                #S#if self.curAssign not in ["TR", "IC"]:   # keep these entries; they do not have assignments on map
+                #S#    self.ui.tableWidget_TmAs.removeRow(i)
+                self.ui.tableWidget_TmAs.removeRow(i)
             self.getObjects()       # read objects on the map and update the table
             self.flag_TmAs_getobj = False
             ## look for multiple entries for a given team. If so, pop up a warning
@@ -1264,12 +1299,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     #  Should be able to compare the first line in saved data with lines from watchedFile.  When it
                     #     matches pickup at least the color (maybe all data) from the saved file
                     #  Can do match on watchedFile[0, 2 and 3] and savedFile[0, 1 and 2]
+                logging.info("Num entries:"+str(len(newEntries))) 
                 prev_entry = ''    
                 fndMatch = False   # looking for savedData match to entry in watchedFile
                 savedRow = 0       # initialize
                 for entry in newEntries:
                     irow = 0       # forcing to 0 keeps the most recent at the top #QQ
-                    #logging.info("In loop: %s"% entry)
+                    logging.info("In loop: %s"% entry)
                     #14: get rid of any elements after 10 (e.g. 11 = operator ID - not needed here)
                     if len(entry)>10:
                         entry=entry[:10]                 
@@ -1283,6 +1319,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                 continue    # skip rows until get to new rows
                         '''
                         timex,tf,callsign,msg,radioLoc,status,epoch,d1,d2,d3=entry  # values in watchedFile
+                        logging.info("ENTRY:"+str(timex)+":"+str(callsign))
                         ##  'time' 'callsign' 'msg' 'radioLoc' 'status' 'color'       values in save file
 
                         if msg.find('Radio Log Begins') > -1:    
@@ -1296,9 +1333,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             self.ui.tableWidget.setItem(irow, 2, QtWidgets.QTableWidgetItem(msg))    
                             self.ui.tableWidget.setItem(irow, 3, QtWidgets.QTableWidgetItem(radioLoc))    
                             self.ui.tableWidget.setItem(irow, 4, QtWidgets.QTableWidgetItem(status))    
-                            if self.savedData:    # implies there was prior stored data to use
+                            if self.savedData and self.forceRescan:    # implies there was prior stored data to use
+                                logging.info("DATA:"+str(self.savedData[savedRow][0])+":"+str(timex)+":"+str(self.savedData[savedRow][1]) \
+                                            +":"+str(callsign)+":"+str(self.savedData[savedRow][2])+":"+str(msg))
                                 if (self.savedData[0][0] == timex and self.savedData[0][1] == callsign and self.savedData[0][2] == msg) \
                                     or fndMatch:
+                                    logging.info("In match check")    
                                     self.setRowColor(self.ui.tableWidget,irow,self.savedData[savedRow][3])
                                     if self.savedData[savedRow][0] != timex or self.savedData[savedRow][1] != callsign or  \
                                         self.savedData[savedRow][2] != msg:
@@ -1310,13 +1350,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                 prevColor=self.ui.tableWidget.item(irow,1).background().color().name()
                                 newColor=stateColorDict.get(prevColor,self.color[0])
                                 self.setRowColor(self.ui.tableWidget,irow,newColor)
-                            #logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
+                            logging.info("status:"+status+"  color:"+statusColorDict.get(status,["eeeeee",""])[0])
                             ##irow = irow + 1   #QQ
                             prev_entry = entry
                     else:
                         logging.info('Entry with '+str(len(entry))+' element(s) skipped.')
                 self.totalRows = self.ui.tableWidget.rowCount()
-                if self.savedData and not fndMatch:
+                if self.savedData and self.forceRescan and not fndMatch:
                     logging.error("Did not find match in savedData and watchedFile information")
             if newEntries2:
                 self.update_Tm = 0   # reset timeout since we got new data
@@ -1395,7 +1435,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         
         maps={}
         maps['incidentURL']=self.incidentURL
-        if self.dmg and self.dmg.sts2 and self.dmg.sts2.apiVersion>=0:
+        if self.dmg and self.dmg.cts2 and self.dmg.cts2.apiVersion>=0:
             maps['debriefURL']=self.debriefURL
         alld = json.dumps([maps,{'csv':self.watchedFile+'%'+self.offsetFileName+'%'+str(self.csvFiles)+\
                 '%'+self.watchedFile2+'%'+self.offsetFileName2+'%'+str(self.csvFiles2)},\
@@ -1452,7 +1492,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         fid.close()
         
         
-    def get_data(self):  # getting radiolog data table and putting in a list
+    def get_data(self):  # getting Full radiolog data table and putting in a list (rescan)
         # logging.info("In get data")
         with open(self.pcDataFileName,'r')  as fid:
             alld = fid.read()
@@ -1481,7 +1521,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.save_data()
 
     def assignTab_OK_clicked(self):   # add, delete, modify entry
-        if self.sts == None:
+        if self.cts == None:
             msg = "Not connected to a map"
             inform_user_about_issue(msg)
             return                    # skip as not connected
@@ -1492,9 +1532,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if self.curAssign == '':      # may be due to double click as things were slow
             self.flag_TmAs_Ok = False
             return                    # No entry, so ignore
-        a=self.sts.getFeatures(featureClass='Assignment',title=self.curAssign,letterOnly=True,allowMultiTitleMatch=True)
-        # logging.info('getFeatures:'+str(a))
-        if self.curAssign not in ['RM','IC','TR'] and len(a)!=1:
+        a=self.cts.getFeatures(featureClass='Assignment',title=self.curAssign,letterOnly=True,allowMultiTitleMatch=True)
+        #logging.info('getFeatures:'+str(a))
+        if self.curAssign not in ['RM'] and len(a)!=1:
             if len(a)==0:
                 msg='No assignments with the specified letters "'+self.curAssign+'" were found - no operation performed.'
             else:
@@ -1504,21 +1544,22 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.flag_TmAs_Ok = False
             return
         #print("Ok button clicked, team is:"+self.ui.Team.text())
-        rval = self.sts.getFeatures("Assignment")     # get assignments
+        rval = self.cts.getFeatures("Assignment")     # get assignments
         ifnd = 1                                      # flag for found valid Assignment
         ## location codes are IC for command post (for type LE, leave marker on map, but at (lon-0.5deg) )
         ##                    TR for in transit
         ##                    RM to remove a team from the table
         ##                    Assignment name 
-        if self.curAssign not in ['RM','IC','TR']: ## chk to see if assignment exists (ignore IC, TR, RM)
+        if self.curAssign not in ['RM']: ## chk to see if assignment exists (ignore IC, TR, RM)
           ifnd = 0
+          print("Assign:"+str(rval))
           for self.feature in rval:
             ##
-            ##   number and title appear synonymous
+            ##   number and title appear synomyous (unless there is a letter)
             ##
-            ##print("ZZZZ:"+str(self.feature["properties"].get("letter")))  # search for new assignment
+            print("ZZZZ:"+str(self.feature["properties"].get("letter")))  # search for new assignment
             if str(self.feature["properties"].get("letter",'').upper()) == self.curAssign:   # find assignment on map
-                ##print("Geo:"+str(self.feature.get("geometry")))
+                print("Geo:"+str(self.feature.get("geometry")))
                 ifnd = 1     # found the desired assignment on the map, so continue
                 break
         if self.ui.Team.text() == "" or ifnd == 0:  # error - checking select below when entry does not exist
@@ -1533,10 +1574,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if self.ui.Team.text().upper() == self.ui.tableWidget_TmAs.item(ix,0).text().upper():  # update
                 ifnd = 1             # set found in table, may be on the map, too
                 irow = ix            # why do I need this equivalence??
-                if (self.ui.tableWidget_TmAs.item(ix,1).text().upper() == "IC" and \
-                    self.ui.tableWidget_TmAs.item(ix,2).text().upper() != "LE") or \
-                    self.ui.tableWidget_TmAs.item(ix,1).text().upper() == "TR":  # in transit
-                     ifnd = 2        # means came from IC (except type LE) or TR, so s/b no marker/assignment on map now
+                #S#if (self.ui.tableWidget_TmAs.item(ix,1).text().upper() == "IC" and \
+                #S#        self.ui.tableWidget_TmAs.item(ix,2).text().upper() != "LE"):
+                    #S#self.ui.tableWidget_TmAs.item(ix,2).text().upper() != "LE") or \
+                    #S#self.ui.tableWidget_TmAs.item(ix,1).text().upper() == "TR":  # in transit
+                #S#     ifnd = 2        # means came from IC (except type LE) or TR, so s/b no marker/assignment on map now
                 #get old marker location to remove 
                 #rm marker (NOTE, if was at IC (except type LE) or TR there will not be a marker)
                 #if to-assignment is IC or TR do not add marker
@@ -1597,11 +1639,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         ###if ifnd == 0: self.ui.tableWidget_TmAs.insertRow(0)
         if ifnd == 1:                                 # moving so remove present loc on map
             self.curTeam = self.ui.tableWidget_TmAs.item(irow,0).text()
+            print("del marker?")
             self.delMarker()                          # uses curTeam to find
         cntComma = self.ui.Team.text().count(',')+1   # add 1 for first element
         tok = self.ui.Team.text().split(',')
         for ix in range(cntComma):     # go thru list of teams in the assignment, add a row for each
             if ifnd == 0: self.ui.tableWidget_TmAs.insertRow(0)
+            print("ifnd is "+str(ifnd)+":"+str(tok)+":"+str(irow)+":"+str(self.curAssign))
             self.ui.tableWidget_TmAs.setItem(irow, 0, QtWidgets.QTableWidgetItem(tok[ix]))
             self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(self.curAssign))    
             self.ui.tableWidget_TmAs.setItem(irow, 2, QtWidgets.QTableWidgetItem(self.ui.comboBox.currentText()))
@@ -1610,18 +1654,19 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if self.ui.Med.isChecked(): self.medval = " X"
             else: self.medval = " "    #  need at least a space so that it is not empty
             self.ui.tableWidget_TmAs.setItem(irow, 3, QtWidgets.QTableWidgetItem(self.medval))
-            if self.curAssign.upper() in ["IC", "TR"]: # there is no map location for teams at IC or in transit
-                self.ui.tableWidget_TmAs.setItem(irow, 3, QtWidgets.QTableWidgetItem(" "))
-                break
+            #S#if self.curAssign.upper() in ["IC", "TR"]: # there is no map location for teams at IC or in transit
+            #S#    self.ui.tableWidget_TmAs.setItem(irow, 3, QtWidgets.QTableWidgetItem(" "))
+            #S#    break
         # find center of shape in latField and lonField float
-            if self.curType == "LE" and self.curAssign.upper() == "IC":                 # moving LE to 'IC' (away)
+            if self.curType == "LE" and self.curAssign.upper() == "IC":         # moving LE to 'IC' (away)
                 self.lonField = self.NCSO[1]+random.uniform(-1.0, 1.0)*0.001    # temp location; randomly adjust
                 self.latField = self.NCSO[0]+random.uniform(-1.0, 1.0)*0.001    # +/-0.001 deg lat and long
             else:   
                 self.calcLatLon_center()              # use self.ui.Assign.text() to find shape
         # set marker type (in addMarker) based on Med or if type=LE
-            if (self.curAssign != "IC" and self.curAssign != "TR") or self.curType == "LE":
-                self.addMarker()       # uses self.ui.Team, medval
+            print("B4 addMark:"+str(self.curAssign))
+            ##if (self.curAssign != "IC" and self.curAssign != "TR") or self.curType == "LE":
+            self.addMarker()       # uses self.ui.Team, medval
 
         # clear fields
         self.ui.Team.setText("")

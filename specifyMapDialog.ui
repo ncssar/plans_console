@@ -192,7 +192,7 @@
                <string>localhost:8080</string>
               </property>
               <property name="checked">
-               <bool>true</bool>
+               <bool>false</bool>
               </property>
               <attribute name="buttonGroup">
                <string notr="true">domainAndPortButtonGroup</string>
@@ -213,7 +213,10 @@
                </font>
               </property>
               <property name="text">
-               <string>sartopo.com</string>
+               <string>caltopo.com</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
               </property>
               <attribute name="buttonGroup">
                <string notr="true">domainAndPortButtonGroup</string>
@@ -329,7 +332,7 @@
                </font>
               </property>
               <property name="text">
-               <string>(3-5 characters)</string>
+               <string>(3-7 characters)</string>
               </property>
               <property name="indent">
                <number>10</number>
@@ -495,7 +498,7 @@
   <slot>urlChanged()</slot>
  </slots>
  <buttongroups>
-  <buttongroup name="mapSourceButtonGroup"/>
   <buttongroup name="domainAndPortButtonGroup"/>
+  <buttongroup name="mapSourceButtonGroup"/>
  </buttongroups>
 </ui>
