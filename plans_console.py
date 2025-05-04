@@ -29,6 +29,7 @@
 #  3/14/2025  SDL 1.24    allow IC/TR to create a table entry, implemented color restore upon rescan
 #  4/26/2025  SDL 1.25    put try around editfeature due to connection error to Caltopo   
 #  4/28/2025  SDL 1.26    fixed issue with new radiolog entries, added IC and TR assignments, using caltopo_python
+#  5/03/2025  SDL 1.27    strip spaces from team entry. change IC assign to ICX (conflict with IC marker)
 #
 # #############################################################################
 #
@@ -73,7 +74,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.26"
+VERSION = "1.27"
 
 caltopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -535,7 +536,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         self.ICid = None
         self.TRid = None
         for x in assigns:
-            if 'IC' in x['properties']['title']:
+            if 'ICX' in x['properties']['title']:
                 self.ICid = x['id']
                 print('Found IC')
             if 'TR' in x['properties']['title']:
@@ -543,11 +544,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 print('Found TR')
 
         if self.ICid is None:
-           self.ICid = self.cts.addLineAssignment(points=[[-120,39],[-120.01,39.01]], letter='IC')
-           print('create IC')
+           self.ICid = self.cts.addLineAssignment(points=[[-120,39],[-120.01,39.01]], letter='ICX')
+           print('created IC')   # named ICX to remove conflict with IC marker
         if self.TRid is None:
            self.TRid = self.cts.addLineAssignment(points=[[-120,39],[-120.01,39.01]], letter='TR')
-           print('create TR')
+           print('created TR')
         self.save_data()
 
         # if debrief map was specified both on command line and in restored file,
@@ -896,7 +897,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         else:
             print("NUMBER:"+str(numbr)+":"+str(self.curTeam))
             numbr += " "+self.curTeam  #  set the team# and resource from table entry  
-        rval2=self.cts.editFeature(className='Assignment',letter=self.curAssign.upper(),properties={'number':numbr, \
+        assign = self.curAssign.upper()    
+        if assign == 'IC':
+            assign = 'ICX'  # using ICX to avoid conflict with IC marker
+        rval2=self.cts.editFeature(className='Assignment', letter=assign, properties={'number':numbr, \
                                    'resourceType':self.curType})
         if rval2 == False:
             inform_user_about_issue('Could not edit map object, probably do not have access to EDIT this map.',parent=self)
@@ -1528,7 +1532,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         while self.flag_TmAs_getobj:  # wait until getObject operation is complete
             pass
         self.flag_TmAs_Ok = True
-        self.curAssign = self.ui.Assign.text().upper()
+        self.curAssign = self.ui.Assign.text().upper().strip()
+        if self.curAssign == 'IC':
+            self.curAssign = 'ICX'    # using ICX to avoid conflict with marker IC
         if self.curAssign == '':      # may be due to double click as things were slow
             self.flag_TmAs_Ok = False
             return                    # No entry, so ignore
@@ -1550,14 +1556,14 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         ##                    TR for in transit
         ##                    RM to remove a team from the table
         ##                    Assignment name 
-        if self.curAssign not in ['RM']: ## chk to see if assignment exists (ignore IC, TR, RM)
+        if self.curAssign not in ['RM']: ## chk to see if assignment exists (ignore RM)
           ifnd = 0
           print("Assign:"+str(rval))
           for self.feature in rval:
             ##
             ##   number and title appear synomyous (unless there is a letter)
             ##
-            print("ZZZZ:"+str(self.feature["properties"].get("letter")))  # search for new assignment
+            #print("ZZZZ:"+str(self.feature["properties"].get("letter")))  # search for new assignment
             if str(self.feature["properties"].get("letter",'').upper()) == self.curAssign:   # find assignment on map
                 print("Geo:"+str(self.feature.get("geometry")))
                 ifnd = 1     # found the desired assignment on the map, so continue
@@ -1571,7 +1577,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         irow = 0
         #print("count:"+str(self.ui.tableWidget_TmAs.rowCount()))
         for ix in range(self.ui.tableWidget_TmAs.rowCount()):      # Look for existing Team entry in table
-            if self.ui.Team.text().upper() == self.ui.tableWidget_TmAs.item(ix,0).text().upper():  # update
+            if self.ui.Team.text().upper().strip() == self.ui.tableWidget_TmAs.item(ix,0).text().upper():  # update
                 ifnd = 1             # set found in table, may be on the map, too
                 irow = ix            # why do I need this equivalence??
                 #S#if (self.ui.tableWidget_TmAs.item(ix,1).text().upper() == "IC" and \
@@ -1598,7 +1604,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     self.ui.Med.setChecked(True)
         if self.curAssign == "RM":      # want to completely remove team
             if ifnd == 1:               # want to remove; presently in table AND on map
-                self.curTeam = self.ui.Team.text()
+                self.curTeam = self.ui.Team.text().strip()
                 ## if team has medical, need to remove that entry, also
                 self.delMarker()        # uses curTeam to find
             if ifnd == 1 or ifnd == 2:  # want to remove; presently only in table
