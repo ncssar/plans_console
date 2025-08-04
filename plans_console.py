@@ -1337,7 +1337,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             self.ui.tableWidget.setItem(irow, 2, QtWidgets.QTableWidgetItem(msg))    
                             self.ui.tableWidget.setItem(irow, 3, QtWidgets.QTableWidgetItem(radioLoc))    
                             self.ui.tableWidget.setItem(irow, 4, QtWidgets.QTableWidgetItem(status))    
-                            if self.savedData and self.forceRescan:    # implies there was prior stored data to use
+                            ### modified 8/3/2025 
+                            if self.savedData and self.forceRescan and self.savedData[savedRow]:    # implies there was prior stored data to use
                                 logging.info("DATA:"+str(self.savedData[savedRow][0])+":"+str(timex)+":"+str(self.savedData[savedRow][1]) \
                                             +":"+str(callsign)+":"+str(self.savedData[savedRow][2])+":"+str(msg))
                                 if (self.savedData[0][0] == timex and self.savedData[0][1] == callsign and self.savedData[0][2] == msg) \
