@@ -30,6 +30,7 @@
 #  4/26/2025  SDL 1.25    put try around editfeature due to connection error to Caltopo   
 #  4/28/2025  SDL 1.26    fixed issue with new radiolog entries, added IC and TR assignments, using caltopo_python
 #  5/03/2025  SDL 1.27    strip spaces from team entry. change IC assign to ICX (conflict with IC marker)
+#  9/18/2025  SDL 1.28    for change to Caltopo added routine to set letter and number props from title
 #
 # #############################################################################
 #
@@ -74,7 +75,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.27"
+VERSION = "1.28"
 
 caltopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -529,10 +530,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.createCTS()
         # check and create if not existing, line assignments for IC and TR to use as placeHolders for teams at IC or in transit
         try:
-            assigns = self.cts.getFeatures('Assignment') 
+            assigns = self.updateLettNumb()   # get assignments and update properties letter and number
+            #Z#assigns = self.cts.getFeatures('Assignment') 
             print("getting assignments for IC and TR, if they exist")
         except:
             pass   # if timeout then just return
+            print("########## getFeatures Failed ##############")
+            return
         self.ICid = None
         self.TRid = None
         for x in assigns:
@@ -578,6 +582,18 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         else:
             QTimer.singleShot(1000,self.debriefButtonClicked) # no reason not to start dmg anyway - TMG/SDL 4-9-22
        '''
+
+
+    def updateLettNumb(self):
+        ###  pickup assignment features, then using title separate out assignment letter and string of team numbers
+        assigns = self.cts.getFeatures('Assignment') 
+        for assgn in assigns:
+            titl = assgn['properties']['title']
+            info = titl.split(' ')
+            assg = info[0]
+            nmbr = ' '.join(info[1:])      # edit the feature to set properties letter abd number
+            rval2=self.cts.editFeature(className='Assignment', title=titl, properties={'number':nmbr, 'letter':assg})
+        return assigns    
 
 
     def printx(self):    #  printing clue table
@@ -1239,7 +1255,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     #  - process each new line
     #    - add a row to the appropriate panel's table    
     def refresh(self):
-        if self.update_Tm == 200:    # 10 minutes    ## why is there a rescan timeout???
+        if self.update_Tm == 200:       # 10 minutes    ## why is there a rescan timeout???
                # maybe do this, but reset timeout if activity (refresh w/new data) has occurred??
             logging.info("Calling rescan timeout...")
             self.update_Tm = 0
@@ -1252,7 +1268,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         ##
         # updating the team/assignment table
         ##
-        if self.update_TmAs == 4:
+        if self.update_TmAs >= 4:
+            self.updateLettNumb()       # update letter and number for any new assignment changes
             while self.flag_TmAs_Ok:    # wait until Ok button operation is complete
                 pass
             self.flag_TmAs_getobj = True
