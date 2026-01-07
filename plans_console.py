@@ -31,6 +31,7 @@
 #  4/28/2025  SDL 1.26    fixed issue with new radiolog entries, added IC and TR assignments, using caltopo_python
 #  5/03/2025  SDL 1.27    strip spaces from team entry. change IC assign to ICX (conflict with IC marker)
 #  9/18/2025  SDL 1.28    for change to Caltopo added routine to set letter and number props from title
+#  1/06/2026  SDL 1.29    put in check for savedData existance
 #
 # #############################################################################
 #
@@ -75,7 +76,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.28"
+VERSION = "1.29"
 
 caltopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -1355,7 +1356,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                             self.ui.tableWidget.setItem(irow, 3, QtWidgets.QTableWidgetItem(radioLoc))    
                             self.ui.tableWidget.setItem(irow, 4, QtWidgets.QTableWidgetItem(status))    
                             ### modified 8/3/2025 
-                            if self.savedData and self.forceRescan and self.savedData[savedRow]:    # implies there was prior stored data to use
+                            if self.savedData and len(self.savedData) > savedRow and self.forceRescan and self.savedData[savedRow]:   
+                                # implies there was prior stored data to use
                                 logging.info("DATA:"+str(self.savedData[savedRow][0])+":"+str(timex)+":"+str(self.savedData[savedRow][1]) \
                                             +":"+str(callsign)+":"+str(self.savedData[savedRow][2])+":"+str(msg))
                                 if (self.savedData[0][0] == timex and self.savedData[0][1] == callsign and self.savedData[0][2] == msg) \
