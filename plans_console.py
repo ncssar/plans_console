@@ -32,6 +32,7 @@
 #  5/03/2025  SDL 1.27    strip spaces from team entry. change IC assign to ICX (conflict with IC marker)
 #  9/18/2025  SDL 1.28    for change to Caltopo added routine to set letter and number props from title
 #  1/06/2026  SDL 1.29    put in check for savedData existance
+#  1/12/2026  SDL 1.30    if team at ICX or TR type = ' '
 #
 # #############################################################################
 #
@@ -76,7 +77,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.29"
+VERSION = "1.30"
 
 caltopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -917,6 +918,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         assign = self.curAssign.upper()    
         if assign == 'IC':
             assign = 'ICX'  # using ICX to avoid conflict with IC marker
+        if assign == 'ICX' or assign == 'TR':
+            self.curType = ' '    # when at IC or in TR team type is blanked
         rval2=self.cts.editFeature(className='Assignment', letter=assign, properties={'number':numbr, \
                                    'resourceType':self.curType})
         if rval2 == False:
@@ -1559,6 +1562,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             self.flag_TmAs_Ok = False
             return                    # No entry, so ignore
         a=self.cts.getFeatures(featureClass='Assignment',title=self.curAssign,letterOnly=True,allowMultiTitleMatch=True)
+        print("at top of New assignment into table")
         #logging.info('getFeatures:'+str(a))
         if self.curAssign not in ['RM'] and len(a)!=1:
             if len(a)==0:
@@ -1613,6 +1617,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if self.ui.comboBox.currentText() == "Select": 
             if ifnd == 0:               # does not exist in table
                 pass  # beepX1
+                inform_user_about_issue("Expected Team Type to be set", timeout=2000)
                 logging.info("Issue with Assign inputs2")
                 self.flag_TmAs_Ok = False
                 return
@@ -1620,7 +1625,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 indx = self.ui.comboBox.findText(self.ui.tableWidget_TmAs.item(ix,2).text())
                 logging.info("INDEX is:"+str(indx))
                 self.ui.comboBox.setCurrentIndex(indx)
-                if self.ui.tableWidget_TmAs.item(ix,3).text() == ' X':  # also check Med setting
+                if self.ui.tableWidget_TmAs.item(ix,3).text() == ' X':  # checking Med setting
                     self.ui.Med.setChecked(True)
         if self.curAssign == "RM":      # want to completely remove team
             if ifnd == 1:               # want to remove; presently in table AND on map
@@ -1674,9 +1679,13 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             print("ifnd is "+str(ifnd)+":"+str(tok)+":"+str(irow)+":"+str(self.curAssign))
             self.ui.tableWidget_TmAs.setItem(irow, 0, QtWidgets.QTableWidgetItem(tok[ix]))
             self.ui.tableWidget_TmAs.setItem(irow, 1, QtWidgets.QTableWidgetItem(self.curAssign))    
-            self.ui.tableWidget_TmAs.setItem(irow, 2, QtWidgets.QTableWidgetItem(self.ui.comboBox.currentText()))
+            type = self.ui.comboBox.currentText() 
+            if self.curAssign == 'ICX' or self.curAssign == 'TR':
+                print("At null type")
+                type = ' '    # when at IC or in TR team type is blanked
+            self.ui.tableWidget_TmAs.setItem(irow, 2, QtWidgets.QTableWidgetItem(type))  # type
             self.curTeam = tok[ix]
-            self.curType = self.ui.comboBox.currentText()
+            self.curType = type
             if self.ui.Med.isChecked(): self.medval = " X"
             else: self.medval = " "    #  need at least a space so that it is not empty
             self.ui.tableWidget_TmAs.setItem(irow, 3, QtWidgets.QTableWidgetItem(self.medval))
