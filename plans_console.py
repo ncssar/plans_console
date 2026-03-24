@@ -33,6 +33,8 @@
 #  9/18/2025  SDL 1.28    for change to Caltopo added routine to set letter and number props from title
 #  1/06/2026  SDL 1.29    put in check for savedData existance
 #  1/12/2026  SDL 1.30    if team at ICX or TR type = ' '
+#  3/23/2026  SDL 1.31    added .get() to several dict inquiries to correct change to Caltopo where some properties
+#                         don't exist if no value is set
 #
 # #############################################################################
 #
@@ -77,7 +79,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.30"
+VERSION = "1.31"
 
 caltopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -752,7 +754,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                                         cacheDumpFile=cacheDumpFile,
                                         useFiddlerProxy=True)
             else:
-                self.cts=CaltopoSession(domainAndPort=domainAndPort,mapID=mapID,sync=False,syncDumpFile=syncDumpFile,cacheDumpFile=cacheDumpFile,useFiddlerProxy=True, syncTimeout=30)
+                self.cts=CaltopoSession(domainAndPort=domainAndPort+'/',mapID=mapID,sync=False,syncDumpFile=syncDumpFile,cacheDumpFile=cacheDumpFile,useFiddlerProxy=True, syncTimeout=30)
             self.link=self.cts.apiVersion
         except Exception as e:
             logging.warning('Exception during createCTS:\n'+str(e))
@@ -819,12 +821,12 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 if len(s[k+1]) >= 3 and (s[k+1][0].isdigit() and s[k+1][1].isalpha() and s[k+1][2].isdigit()):  # 2nd char is a digit, not LE
                     x = 'LE'
                 else:
-                    x = a['properties']['resourceType']
+                    x = a['properties'].get('resourceType')
                 Med = False    
                 for m in medMarkers:
                     #print("Med Info Chk:"+str(m)+":"+str(s[k+1]+s[0]))
                     #if m['properties']['title'] == s[k+1] and m['properties']['description'] == s[0]:   #OLD team# was displayed on the map
-                    if m['properties']['title'] == s[k+1] and m['properties']['description'] == s[k+1]+s[0]:
+                    if m['properties']['title'] == s[k+1] and m['properties'].get('description') == s[k+1]+s[0]:
                        #print("Found") 
                        Med = True          #  will get Medical info from the Marker
                 if Med: self.medval = " X"
@@ -952,8 +954,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # remove the team number from any assignments that contain it
         assignmentsWithThisNumber=[f for f in self.cts.getFeatures('Assignment') if self.curTeam.upper() in f['properties'].get('number','').upper()]
         for a in assignmentsWithThisNumber:
-            n=a['properties']['number']
-            pe=a['properties']['previousEfforts']
+            n=a['properties'].get('number')
+            pe=a['properties'].get('previousEfforts')   # if non-existent returns None
             logging.info('changing assignment "'+a['properties']['title']+'": old number = "'+n+'"')
             nList=n.upper().split()
             if self.curTeam.upper() in nList:
@@ -964,11 +966,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             logging.info('  new number = "'+n+'"')
             pe += ' T'+self.curTeam+datetime.now().strftime("-%d%b%y_%H%M")                # append info to previousEfforts field
             try:
-                self.cts.editFeature(id=a['id'],properties={'number':n,'previousEfforts':pe})  # removes team# from assignment
+                self.cts.editFeature(id=a['id'],properties={'number':n,'previousEfforts':pe})  # removes this team# from assignment
             except:
                 time.sleep(2)  # wait 2 seconds and retry
                 try:
-                    self.cts.editFeature(id=a['id'],properties={'number':n,'previousEfforts':pe})  # removes team# from assignment
+                    self.cts.editFeature(id=a['id'],properties={'number':n,'previousEfforts':pe})  # removes this team# from assignment
                 except:
                     logging.error("Could not connect to Caltopo, please retry request")
                     return
