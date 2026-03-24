@@ -35,6 +35,7 @@
 #  1/12/2026  SDL 1.30    if team at ICX or TR type = ' '
 #  3/23/2026  SDL 1.31    added .get() to several dict inquiries to correct change to Caltopo where some properties
 #                         don't exist if no value is set
+#  3/23/2026  SDL 1.32    add createCTS to the rescan button to reconnect to the map, also
 #
 # #############################################################################
 #
@@ -79,7 +80,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.31"
+VERSION = "1.32"
 
 caltopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -1212,6 +1213,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 self.dmg=None # so that the next debrief button click will try again
 
     def rescanButtonClicked(self):
+        self.createCTS()      # besides rescanning the radiolog info, reconnect to the map
         self.forceRescan = 1
         self.rescan()    #force a rescan/refresh
             
