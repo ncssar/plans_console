@@ -36,6 +36,7 @@
 #  3/23/2026  SDL 1.31    added .get() to several dict inquiries to correct change to Caltopo where some properties
 #                         don't exist if no value is set
 #  3/23/2026  SDL 1.32    add createCTS to the rescan button to reconnect to the map, also
+#  5/13/2026  SDL 1.33    fixed issue with Caltopo not having all properties of an object in the json
 #
 # #############################################################################
 #
@@ -80,7 +81,7 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.32"
+VERSION = "1.33"
 
 caltopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -822,7 +823,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 if len(s[k+1]) >= 3 and (s[k+1][0].isdigit() and s[k+1][1].isalpha() and s[k+1][2].isdigit()):  # 2nd char is a digit, not LE
                     x = 'LE'
                 else:
-                    x = a['properties'].get('resourceType')
+                    x = a['properties'].get('resourceType','')
                 Med = False    
                 for m in medMarkers:
                     #print("Med Info Chk:"+str(m)+":"+str(s[k+1]+s[0]))
@@ -907,11 +908,11 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         rval2 = self.cts.mapData['state']['features']
         numbr = ""
         for props in rval2:
-            lettr = props['properties'].get('letter')
+            lettr = props['properties'].get('letter','')
             if lettr is None:  continue
             print("PROPS:"+str(self.curAssign)+":"+str(lettr))
             if lettr == self.curAssign:
-                numbr = props['properties'].get('number')
+                numbr = props['properties'].get('number','')
                 break
         if numbr == '' or numbr is None:
             numbr = self.curTeam
@@ -931,7 +932,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
 
 
     
-    def delMarker(self):
+    def delMarker(self):     # does a lot more than deleting a marker
         rval = self.cts.getFeatures("Folder")     # get Folders
         rval2 = self.cts.getFeatures("Marker")
         ##print("Folders:"+json.dumps(rval))
@@ -955,8 +956,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         # remove the team number from any assignments that contain it
         assignmentsWithThisNumber=[f for f in self.cts.getFeatures('Assignment') if self.curTeam.upper() in f['properties'].get('number','').upper()]
         for a in assignmentsWithThisNumber:
-            n=a['properties'].get('number')
-            pe=a['properties'].get('previousEfforts')   # if non-existent returns None
+            n=a['properties'].get('number','')
+            pe=a['properties'].get('previousEfforts','')   # if non-existent returns ''
             logging.info('changing assignment "'+a['properties']['title']+'": old number = "'+n+'"')
             nList=n.upper().split()
             if self.curTeam.upper() in nList:
