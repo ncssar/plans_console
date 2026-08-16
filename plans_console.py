@@ -37,6 +37,8 @@
 #                         don't exist if no value is set
 #  3/23/2026  SDL 1.32    add createCTS to the rescan button to reconnect to the map, also
 #  5/13/2026  SDL 1.33    fixed issue with Caltopo not having all properties of an object in the json
+#  8/16/2026  SDL 1.34    fixed timing bug whereby map data was not synced prior to a change. Caused direct map 
+#                         changes to revert.  Also, implemented map name lookup
 #
 # #############################################################################
 #
@@ -81,7 +83,8 @@ from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 import subprocess
-VERSION = "1.33"
+#### from find_map import *
+VERSION = "1.34"
 
 caltopo_python_min_version="1.1.2"
 #import pkg_resources
@@ -149,7 +152,7 @@ logging.basicConfig(
     ]
 )
 
-from specifyMap import SpecifyMapDialog
+###from specifyMap import SpecifyMapDialog
 
 BG_GREEN = "background-color:#00bb00;"
 BG_RED = "background-color:#bb0000;"
@@ -465,10 +468,6 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                     pass   # abort
                     print("Exiting")
                     exit()
-                self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.defaultDomainAndPort)
-                self.incidentMapDialog.exec() # force modal
-                self.incidentURL=self.incidentMapDialog.url
-                self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
         self.cts=None
         self.dmg=None # DebriefMapGenerator instance
         self.link=-1
@@ -590,9 +589,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
        '''
 
 
-    def updateLettNumb(self):
+    def updateLettNumb(self):  # inefficient fix so that other routines using numb, letter get updates
+        #                          should have those routines just convert titl to numb, letter locally
         ###  pickup assignment features, then using title separate out assignment letter and string of team numbers
-        assigns = self.cts.getFeatures('Assignment') 
+        assigns = self.cts.getFeatures('Assignment', forceRefresh=True) 
         for assgn in assigns:
             titl = assgn['properties']['title']
             info = titl.split(' ')
@@ -736,6 +736,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             logging.info('Cache dump file will be written after each "since" request; each filename will begin with '+cacheDumpFile)
             cacheDumpFile+='.txt'
         self.cts=None
+        '''
         box=QMessageBox(
             QMessageBox.NoIcon, # other values cause the chime sound to play
             'Connecting...',
@@ -744,6 +745,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         box.show()
         QCoreApplication.processEvents()
         box.raise_()
+        '''
         logging.info("Creating CaltopoSession with domainAndPort="+domainAndPort+" mapID="+mapID)
         try:
             if 'caltopo.com' in domainAndPort.lower():
@@ -762,8 +764,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             logging.warning('Exception during createCTS:\n'+str(e))
             self.link=-1
         finally:
-            box.done(0)
-        if self.link>-1:
+            ##box.done(0)
+            pass
+        if self.link>-1 and self.incidentURL != 'caltopo.com/':
             logging.info('Successfully connected.')
             self.ui.incidentLinkLight.setStyleSheet(BG_GREEN)
             if not self.reloaded:  
@@ -775,20 +778,10 @@ class PlansConsole(QDialog,Ui_PlansConsole):
                 ####self.rescan()   #QQ   ## Do a rescan here to get info updated after a reload
             '''    
             self.tryAgain=False
-        else:
+        elif self.link <= -1:
             logging.info('Connection failed.')
             self.ui.incidentLinkLight.setStyleSheet(BG_RED)
             inform_user_about_issue('Link could not be established with specified incident map\n\n'+self.incidentURL+'\n\nPlease specify a valid map, or hit Cancel from the map dialog to run Plans Console with no incident map.',parent=self)
-            self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,domainAndPort)
-            if self.incidentMapDialog.exec(): # force modal
-                self.ui.incidentMapField.setText(self.incidentMapDialog.url)
-                self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
-                self.incidentURL=self.incidentMapDialog.url
-                self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
-                if not self.incidentURL:
-                    self.tryAgain=False
-            else:
-                self.tryAgain=False                 
 
     def getObjects(self):   # run when the map has NOT been reloaded OR needs to be updated
         pass                # look at map to get features to load into the assignment table
@@ -910,7 +903,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         for props in rval2:
             lettr = props['properties'].get('letter','')
             if lettr is None:  continue
-            print("PROPS:"+str(self.curAssign)+":"+str(lettr))
+            #print("PROPS:"+str(self.curAssign)+":"+str(lettr))
             if lettr == self.curAssign:
                 numbr = props['properties'].get('number','')
                 break
@@ -919,6 +912,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         else:
             print("NUMBER:"+str(numbr)+":"+str(self.curTeam))
             numbr += " "+self.curTeam  #  set the team# and resource from table entry  
+        assigns = self.cts.getFeatures('Assignment', forceRefresh=True) # here just to get cache refresh 
         assign = self.curAssign.upper()    
         if assign == 'IC':
             assign = 'ICX'  # using ICX to avoid conflict with IC marker
@@ -1180,15 +1174,9 @@ class PlansConsole(QDialog,Ui_PlansConsole):
             if not really:
                 return
         self.tryAgain=True
-        self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.defaultDomainAndPort)
-        if self.incidentMapDialog.exec(): # force modal
-            self.ui.incidentMapField.setText(self.incidentMapDialog.url)
-            self.ui.incidentLinkLight.setStyleSheet(BG_GRAY)
-            self.incidentURL=self.incidentMapDialog.url
-            self.incidentDomainAndPort=self.incidentMapDialog.domainAndPort
-            self.createCTS()
-        else: # don't change the incident map if dialog is canceled
-            self.tryAgain=False
+        #####self.incidentMapDialog=SpecifyMapDialog(self,'Incident',None,self.defaultDomainAndPort)
+        self.clickedURL()
+        self.ui.incidentMapField.setText(self.incidentURL)
 
 
     def printButtonClicked(self):
@@ -1255,7 +1243,7 @@ class PlansConsole(QDialog,Ui_PlansConsole):
         if (self.csvFiles!=[] or self.csvFiles2!=[]) and self.link > -1:  # chk that csvfiles exist and that map is connected
             self.forceRescan = 1   #QQ      ### clear rows by setting to no rows
             self.refresh()
-        else:
+        elif self.incidentURL != '' and self.incidentURL != 'caltopo/':
             inform_user_about_issue("Mostlikely the Radiolog data or the Caltopo map cannot be accessed")
 
 
@@ -1264,6 +1252,8 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     #  - process each new line
     #    - add a row to the appropriate panel's table    
     def refresh(self):
+        if self.link == -1 or self.incidentURL == '' or self.incidentURL == 'caltopo.com/':
+            return    # wait for valid map connection
         if self.update_Tm == 200:       # 10 minutes    ## why is there a rescan timeout???
                # maybe do this, but reset timeout if activity (refresh w/new data) has occurred??
             logging.info("Calling rescan timeout...")
@@ -1987,6 +1977,108 @@ class PlansConsole(QDialog,Ui_PlansConsole):
     # prevent esc key from closing the program
     def reject(self,*args):
         pass
+
+###   Map selector routines
+    def clickedURL(self):    # click into mapURL field
+        # be sure to open a session with no map
+    #####    
+      #  self.connectx()      # blank connect a Session (no map None)
+      # OR create...
+        self.incidentURL = 'caltopo.com/'
+        self.createCTS()        # blank connect to create a Session (no map None)
+    #####  
+        if self.link != 1:
+            return
+        # call folders/maps
+        accts = self.cts.getAccountsAndFolders()
+        self.aList = [] 
+        self.mListr = [] 
+        # create list of folders popup dialog
+        print("STUFF_CTS:"+str(accts))
+        for a in accts:
+            self.aList.append(a['accountTitle'])
+        print("STUFF_ACCTS:"+str(self.aList))
+        ## most recent map in either NCSSAR or FireMaps  (mostlikely desired)
+        map1 = self.cts.getMapList(groupAccountTitle='NCSSAR')
+        titl1 = map1[0]['title']
+        id1 = map1[0]['id']
+        ts1 = map1[0]['updated']
+        acct1 = 'NCSSAR'
+        map2 = self.cts.getMapList(groupAccountTitle='NevadaCounty (FIRE MAPS)')
+        titl2 = map2[0]['title']
+        id2 = map2[0]['id']
+        ts2 = map2[0]['updated']
+        acct2 = 'NevadaCounty (FIRE MAPS)'
+        if ts1 > ts2:
+            print("MAPinfo:"+str(titl1)+":"+str(id1)+":"+str(ts1))
+        else:
+            print("MAPinfo:"+str(titl2)+":"+str(id2)+":"+str(ts2))
+        # popup dialog for selection
+        self.mapSelect = QDialog()
+        self.mapSelect.setGeometry(440,100,200,150)  
+        self.mapSelect.setWindowTitle("Chooser")
+        ##
+        self.acctList = QtWidgets.QComboBox()
+        font = QtGui.QFont()
+        font.setPointSize(9)
+        self.acctList.setFont(font)
+        self.acctList.setObjectName("acctList")
+        self.acctList.clear()
+        for acc in self.aList[1:]:  # skip first entry
+            self.acctList.addItem(acc)
+        self.acctList.activated.connect(self.setMapList)
+        self.mapList = QtWidgets.QComboBox()
+        self.mapList.setFont(font)
+        self.mapList.setObjectName("mapList")
+        oBut = QPushButton("Open")
+        oBut.clicked.connect(self.connectMap)
+        name = QtWidgets.QLabel("Folder/Map Settings")
+        layout = QVBoxLayout()
+        layout.addWidget(name)
+        layout.addWidget(self.acctList)
+        layout.addWidget(self.mapList)
+        layout.addWidget(oBut)
+        self.mapSelect.setLayout(layout)                     # save values for recall (pre-fill)
+        self.mapSelect.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
+        if ts1 > ts2:
+            self.acctList.setCurrentText(acct1)
+            self.mapList.setCurrentText(titl1)
+        else:
+            self.acctList.setCurrentText(acct2)
+            self.mapList.setCurrentText(titl2)
+        self.setMapList()     # preset
+        self.mapSelect.show()
+        self.mapSelect.raise_()
+        self.mapSelect.exec_()
+        
+
+    def connectMap(self):
+        pass
+        self.mNameText = self.mapList.currentText()
+        self.mapURL = str([ix[1] for ix in self.mapInfo if self.mNameText == ix[0]][0])
+     ######   self.ui.mapURL.setText(self.mapURL)  # why not used in createD4Hincid?
+        print("Map URL is:"+str(self.mapURL))
+        self.incidentURL = 'https://caltopo.com/m/'+str(self.mapURL)
+        self.ui.incidentMapField.setText(self.incidentURL)
+        self.tryAgain=True
+        while self.tryAgain:
+            self.createCTS()
+
+        self.mapSelect.close()
+
+
+    def setMapList(self):
+        pass
+        acur = self.acctList.currentText()
+        self.mListr = self.cts.getMapList(groupAccountTitle=acur)
+        print("Maps:"+str(acur)+":"+str(self.mListr))
+        self.mapInfo = []
+        self.mapList.clear()
+        for map in self.mListr:
+            self.mapInfo.append([str(map['title']), str(map['id'])])
+            self.mapList.addItem(self.mapInfo[-1][0])
+    ###   Map selector routines - end
+
        
 def main():
     app = QApplication(sys.argv)
